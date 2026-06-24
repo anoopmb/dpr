@@ -62,8 +62,16 @@ function itemValue(item: BoqItemRead): number {
   return parseFloat(item.tendered_qty) * parseFloat(item.rate);
 }
 
+/** Section total VALUE (qty × rate, summed) — belongs under the Tendered
+ * Value column, not under a quantity column. */
 function sectionAmount(items: BoqItemRead[], field: 'tendered_qty' | 'consumed_qty'): number {
   return items.reduce((acc, i) => acc + parseFloat(i[field]) * parseFloat(i.rate), 0);
+}
+
+/** Section total QUANTITY (plain sum, no rate) — belongs under the
+ * Tendered Qty / Consumed Qty columns themselves. */
+function sectionQty(items: BoqItemRead[], field: 'tendered_qty' | 'consumed_qty'): number {
+  return items.reduce((acc, i) => acc + parseFloat(i[field]), 0);
 }
 
 interface ItemFormValues {
@@ -509,6 +517,7 @@ export function BoqPage() {
     {
       title: 'Description',
       key: 'description',
+      width: 280,
       ellipsis: true,
       onCell: (row) => {
         if (row._type === 'header') return { colSpan: 0 };
@@ -553,7 +562,7 @@ export function BoqPage() {
       },
       render: (_, row) => {
         if (row._type === 'item') return parseFloat(row.item.tendered_qty).toLocaleString('en-IN', { maximumFractionDigits: 3 });
-        if (row._type === 'subtotal') return fmtAmt(sectionAmount(row.section.items, 'tendered_qty'));
+        if (row._type === 'subtotal') return sectionQty(row.section.items, 'tendered_qty').toLocaleString('en-IN', { maximumFractionDigits: 3 });
         return null;
       },
     },
@@ -569,7 +578,7 @@ export function BoqPage() {
       },
       render: (_, row) => {
         if (row._type === 'item') return parseFloat(row.item.consumed_qty).toLocaleString('en-IN', { maximumFractionDigits: 3 });
-        if (row._type === 'subtotal') return fmtAmt(sectionAmount(row.section.items, 'consumed_qty'));
+        if (row._type === 'subtotal') return sectionQty(row.section.items, 'consumed_qty').toLocaleString('en-IN', { maximumFractionDigits: 3 });
         return null;
       },
     },
@@ -580,7 +589,11 @@ export function BoqPage() {
       align: 'right' as const,
       onCell: (row) => {
         if (row._type === 'header') return { colSpan: 0 };
-        if (row._type === 'subtotal') return { colSpan: 0, style: { background: SUBTOTAL_BG } };
+        // NOT colSpan: 0 here — HTML tables don't reserve grid space for a
+        // skipped cell, so the next rendered cell (Tendered Value) would
+        // shift left into this column's slot instead of lining up with its
+        // own header. Render an empty-but-present cell instead.
+        if (row._type === 'subtotal') return { style: { background: SUBTOTAL_BG } };
         return {};
       },
       render: (_, row) => (row._type === 'item' ? fmtQty(row.item.rate, 2) : null),
@@ -592,10 +605,14 @@ export function BoqPage() {
       align: 'right' as const,
       onCell: (row) => {
         if (row._type === 'header') return { colSpan: 0 };
-        if (row._type === 'subtotal') return { colSpan: 0, style: { background: SUBTOTAL_BG } };
+        if (row._type === 'subtotal') return { style: { background: SUBTOTAL_BG, fontWeight: 600, textAlign: 'right' } };
         return {};
       },
-      render: (_, row) => (row._type === 'item' ? fmtAmt(itemValue(row.item)) : null),
+      render: (_, row) => {
+        if (row._type === 'item') return fmtAmt(itemValue(row.item));
+        if (row._type === 'subtotal') return fmtAmt(sectionAmount(row.section.items, 'tendered_qty'));
+        return null;
+      },
     },
     {
       title: 'Actions',
@@ -746,7 +763,7 @@ export function BoqPage() {
         pagination={false}
         bordered
         size="small"
-        scroll={{ x: 1000 }}
+        scroll={{ x: 1090 }}
         onRow={(row) => ({
           style: {
             background:
