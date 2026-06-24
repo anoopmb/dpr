@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.v1 import (
     attendance,
+    audit,
     auth,
     billing,
     boq,
@@ -43,3 +44,4 @@ api_router.include_router(organization_settings.branding_router)
 api_router.include_router(notifications.router)
 api_router.include_router(reports.router)
 api_router.include_router(push.router)
+api_router.include_router(audit.router)

@@ -20,6 +20,7 @@ const ExpensesPage          = lazy(() => import('@/features/expenses/ExpensesPag
 const MastersPage           = lazy(() => import('@/features/masters/MastersPage').then(m => ({ default: m.MastersPage })));
 const SettingsPage          = lazy(() => import('@/features/settings/SettingsPage').then(m => ({ default: m.SettingsPage })));
 const UsersPage             = lazy(() => import('@/features/users/UsersPage').then(m => ({ default: m.UsersPage })));
+const AuditLogPage          = lazy(() => import('@/features/admin/AuditLogPage').then(m => ({ default: m.AuditLogPage })));
 const ProfilePage           = lazy(() => import('@/features/profile/ProfilePage').then(m => ({ default: m.ProfilePage })));
 const DprTodayPage          = lazy(() => import('@/features/field/DprTodayPage').then(m => ({ default: m.DprTodayPage })));
 const MaterialsUsedPage     = lazy(() => import('@/features/field/MaterialsUsedPage').then(m => ({ default: m.MaterialsUsedPage })));
@@ -240,6 +241,14 @@ export function AppRouter() {
                     element={
                       <RequireRole roles={['ADMIN']}>
                         <UsersPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route
+                    path="/audit-logs"
+                    element={
+                      <RequireRole roles={['ADMIN']}>
+                        <AuditLogPage />
                       </RequireRole>
                     }
                   />
