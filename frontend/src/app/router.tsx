@@ -1,36 +1,38 @@
-import { useEffect, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, type ReactNode } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useAuthStore } from '@/store/auth-store';
 import { useSession } from '@/api/hooks/useSession';
 import { RequireRole } from '@/app/RequireRole';
 import { LoginPage } from '@/features/auth/LoginPage';
-import { DashboardPage } from '@/features/dashboard/DashboardPage';
-import { AnalyticsPage } from '@/features/dashboard/AnalyticsPage';
-import { ProjectsListPage } from '@/features/projects/ProjectsListPage';
-import { BoqPage } from '@/features/boq/BoqPage';
-import { MeasurementsPage } from '@/features/measurements/MeasurementsPage';
-import { MaterialIndentsPage } from '@/features/material/MaterialIndentsPage';
-import { WorkersPage } from '@/features/workers/WorkersPage';
-import { BillingPage } from '@/features/billing/BillingPage';
-import { ExpensesPage } from '@/features/expenses/ExpensesPage';
-import { MastersPage } from '@/features/masters/MastersPage';
-import { SettingsPage } from '@/features/settings/SettingsPage';
-import { DprTodayPage } from '@/features/field/DprTodayPage';
-import { MaterialsUsedPage } from '@/features/field/MaterialsUsedPage';
-import { MachineryUsedPage } from '@/features/field/MachineryUsedPage';
-import { AttendanceCheckInPage } from '@/features/field/AttendanceCheckInPage';
-import { MeasurementEntryPage } from '@/features/field/MeasurementEntryPage';
-import { ProductionProgressPage } from '@/features/dpr/ProductionProgressPage';
-import { ProfitabilityPage } from '@/features/dpr/ProfitabilityPage';
-import { DprHistoryPage } from '@/features/dpr/DprHistoryPage';
-import { UsersPage } from '@/features/users/UsersPage';
-import { ProfilePage } from '@/features/profile/ProfilePage';
-import { WorkerEarningsPage } from '@/features/reports/WorkerEarningsPage';
-import { DailyLabourLogPage } from '@/features/reports/DailyLabourLogPage';
-import { MyMeasurementsPage } from '@/features/field/MyMeasurementsPage';
-import { MyMaterialIndentsPage } from '@/features/field/MyMaterialIndentsPage';
-import { DprMonthlyReportPage } from '@/features/dpr/DprMonthlyReportPage';
+
+// ── Lazy page imports — each becomes a separate chunk ────────────────────────
+const DashboardPage         = lazy(() => import('@/features/dashboard/DashboardPage').then(m => ({ default: m.DashboardPage })));
+const AnalyticsPage         = lazy(() => import('@/features/dashboard/AnalyticsPage').then(m => ({ default: m.AnalyticsPage })));
+const ProjectsListPage      = lazy(() => import('@/features/projects/ProjectsListPage').then(m => ({ default: m.ProjectsListPage })));
+const BoqPage               = lazy(() => import('@/features/boq/BoqPage').then(m => ({ default: m.BoqPage })));
+const MeasurementsPage      = lazy(() => import('@/features/measurements/MeasurementsPage').then(m => ({ default: m.MeasurementsPage })));
+const MaterialIndentsPage   = lazy(() => import('@/features/material/MaterialIndentsPage').then(m => ({ default: m.MaterialIndentsPage })));
+const WorkersPage           = lazy(() => import('@/features/workers/WorkersPage').then(m => ({ default: m.WorkersPage })));
+const BillingPage           = lazy(() => import('@/features/billing/BillingPage').then(m => ({ default: m.BillingPage })));
+const ExpensesPage          = lazy(() => import('@/features/expenses/ExpensesPage').then(m => ({ default: m.ExpensesPage })));
+const MastersPage           = lazy(() => import('@/features/masters/MastersPage').then(m => ({ default: m.MastersPage })));
+const SettingsPage          = lazy(() => import('@/features/settings/SettingsPage').then(m => ({ default: m.SettingsPage })));
+const UsersPage             = lazy(() => import('@/features/users/UsersPage').then(m => ({ default: m.UsersPage })));
+const ProfilePage           = lazy(() => import('@/features/profile/ProfilePage').then(m => ({ default: m.ProfilePage })));
+const DprTodayPage          = lazy(() => import('@/features/field/DprTodayPage').then(m => ({ default: m.DprTodayPage })));
+const MaterialsUsedPage     = lazy(() => import('@/features/field/MaterialsUsedPage').then(m => ({ default: m.MaterialsUsedPage })));
+const MachineryUsedPage     = lazy(() => import('@/features/field/MachineryUsedPage').then(m => ({ default: m.MachineryUsedPage })));
+const AttendanceCheckInPage = lazy(() => import('@/features/field/AttendanceCheckInPage').then(m => ({ default: m.AttendanceCheckInPage })));
+const MeasurementEntryPage  = lazy(() => import('@/features/field/MeasurementEntryPage').then(m => ({ default: m.MeasurementEntryPage })));
+const MyMeasurementsPage    = lazy(() => import('@/features/field/MyMeasurementsPage').then(m => ({ default: m.MyMeasurementsPage })));
+const MyMaterialIndentsPage = lazy(() => import('@/features/field/MyMaterialIndentsPage').then(m => ({ default: m.MyMaterialIndentsPage })));
+const ProductionProgressPage= lazy(() => import('@/features/dpr/ProductionProgressPage').then(m => ({ default: m.ProductionProgressPage })));
+const ProfitabilityPage     = lazy(() => import('@/features/dpr/ProfitabilityPage').then(m => ({ default: m.ProfitabilityPage })));
+const DprHistoryPage        = lazy(() => import('@/features/dpr/DprHistoryPage').then(m => ({ default: m.DprHistoryPage })));
+const DprMonthlyReportPage  = lazy(() => import('@/features/dpr/DprMonthlyReportPage').then(m => ({ default: m.DprMonthlyReportPage })));
+const WorkerEarningsPage    = lazy(() => import('@/features/reports/WorkerEarningsPage').then(m => ({ default: m.WorkerEarningsPage })));
+const DailyLabourLogPage    = lazy(() => import('@/features/reports/DailyLabourLogPage').then(m => ({ default: m.DailyLabourLogPage })));
 
 const FIELD_ROLES = ['SITE_ENGINEER', 'PROJECT_MANAGER', 'ADMIN'] as const;
 
@@ -48,7 +50,6 @@ function AppLoadingSplash() {
         background: 'var(--splash-bg, #0f172a)',
       }}
     >
-      {/* Logo mark */}
       <div
         style={{
           width: 64,
@@ -71,7 +72,6 @@ function AppLoadingSplash() {
         </svg>
       </div>
 
-      {/* App name */}
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontSize: 20, fontWeight: 700, color: '#e2e8f0', letterSpacing: '-0.3px' }}>
           DPR System
@@ -81,7 +81,6 @@ function AppLoadingSplash() {
         </div>
       </div>
 
-      {/* Subtle dot-pulse loader */}
       <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
         {[0, 1, 2].map((i) => (
           <div
@@ -98,7 +97,6 @@ function AppLoadingSplash() {
         ))}
       </div>
 
-      {/* Keyframe styles injected inline */}
       <style>{`
         @keyframes dpr-pulse {
           0%, 100% { transform: scale(1);   box-shadow: 0 6px 24px rgba(22,119,255,0.45); }
@@ -137,193 +135,195 @@ export function AppRouter() {
         element={
           <RequireAuth>
             <AppLayout>
-              <Routes>
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                <Route path="/dashboard" element={<DashboardPage />} />
-                <Route path="/profile" element={<ProfilePage />} />
-                <Route
-                  path="/analytics"
-                  element={
-                    <RequireRole roles={['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN']}>
-                      <AnalyticsPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="/projects"
-                  element={
-                    <RequireRole roles={['PROJECT_MANAGER', 'ADMIN']}>
-                      <ProjectsListPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="/boq"
-                  element={
-                    <RequireRole roles={['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN']}>
-                      <BoqPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="/measurements"
-                  element={
-                    <RequireRole roles={['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN']}>
-                      <MeasurementsPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="/material-indents"
-                  element={
-                    <RequireRole roles={['PROJECT_MANAGER', 'STORE_KEEPER', 'ADMIN']}>
-                      <MaterialIndentsPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="/workers"
-                  element={
-                    <RequireRole roles={['PROJECT_MANAGER', 'ADMIN']}>
-                      <WorkersPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="/expenses"
-                  element={
-                    <RequireRole roles={['PROJECT_MANAGER', 'STORE_KEEPER', 'ADMIN']}>
-                      <ExpensesPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="/billing"
-                  element={
-                    <RequireRole roles={['QUANTITY_SURVEYOR', 'PROJECT_MANAGER', 'ADMIN']}>
-                      <BillingPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="/masters"
-                  element={
-                    <RequireRole roles={['ADMIN']}>
-                      <MastersPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="/users"
-                  element={
-                    <RequireRole roles={['ADMIN']}>
-                      <UsersPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="/worker-earnings"
-                  element={
-                    <RequireRole roles={['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN']}>
-                      <WorkerEarningsPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="/daily-labour-log"
-                  element={
-                    <RequireRole roles={['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN']}>
-                      <DailyLabourLogPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="/settings"
-                  element={
-                    <RequireRole roles={['PROJECT_MANAGER', 'ADMIN']}>
-                      <SettingsPage />
-                    </RequireRole>
-                  }
-                />
+              <Suspense fallback={<AppLoadingSplash />}>
+                <Routes>
+                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                  <Route path="/dashboard" element={<DashboardPage />} />
+                  <Route path="/profile" element={<ProfilePage />} />
+                  <Route
+                    path="/analytics"
+                    element={
+                      <RequireRole roles={['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN']}>
+                        <AnalyticsPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route
+                    path="/projects"
+                    element={
+                      <RequireRole roles={['PROJECT_MANAGER', 'ADMIN']}>
+                        <ProjectsListPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route
+                    path="/boq"
+                    element={
+                      <RequireRole roles={['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN']}>
+                        <BoqPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route
+                    path="/measurements"
+                    element={
+                      <RequireRole roles={['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN']}>
+                        <MeasurementsPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route
+                    path="/material-indents"
+                    element={
+                      <RequireRole roles={['PROJECT_MANAGER', 'STORE_KEEPER', 'ADMIN']}>
+                        <MaterialIndentsPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route
+                    path="/workers"
+                    element={
+                      <RequireRole roles={['PROJECT_MANAGER', 'ADMIN']}>
+                        <WorkersPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route
+                    path="/expenses"
+                    element={
+                      <RequireRole roles={['PROJECT_MANAGER', 'STORE_KEEPER', 'ADMIN']}>
+                        <ExpensesPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route
+                    path="/billing"
+                    element={
+                      <RequireRole roles={['QUANTITY_SURVEYOR', 'PROJECT_MANAGER', 'ADMIN']}>
+                        <BillingPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route
+                    path="/masters"
+                    element={
+                      <RequireRole roles={['ADMIN']}>
+                        <MastersPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route
+                    path="/users"
+                    element={
+                      <RequireRole roles={['ADMIN']}>
+                        <UsersPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route
+                    path="/worker-earnings"
+                    element={
+                      <RequireRole roles={['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN']}>
+                        <WorkerEarningsPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route
+                    path="/daily-labour-log"
+                    element={
+                      <RequireRole roles={['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN']}>
+                        <DailyLabourLogPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route
+                    path="/settings"
+                    element={
+                      <RequireRole roles={['PROJECT_MANAGER', 'ADMIN']}>
+                        <SettingsPage />
+                      </RequireRole>
+                    }
+                  />
 
-                <Route
-                  path="/field/dpr-today"
-                  element={
-                    <RequireRole roles={[...FIELD_ROLES]}>
-                      <DprTodayPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="/field/materials"
-                  element={
-                    <RequireRole roles={[...FIELD_ROLES]}>
-                      <MaterialsUsedPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="/field/machinery"
-                  element={
-                    <RequireRole roles={[...FIELD_ROLES]}>
-                      <MachineryUsedPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="/field/workers"
-                  element={
-                    <RequireRole roles={[...FIELD_ROLES]}>
-                      <AttendanceCheckInPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="/field/measurements"
-                  element={
-                    <RequireRole roles={[...FIELD_ROLES]}>
-                      <MeasurementEntryPage />
-                    </RequireRole>
-                  }
-                />
-                <Route path="/field/my-measurements" element={<MyMeasurementsPage />} />
-                <Route path="/field/my-indents" element={<MyMaterialIndentsPage />} />
+                  <Route
+                    path="/field/dpr-today"
+                    element={
+                      <RequireRole roles={[...FIELD_ROLES]}>
+                        <DprTodayPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route
+                    path="/field/materials"
+                    element={
+                      <RequireRole roles={[...FIELD_ROLES]}>
+                        <MaterialsUsedPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route
+                    path="/field/machinery"
+                    element={
+                      <RequireRole roles={[...FIELD_ROLES]}>
+                        <MachineryUsedPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route
+                    path="/field/workers"
+                    element={
+                      <RequireRole roles={[...FIELD_ROLES]}>
+                        <AttendanceCheckInPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route
+                    path="/field/measurements"
+                    element={
+                      <RequireRole roles={[...FIELD_ROLES]}>
+                        <MeasurementEntryPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route path="/field/my-measurements" element={<MyMeasurementsPage />} />
+                  <Route path="/field/my-indents" element={<MyMaterialIndentsPage />} />
 
-                <Route
-                  path="/production-progress"
-                  element={
-                    <RequireRole roles={['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN']}>
-                      <ProductionProgressPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="/profitability"
-                  element={
-                    <RequireRole roles={['PROJECT_MANAGER', 'ADMIN']}>
-                      <ProfitabilityPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="/dpr-history"
-                  element={
-                    <RequireRole roles={['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN']}>
-                      <DprHistoryPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="/dpr-monthly-report"
-                  element={
-                    <RequireRole roles={['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN']}>
-                      <DprMonthlyReportPage />
-                    </RequireRole>
-                  }
-                />
+                  <Route
+                    path="/production-progress"
+                    element={
+                      <RequireRole roles={['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN']}>
+                        <ProductionProgressPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route
+                    path="/profitability"
+                    element={
+                      <RequireRole roles={['PROJECT_MANAGER', 'ADMIN']}>
+                        <ProfitabilityPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route
+                    path="/dpr-history"
+                    element={
+                      <RequireRole roles={['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN']}>
+                        <DprHistoryPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route
+                    path="/dpr-monthly-report"
+                    element={
+                      <RequireRole roles={['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN']}>
+                        <DprMonthlyReportPage />
+                      </RequireRole>
+                    }
+                  />
 
-                <Route path="*" element={<Navigate to="/dashboard" replace />} />
-              </Routes>
+                  <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                </Routes>
+              </Suspense>
             </AppLayout>
           </RequireAuth>
         }

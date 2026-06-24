@@ -31,6 +31,36 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    rolldownOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (id.includes('node_modules/antd') || id.includes('node_modules/@ant-design'))
+            return 'vendor-antd';
+          if (id.includes('node_modules/recharts'))
+            return 'vendor-charts';
+          if (id.includes('node_modules/xlsx'))
+            return 'vendor-xlsx';
+          if (id.includes('node_modules/leaflet') || id.includes('node_modules/react-leaflet'))
+            return 'vendor-leaflet';
+          if (id.includes('node_modules/@tanstack'))
+            return 'vendor-query';
+          if (id.includes('node_modules/react-router-dom'))
+            return 'vendor-router';
+          if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/'))
+            return 'vendor-react';
+          if (
+            id.includes('node_modules/dayjs') ||
+            id.includes('node_modules/axios') ||
+            id.includes('node_modules/zustand') ||
+            id.includes('node_modules/zod')
+          )
+            return 'vendor-utils';
+        },
+      },
+    },
+    chunkSizeWarningLimit: 1500,
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
