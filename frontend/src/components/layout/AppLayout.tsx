@@ -376,6 +376,12 @@ export function AppLayout({ children }: { children: ReactNode }) {
             menu={{ items: profileMenuItems, onClick: handleProfileMenuClick }}
             trigger={['click']}
             placement={desktopCollapsed ? 'bottomRight' : 'topRight'}
+            // antd's default dropdown popup z-index (1050) sits below our
+            // mobile nav backdrop (1100) and the Sider itself (1200), so on
+            // mobile the popup rendered but was visually/interactively
+            // covered by the backdrop — taps just closed the drawer instead
+            // of hitting a menu item. Push the popup above both.
+            styles={{ root: { zIndex: 1300 } }}
           >
             <div
               style={{
