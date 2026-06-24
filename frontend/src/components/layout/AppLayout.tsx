@@ -17,12 +17,14 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  MobileOutlined,
   MoonFilled,
   PercentageOutlined,
   RiseOutlined,
   SettingOutlined,
   SunFilled,
   TeamOutlined,
+  ToolOutlined,
   UserOutlined,
 } from '@ant-design/icons';
 import { apiClient } from '@/api/client';
@@ -48,20 +50,17 @@ interface NavItem {
 interface NavGroup {
   key: string;
   label: string;
+  icon: React.ReactNode;
   children: NavItem[];
 }
 
+const dashboardNavItem: NavItem = { key: '/dashboard', label: 'Dashboard', icon: <DashboardOutlined />, roles: null };
+
 const desktopMenuGroups: NavGroup[] = [
-  {
-    key: 'grp-overview',
-    label: 'Overview',
-    children: [
-      { key: '/dashboard', label: 'Dashboard', icon: <DashboardOutlined />, roles: null },
-    ],
-  },
   {
     key: 'grp-project',
     label: 'Project',
+    icon: <ApartmentOutlined />,
     children: [
       { key: '/projects', label: 'Projects', icon: <ApartmentOutlined />, roles: ['PROJECT_MANAGER', 'ADMIN'] },
       { key: '/boq', label: 'BOQ', icon: <FileTextOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
@@ -73,6 +72,7 @@ const desktopMenuGroups: NavGroup[] = [
   {
     key: 'grp-resources',
     label: 'Resources',
+    icon: <ToolOutlined />,
     children: [
       { key: '/material-indents', label: 'Material Indents', icon: <InboxOutlined />, roles: ['PROJECT_MANAGER', 'STORE_KEEPER', 'ADMIN'] },
       { key: '/workers', label: 'Workers & Attendance', icon: <TeamOutlined />, roles: ['PROJECT_MANAGER', 'ADMIN'] },
@@ -82,6 +82,7 @@ const desktopMenuGroups: NavGroup[] = [
   {
     key: 'grp-finance',
     label: 'Finance',
+    icon: <DollarOutlined />,
     children: [
       { key: '/billing', label: 'Running Bills', icon: <DollarOutlined />, roles: ['QUANTITY_SURVEYOR', 'PROJECT_MANAGER', 'ADMIN'] },
     ],
@@ -89,6 +90,7 @@ const desktopMenuGroups: NavGroup[] = [
   {
     key: 'grp-reports',
     label: 'Reports',
+    icon: <BarChartOutlined />,
     children: [
       { key: '/production-progress', label: 'Production Progress', icon: <RiseOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
       { key: '/profitability', label: 'Profitability', icon: <PercentageOutlined />, roles: ['PROJECT_MANAGER', 'ADMIN'] },
@@ -100,6 +102,7 @@ const desktopMenuGroups: NavGroup[] = [
   {
     key: 'grp-admin',
     label: 'Administration',
+    icon: <SettingOutlined />,
     children: [
       { key: '/masters', label: 'Master Data', icon: <SettingOutlined />, roles: ['ADMIN'] },
       { key: '/users', label: 'Users', icon: <IdcardOutlined />, roles: ['ADMIN'] },
@@ -146,7 +149,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const menuItems = useMemo((): MenuProps['items'] => {
     if (isField) return fieldMenuItems.map((item) => ({ key: item.key, icon: item.icon, label: item.label }));
 
-    const items: MenuProps['items'] = [];
+    const items: MenuProps['items'] = [
+      { key: dashboardNavItem.key, icon: dashboardNavItem.icon, label: dashboardNavItem.label },
+    ];
     for (const group of desktopMenuGroups) {
       const visible = group.children.filter(
         (item) => !item.roles || item.roles.includes(user?.role as UserRole),
@@ -154,6 +159,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
       if (visible.length === 0) continue;
       items.push({
         key: group.key,
+        icon: group.icon,
         label: group.label,
         children: visible.map((item) => ({ key: item.key, icon: item.icon, label: item.label })),
       });
@@ -161,6 +167,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
     if (isAdmin) {
       items.push({
         key: 'grp-field',
+        icon: <MobileOutlined />,
         label: 'Field Access',
         children: fieldMenuItems.map((item) => ({ key: item.key, icon: item.icon, label: item.label })),
       });
@@ -170,7 +177,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   const allNavKeys = useMemo(() => {
     if (isField) return fieldMenuItems.map((item) => item.key as string);
-    const keys: string[] = [];
+    const keys: string[] = [dashboardNavItem.key];
     for (const group of desktopMenuGroups) {
       for (const item of group.children) {
         if (!item.roles || item.roles.includes(user?.role as UserRole)) keys.push(item.key);
@@ -186,7 +193,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
       if (group.children.some((item) => location.pathname.startsWith(item.key))) return [group.key];
     }
     if (isAdmin && fieldMenuItems.some((item) => location.pathname.startsWith(item.key))) return ['grp-field'];
-    return [desktopMenuGroups[0].key];
+    return [];
   });
 
   const handleOpenChange = (keys: string[]) => {
