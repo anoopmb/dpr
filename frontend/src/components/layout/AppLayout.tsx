@@ -259,6 +259,16 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const desktopCollapsed = !isMobile && desktopCollapsedState;
   const mobileNavOpen = isMobile && mobileNavOpenState;
 
+  // Collapsing the rail and the popout-on-hover submenu share the same
+  // `openKeys` state in rc-menu. Clear it whenever the rail is toggled (see
+  // the two onClick handlers below) so a group left expanded from inline
+  // mode doesn't immediately reappear as an already-open popup — it should
+  // only open once the user actually hovers or clicks its icon.
+  const toggleDesktopCollapsed = (next: boolean) => {
+    setDesktopCollapsedState(next);
+    setOpenKeys([]);
+  };
+
   return (
     <>
       {mobileNavOpen && (
@@ -276,16 +286,20 @@ export function AppLayout({ children }: { children: ReactNode }) {
           trigger={null}
           width={SIDER_WIDTH}
           onCollapse={(value) => {
-            if (!isMobile) setDesktopCollapsedState(value);
+            if (!isMobile) toggleDesktopCollapsed(value);
           }}
           style={{
             backgroundColor: palette.siderBackground,
             borderRight: `1px solid ${palette.borderColor}`,
             boxShadow: 'var(--sb-shadow)',
-            position: isMobile ? 'fixed' : 'relative',
-            inset: isMobile ? '0 auto 0 0' : undefined,
-            height: isMobile ? '100vh' : '100%',
-            zIndex: isMobile ? 1200 : undefined,
+            // Standard antd "Fixed Sider" pattern: pinned to the viewport at
+            // its own height, independent of how tall the page content is —
+            // the bottom profile block stays anchored without scrolling away.
+            position: 'fixed',
+            insetInlineStart: 0,
+            top: 0,
+            height: '100vh',
+            zIndex: isMobile ? 1200 : 100,
             transform: isMobile && !mobileNavOpen ? 'translateX(-100%)' : 'translateX(0)',
             transition: 'transform 0.25s ease, width 0.25s ease',
             display: 'flex',
@@ -324,7 +338,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                 shape="circle"
                 size="small"
                 icon={<ArrowLeftOutlined style={{ fontSize: 13 }} />}
-                onClick={() => setDesktopCollapsedState(true)}
+                onClick={() => toggleDesktopCollapsed(true)}
                 style={{ color: palette.headerMutedText, flexShrink: 0 }}
               />
             )}
@@ -336,7 +350,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                 shape="circle"
                 size="small"
                 icon={<ArrowRightOutlined style={{ fontSize: 13 }} />}
-                onClick={() => setDesktopCollapsedState(false)}
+                onClick={() => toggleDesktopCollapsed(false)}
                 style={{ color: palette.headerMutedText }}
               />
             </div>
@@ -347,7 +361,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
             mode="inline"
             inlineCollapsed={desktopCollapsed}
             selectedKeys={selectedKey}
-            openKeys={desktopCollapsed ? [] : openKeys}
+            openKeys={openKeys}
             onOpenChange={handleOpenChange}
             items={menuItems}
             style={{ background: 'transparent', borderInlineEnd: 'none', paddingTop: 8, flex: 1, overflowY: 'auto', overflowX: 'hidden' }}
@@ -390,7 +404,13 @@ export function AppLayout({ children }: { children: ReactNode }) {
             </div>
           </Dropdown>
         </Sider>
-        <Layout style={{ minWidth: 0 }}>
+        <Layout
+          style={{
+            minWidth: 0,
+            marginInlineStart: isMobile ? 0 : desktopCollapsed ? 64 : SIDER_WIDTH,
+            transition: 'margin-inline-start 0.2s ease',
+          }}
+        >
           <InstallBanner />
           <Header
             style={{
