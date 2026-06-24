@@ -133,24 +133,28 @@ body {
 /* Leaf items */
 .sidebar-nav .ant-menu-item {
   font-weight: 500;
-  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-/* Expanded rail: flat list, no filled pill — a thin accent line + bold text
-   marks the active item instead, matching the reference design. */
 .sidebar-nav:not(.ant-menu-inline-collapsed) .ant-menu-item-selected {
-  background-color: transparent !important;
-  border-inline-start: 3px solid var(--menu-accent, #1677ff);
   font-weight: 600 !important;
-  color: var(--menu-accent, #1677ff) !important;
-}
-.sidebar-nav:not(.ant-menu-inline-collapsed) .ant-menu-item-selected .ant-menu-item-icon {
-  color: var(--menu-accent, #1677ff) !important;
 }
 
 /* Subtle tree-guide line down the side of an expanded group's children */
 .sidebar-nav .ant-menu-sub.ant-menu-inline {
   background: transparent !important;
+}
+
+/* Remove the browser's default focus-visible outline/box on menu items and
+   group headers — without this, clicking (which moves keyboard focus to the
+   item) leaves a visible rectangular ring around the label that clashes with
+   the pill-based selected style. */
+.sidebar-nav .ant-menu-item:focus,
+.sidebar-nav .ant-menu-item:focus-visible,
+.sidebar-nav .ant-menu-submenu-title:focus,
+.sidebar-nav .ant-menu-submenu-title:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 /* Collapsed rail styling */

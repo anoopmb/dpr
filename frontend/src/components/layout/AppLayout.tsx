@@ -302,11 +302,14 @@ export function AppLayout({ children }: { children: ReactNode }) {
             zIndex: isMobile ? 1200 : 100,
             transform: isMobile && !mobileNavOpen ? 'translateX(-100%)' : 'translateX(0)',
             transition: 'transform 0.25s ease, width 0.25s ease',
-            display: 'flex',
-            flexDirection: 'column',
             ['--menu-accent' as string]: palette.accent,
           } as React.CSSProperties}
         >
+          {/* antd's <Sider> wraps `children` in its own internal
+              .ant-layout-sider-children div, which is NOT a flex container —
+              so flex:1 on the Menu below does nothing unless WE provide the
+              flex column ourselves, one level in. */}
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           <div
             style={{
               height: 64,
@@ -403,6 +406,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
               {!desktopCollapsed && <DownOutlined style={{ fontSize: 11, color: palette.headerMutedText, flexShrink: 0 }} />}
             </div>
           </Dropdown>
+          </div>
         </Sider>
         <Layout
           style={{
