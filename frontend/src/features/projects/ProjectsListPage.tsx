@@ -12,6 +12,7 @@ import {
   InputNumber,
   List,
   Modal,
+  Popconfirm,
   Select,
   Space,
   Switch,
@@ -20,9 +21,9 @@ import {
   Typography,
   message,
 } from 'antd';
-import { AimOutlined, EditOutlined, PlusOutlined, SettingOutlined, TeamOutlined } from '@ant-design/icons';
+import { AimOutlined, DeleteOutlined, EditOutlined, PlusOutlined, SettingOutlined, TeamOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useCreateProject, useProjects, useUpdateProject, type ProjectRead } from '@/api/hooks/useProjects';
+import { useCreateProject, useDeleteProject, useProjects, useUpdateProject, type ProjectRead } from '@/api/hooks/useProjects';
 import { GeofenceMapPicker } from '@/components/common/GeofenceMapPicker';
 import { getCurrentPosition } from '@/utils/geolocation';
 import { useDepartments } from '@/api/hooks/useMasters';
@@ -32,7 +33,7 @@ import {
   useDeleteProjectAssignment,
   useProjectAssignments,
 } from '@/api/hooks/useProjectAssignments';
-import type { UserRole } from '@/store/auth-store';
+import { useAuthStore, type UserRole } from '@/store/auth-store';
 import { useDateFormat, useNumberFormat } from '@/utils/format';
 
 const STATUS_COLOR: Record<string, string> = { ACTIVE: 'green', COMPLETED: 'blue', SUSPENDED: 'orange' };
@@ -296,6 +297,9 @@ export function ProjectsListPage() {
   const { data: departments } = useDepartments();
   const createProject = useCreateProject();
   const updateProject = useUpdateProject();
+  const deleteProject = useDeleteProject();
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.role === 'ADMIN';
   const { fmtDate, dateFormat } = useDateFormat();
   const { fmtAmt } = useNumberFormat();
   const [modalOpen, setModalOpen] = useState(false);
@@ -358,6 +362,20 @@ export function ProjectsListPage() {
     }
   };
 
+  const handleDelete = async (project: ProjectRead) => {
+    try {
+      await deleteProject.mutateAsync(project.id);
+      message.success('Project deleted');
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 409) {
+        message.error('Cannot delete — this project has related data (BOQ items, DPR records, measurements, etc.).');
+      } else {
+        message.error('Could not delete project');
+      }
+    }
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -388,7 +406,7 @@ export function ProjectsListPage() {
           {
             title: 'Actions',
             key: 'actions',
-            width: 150,
+            width: 190,
             render: (_, project: ProjectRead) => (
               <Space>
                 <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(project)} />
@@ -396,6 +414,17 @@ export function ProjectsListPage() {
                 <Button size="small" icon={<TeamOutlined />} onClick={() => setAssignmentsProject(project)}>
                   Assign
                 </Button>
+                {isAdmin && (
+                  <Popconfirm
+                    title="Delete this project?"
+                    description="This is irreversible. Only possible if the project has no related data."
+                    onConfirm={() => handleDelete(project)}
+                    okText="Delete"
+                    okButtonProps={{ danger: true }}
+                  >
+                    <Button size="small" danger icon={<DeleteOutlined />} loading={deleteProject.isPending} />
+                  </Popconfirm>
+                )}
               </Space>
             ),
           },

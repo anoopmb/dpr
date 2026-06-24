@@ -23,8 +23,8 @@ router = APIRouter(prefix="/projects", tags=["projects"])
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_role(UserRole.ADMIN, UserRole.PROJECT_MANAGER))],
 )
-async def create_project(data: ProjectCreate, session: SessionDep) -> ProjectRead:
-    project = await ProjectService(session).create(data)
+async def create_project(data: ProjectCreate, session: SessionDep, current_user: CurrentUserDep) -> ProjectRead:
+    project = await ProjectService(session).create(data, actor_id=uuid.UUID(current_user.id))
     return ProjectRead.model_validate(project)
 
 
@@ -50,10 +50,21 @@ async def get_project(project_id: uuid.UUID, session: SessionDep, _: CurrentUser
     dependencies=[Depends(require_role(UserRole.ADMIN, UserRole.PROJECT_MANAGER))],
 )
 async def update_project(
-    project_id: uuid.UUID, data: ProjectUpdate, session: SessionDep
+    project_id: uuid.UUID, data: ProjectUpdate, session: SessionDep, current_user: CurrentUserDep
 ) -> ProjectRead:
-    project = await ProjectService(session).update(project_id, data)
+    project = await ProjectService(session).update(project_id, data, actor_id=uuid.UUID(current_user.id))
     return ProjectRead.model_validate(project)
+
+
+@router.delete(
+    "/{project_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_role(UserRole.ADMIN))],
+)
+async def delete_project(
+    project_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep
+) -> None:
+    await ProjectService(session).delete(project_id, actor_id=uuid.UUID(current_user.id))
 
 
 @router.get("/{project_id}/summary", response_model=ProjectSummaryRead)
@@ -96,9 +107,11 @@ async def list_project_assignments(
     dependencies=[Depends(require_role(UserRole.ADMIN, UserRole.PROJECT_MANAGER))],
 )
 async def create_project_assignment(
-    project_id: uuid.UUID, data: ProjectAssignmentCreate, session: SessionDep
+    project_id: uuid.UUID, data: ProjectAssignmentCreate, session: SessionDep, current_user: CurrentUserDep
 ) -> ProjectAssignmentRead:
-    assignment = await ProjectAssignmentService(session).assign(project_id, data.user_id, data.role)
+    assignment = await ProjectAssignmentService(session).assign(
+        project_id, data.user_id, data.role, actor_id=uuid.UUID(current_user.id)
+    )
     return ProjectAssignmentRead.model_validate(assignment)
 
 
@@ -107,5 +120,7 @@ async def create_project_assignment(
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(require_role(UserRole.ADMIN, UserRole.PROJECT_MANAGER))],
 )
-async def delete_project_assignment(project_id: uuid.UUID, assignment_id: uuid.UUID, session: SessionDep) -> None:
-    await ProjectAssignmentService(session).unassign(project_id, assignment_id)
+async def delete_project_assignment(
+    project_id: uuid.UUID, assignment_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep
+) -> None:
+    await ProjectAssignmentService(session).unassign(project_id, assignment_id, actor_id=uuid.UUID(current_user.id))

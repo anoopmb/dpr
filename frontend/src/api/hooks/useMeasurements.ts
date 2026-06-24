@@ -75,3 +75,36 @@ export const useSubmitMeasurement = () => useMeasurementAction('submit');
 export const useApproveMeasurement = () => useMeasurementAction('approve');
 export const useRejectMeasurement = () => useMeasurementAction('reject');
 export const useLockMeasurement = () => useMeasurementAction('lock');
+
+export function useUpdateMeasurement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: { dimensions: Record<string, string>; chainage?: string | null };
+    }) => (await apiClient.patch<MeasurementRead>(`/measurements/${id}`, data)).data,
+    onSuccess: (measurement) => {
+      queryClient.invalidateQueries({ queryKey: ['measurements', measurement.project_id] });
+      queryClient.invalidateQueries({ queryKey: ['dpr-production'] });
+      queryClient.invalidateQueries({ queryKey: ['dpr'] });
+    },
+  });
+}
+
+export function useDeleteMeasurement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, projectId }: { id: string; projectId: string }) => {
+      await apiClient.delete(`/measurements/${id}`);
+      return projectId;
+    },
+    onSuccess: (projectId) => {
+      queryClient.invalidateQueries({ queryKey: ['measurements', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['dpr-production'] });
+      queryClient.invalidateQueries({ queryKey: ['dpr'] });
+    },
+  });
+}

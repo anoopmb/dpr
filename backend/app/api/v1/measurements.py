@@ -4,7 +4,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, status
 
 from app.api.deps import CurrentUserDep, SessionDep, require_role
 from app.models.user import UserRole
-from app.schemas.measurement import MeasurementActionRequest, MeasurementCreate, MeasurementRead
+from app.schemas.measurement import MeasurementActionRequest, MeasurementCreate, MeasurementRead, MeasurementUpdate
 from app.services.measurement_service import MeasurementService
 
 router = APIRouter(prefix="/measurements", tags=["measurements"])
@@ -87,3 +87,30 @@ async def lock_measurement(
         measurement_id, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role, data=data
     )
     return MeasurementRead.model_validate(measurement)
+
+
+@router.patch(
+    "/{measurement_id}",
+    response_model=MeasurementRead,
+    dependencies=[Depends(require_role(*_RECORDER_ROLES))],
+)
+async def update_measurement(
+    measurement_id: uuid.UUID, data: MeasurementUpdate, session: SessionDep, current_user: CurrentUserDep
+) -> MeasurementRead:
+    measurement = await MeasurementService(session).update(
+        measurement_id, data, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role
+    )
+    return MeasurementRead.model_validate(measurement)
+
+
+@router.delete(
+    "/{measurement_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_role(*_RECORDER_ROLES))],
+)
+async def delete_measurement(
+    measurement_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep
+) -> None:
+    await MeasurementService(session).delete(
+        measurement_id, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role
+    )

@@ -19,7 +19,6 @@ export function useInstallPrompt() {
 
   useEffect(() => {
     if (isStandaloneDisplay()) {
-      setIsInstalled(true);
       return;
     }
 

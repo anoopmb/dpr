@@ -53,7 +53,7 @@ export function AttendanceCheckInPage() {
   const [bulkWorkerIds, setBulkWorkerIds] = useState<string[]>([]);
 
   const [location, setLocation] = useState<CapturedLocation | null>(null);
-  const [locating, setLocating] = useState(false);
+  const [locating, setLocating] = useState(true);
 
   const siteLat = project?.site_latitude != null ? parseFloat(project.site_latitude) : null;
   const siteLng = project?.site_longitude != null ? parseFloat(project.site_longitude) : null;
@@ -79,10 +79,21 @@ export function AttendanceCheckInPage() {
     }
   };
 
-  // Auto-capture location on page load
   useEffect(() => {
-    void captureLocation();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    let mounted = true;
+    (async () => {
+      try {
+        const pos = await getCurrentPosition();
+        const name = await reverseGeocode(pos.latitude, pos.longitude);
+        if (mounted) setLocation({ ...pos, locationName: name });
+      } catch {
+        if (mounted) message.error('Could not get GPS location. Enable location access and try again.');
+      } finally {
+        if (mounted) setLocating(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   if (!selectedProjectId) {
     return (

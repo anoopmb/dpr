@@ -6,7 +6,7 @@ class DomainError(Exception):
     """Base class for business-rule violations raised from app/domain."""
 
     error_code: str = "DOMAIN_ERROR"
-    http_status: int = status.HTTP_422_UNPROCESSABLE_CONTENT
+    http_status: int = status.HTTP_422_UNPROCESSABLE_ENTITY
 
     def __init__(self, message: str, field_errors: dict[str, str] | None = None) -> None:
         super().__init__(message)

@@ -9,21 +9,20 @@ from app.core.exceptions import NotFoundError, PermissionDeniedError
 from app.domain.measurement.calculators import calculate_quantity
 from app.domain.measurement.validators import BoqItemSnapshot, validate_measurement_against_boq
 from app.domain.measurement.workflow import MeasurementStatus, transition
+from app.models.audit import AuditAction
 from app.models.master_data import WorkTypeMaster
 from app.models.measurement import Measurement, MeasurementApproval
 from app.models.user import UserRole
 from app.repositories.boq_repo import BoqRepository
 from app.repositories.measurement_repo import MeasurementRepository
-from app.schemas.measurement import MeasurementActionRequest, MeasurementCreate
+from app.schemas.measurement import MeasurementActionRequest, MeasurementCreate, MeasurementUpdate
+from app.services.audit_service import AuditService, serialize_model
 from app.services.dpr_service import DprProductionService
 from app.services.notification_service import NotificationService
 from app.services.organization_settings_service import OrganizationSettingsService
 from app.services.project_assignment_service import ProjectAssignmentService
 
 _MEASUREMENTS_LINK = "/measurements"
-# PM/QS recipients use the desktop approval page; the recorder (often a
-# Site Engineer, who is locked out of that desktop-only route) is pointed
-# at the field-accessible equivalent instead.
 _MEASUREMENTS_FIELD_LINK = "/field/my-measurements"
 
 
@@ -36,6 +35,7 @@ class MeasurementService:
         self.notification_service = NotificationService(session, background_tasks)
         self.assignment_service = ProjectAssignmentService(session)
         self.production_service = DprProductionService(session)
+        self.audit = AuditService(session)
 
     async def _get_work_type(self, work_type_id: uuid.UUID) -> WorkTypeMaster:
         work_type = await self.session.get(WorkTypeMaster, work_type_id)
@@ -50,10 +50,6 @@ class MeasurementService:
 
         work_type = await self._get_work_type(boq_item.work_type_id)
 
-        # Quantized to match measurements.computed_qty's NUMERIC(14,3) scale —
-        # the session uses expire_on_commit=False, so the in-memory value
-        # returned to the caller must already match what's persisted rather
-        # than relying on Postgres to round it after the fact.
         computed_qty: Decimal = calculate_quantity(
             work_type.formula, work_type.dimension_fields, data.dimensions
         ).quantize(Decimal("0.001"))
@@ -80,6 +76,14 @@ class MeasurementService:
             chainage=data.chainage,
         )
         self.repo.add(measurement)
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="MEASUREMENT",
+            entity_id=measurement.id,
+            action=AuditAction.CREATE,
+            actor_id=recorded_by,
+            after=serialize_model(measurement),
+        )
         await self.session.commit()
         await self.session.refresh(measurement)
 
@@ -103,6 +107,8 @@ class MeasurementService:
         from_status = measurement.status
         transition(MeasurementStatus(from_status), target)
 
+        before = serialize_model(measurement)
+
         approval = MeasurementApproval(
             measurement_id=measurement.id,
             from_status=from_status,
@@ -113,6 +119,16 @@ class MeasurementService:
         )
         self.session.add(approval)
         measurement.status = target
+        await self.session.flush()
+        after = serialize_model(measurement)
+        await self.audit.record(
+            entity_type="MEASUREMENT",
+            entity_id=measurement.id,
+            action=AuditAction.STATUS_CHANGE,
+            actor_id=actor_id,
+            before=before,
+            after=after,
+        )
         await self.session.commit()
         await self.session.refresh(measurement)
         return measurement
@@ -216,16 +232,14 @@ class MeasurementService:
     async def lock(
         self, measurement_id: uuid.UUID, actor_id: uuid.UUID, actor_role: UserRole, data: MeasurementActionRequest
     ) -> Measurement:
-        """Final step: locks the measurement and, in the same transaction,
-        advances boq_item.consumed_qty — the financial effect only takes
-        hold once a measurement is fully approved and locked, not at draft
-        creation, so in-flight/rejected drafts never distort consumption."""
         measurement = await self.get(measurement_id)
         if actor_role not in (UserRole.QUANTITY_SURVEYOR, UserRole.ADMIN):
             raise PermissionDeniedError("Only a Quantity Surveyor can lock a measurement.")
 
         from_status = measurement.status
         transition(MeasurementStatus(from_status), MeasurementStatus.LOCKED)
+
+        before = serialize_model(measurement)
 
         boq_item = await self.boq_repo.get(measurement.boq_item_id)
         if boq_item is None:
@@ -242,6 +256,15 @@ class MeasurementService:
         )
         self.session.add(approval)
         measurement.status = MeasurementStatus.LOCKED
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="MEASUREMENT",
+            entity_id=measurement.id,
+            action=AuditAction.STATUS_CHANGE,
+            actor_id=actor_id,
+            before=before,
+            after=serialize_model(measurement),
+        )
         await self.session.commit()
         await self.session.refresh(measurement)
 
@@ -256,3 +279,80 @@ class MeasurementService:
             related_entity_id=measurement.id,
         )
         return measurement
+
+    async def update(
+        self, measurement_id: uuid.UUID, data: MeasurementUpdate, actor_id: uuid.UUID, actor_role: UserRole
+    ) -> Measurement:
+        measurement = await self.get(measurement_id)
+        if MeasurementStatus(measurement.status) != MeasurementStatus.DRAFT:
+            raise PermissionDeniedError("Only DRAFT measurements can be edited.")
+        if measurement.recorded_by != actor_id and actor_role != UserRole.ADMIN:
+            raise PermissionDeniedError("Only the recording engineer can edit this measurement.")
+
+        work_type = await self._get_work_type(measurement.work_type_id)
+        computed_qty: Decimal = calculate_quantity(
+            work_type.formula, work_type.dimension_fields, data.dimensions
+        ).quantize(Decimal("0.001"))
+
+        boq_item = await self.boq_repo.get(measurement.boq_item_id)
+        if boq_item is None:
+            raise NotFoundError("BOQ item for this measurement no longer exists.")
+        snapshot = BoqItemSnapshot(
+            tendered_qty=boq_item.tendered_qty,
+            consumed_qty=boq_item.consumed_qty,
+            has_active_variation_order=boq_item.has_active_variation_order,
+        )
+        org_settings = await self.settings_service.get()
+        validate_measurement_against_boq(
+            computed_qty, snapshot, tolerance_pct=org_settings.default_measurement_tolerance_percent
+        )
+
+        before = serialize_model(measurement)
+        measurement.dimensions = {k: str(v) for k, v in data.dimensions.items()}
+        measurement.computed_qty = computed_qty
+        measurement.chainage = data.chainage
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="MEASUREMENT",
+            entity_id=measurement.id,
+            action=AuditAction.UPDATE,
+            actor_id=actor_id,
+            before=before,
+            after=serialize_model(measurement),
+        )
+        await self.session.commit()
+        await self.session.refresh(measurement)
+
+        await self.production_service.sync_from_measurements(
+            measurement.project_id, measurement.boq_item_id, measurement.measurement_date, actor_id
+        )
+        return measurement
+
+    async def delete(
+        self, measurement_id: uuid.UUID, actor_id: uuid.UUID, actor_role: UserRole
+    ) -> None:
+        measurement = await self.get(measurement_id)
+        if MeasurementStatus(measurement.status) != MeasurementStatus.DRAFT:
+            raise PermissionDeniedError("Only DRAFT measurements can be deleted.")
+        if measurement.recorded_by != actor_id and actor_role != UserRole.ADMIN:
+            raise PermissionDeniedError("Only the recording engineer can delete this measurement.")
+
+        project_id = measurement.project_id
+        boq_item_id = measurement.boq_item_id
+        measurement_date = measurement.measurement_date
+        entity_id = measurement.id
+        before = serialize_model(measurement)
+
+        await self.session.delete(measurement)
+        await self.audit.record(
+            entity_type="MEASUREMENT",
+            entity_id=entity_id,
+            action=AuditAction.DELETE,
+            actor_id=actor_id,
+            before=before,
+        )
+        await self.session.commit()
+
+        await self.production_service.sync_from_measurements(
+            project_id, boq_item_id, measurement_date, actor_id
+        )

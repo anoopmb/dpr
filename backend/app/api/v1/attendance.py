@@ -36,8 +36,10 @@ async def create_worker(data: WorkerCreate, session: SessionDep, current_user: C
     response_model=WorkerRead,
     dependencies=[Depends(require_role(*_SUPERVISOR_ROLES))],
 )
-async def update_worker(worker_id: uuid.UUID, data: WorkerUpdate, session: SessionDep) -> WorkerRead:
-    worker = await WorkerService(session).update(worker_id, data)
+async def update_worker(
+    worker_id: uuid.UUID, data: WorkerUpdate, session: SessionDep, current_user: CurrentUserDep
+) -> WorkerRead:
+    worker = await WorkerService(session).update(worker_id, data, actor_id=uuid.UUID(current_user.id))
     return WorkerRead.model_validate(worker)
 
 

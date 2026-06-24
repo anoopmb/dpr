@@ -28,8 +28,10 @@ async def create_expense(data: ExpenseCreate, session: SessionDep, current_user:
     response_model=ExpenseRead,
     dependencies=[Depends(require_role(*_RECORDER_ROLES))],
 )
-async def update_expense(expense_id: uuid.UUID, data: ExpenseUpdate, session: SessionDep) -> ExpenseRead:
-    expense = await ExpenseService(session).update(expense_id, data)
+async def update_expense(
+    expense_id: uuid.UUID, data: ExpenseUpdate, session: SessionDep, current_user: CurrentUserDep
+) -> ExpenseRead:
+    expense = await ExpenseService(session).update(expense_id, data, actor_id=uuid.UUID(current_user.id))
     return ExpenseRead.model_validate(expense)
 
 
@@ -38,8 +40,8 @@ async def update_expense(expense_id: uuid.UUID, data: ExpenseUpdate, session: Se
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(require_role(*_RECORDER_ROLES))],
 )
-async def delete_expense(expense_id: uuid.UUID, session: SessionDep) -> None:
-    await ExpenseService(session).delete(expense_id)
+async def delete_expense(expense_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep) -> None:
+    await ExpenseService(session).delete(expense_id, actor_id=uuid.UUID(current_user.id))
 
 
 @router.get("/by-project/{project_id}", response_model=list[ExpenseRead])

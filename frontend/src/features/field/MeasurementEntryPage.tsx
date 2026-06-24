@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Alert, Button, Card, Form, Input, InputNumber, List, Select, Space, Statistic, Typography, message } from 'antd';
 import { CheckCircleFilled } from '@ant-design/icons';
-import dayjs from 'dayjs';
 import { calculateQuantity } from '@/features/measurements/formulaEngine';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
@@ -13,6 +12,8 @@ import { useUploadPhoto } from '@/api/hooks/useUpload';
 import { PhotoCapture } from '@/components/common/PhotoCapture';
 import { getCurrentPosition } from '@/utils/geolocation';
 import { RequireAttendance } from '@/components/field/RequireAttendance';
+import { useThemeMode } from '@/theme/theme-context';
+import { useDateFormat } from '@/utils/format';
 
 const FIELD_LABELS: Record<string, string> = {
   length: 'Length (m)',
@@ -26,11 +27,15 @@ const FIELD_LABELS: Record<string, string> = {
 
 export function MeasurementEntryPage() {
   const selectedProjectId = useProjectContextStore((s) => s.selectedProjectId);
+  const selectedEntryDate = useProjectContextStore((s) => s.selectedEntryDate);
   const { data: boqItems } = useBoqItems(selectedProjectId);
   const { data: workTypes } = useWorkTypes();
   const createMeasurement = useCreateMeasurement();
   const uploadPhoto = useUploadPhoto();
   const attachPhoto = useAttachPhoto();
+  const { resolvedMode } = useThemeMode();
+  const { fmtDate } = useDateFormat();
+  const RECORDED_BG = resolvedMode === 'dark' ? 'rgba(82, 196, 26, 0.12)' : '#f6ffed';
 
   const [boqItemId, setBoqItemId] = useState<string | null>(null);
   const [dimensions, setDimensions] = useState<Record<string, number>>({});
@@ -59,7 +64,7 @@ export function MeasurementEntryPage() {
       const measurement = await createMeasurement.mutateAsync({
         project_id: selectedProjectId,
         boq_item_id: boqItemId,
-        measurement_date: dayjs().format('YYYY-MM-DD'),
+        measurement_date: selectedEntryDate,
         dimensions: Object.fromEntries(dimensionFields.map((f) => [f, String(dimensions[f] ?? 0)])),
         chainage: chainage.trim() || null,
       });
@@ -97,15 +102,20 @@ export function MeasurementEntryPage() {
 
   return (
     <div>
-      <Typography.Title level={4}>{recordedToday.length > 0 ? 'Add Another Measurement for Today' : 'New Measurement'}</Typography.Title>
+      <Typography.Title level={4} style={{ marginBottom: 4 }}>
+        {recordedToday.length > 0 ? 'Add Another Measurement' : 'New Measurement'}
+      </Typography.Title>
+      <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+        Entry date: {fmtDate(selectedEntryDate)}
+      </Typography.Text>
 
       <ProjectSelector style={{ marginBottom: 16, width: '100%' }} />
 
       {!selectedProjectId && <Alert type="warning" showIcon message="Select a project to continue" />}
 
       {selectedProjectId && recordedToday.length > 0 && (
-        <Card size="small" style={{ marginBottom: 16, background: '#f6ffed' }}>
-          <Typography.Text strong>Recorded today ({recordedToday.length})</Typography.Text>
+        <Card size="small" style={{ marginBottom: 16, background: RECORDED_BG }}>
+          <Typography.Text strong>Recorded for this date ({recordedToday.length})</Typography.Text>
           <List
             size="small"
             dataSource={recordedToday}

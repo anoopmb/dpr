@@ -19,8 +19,8 @@ router = APIRouter(prefix="/users", tags=["users"])
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_role(UserRole.ADMIN))],
 )
-async def create_user(data: UserCreate, session: SessionDep) -> UserRead:
-    user = await UserService(session).create(data)
+async def create_user(data: UserCreate, session: SessionDep, current_user: CurrentUserDep) -> UserRead:
+    user = await UserService(session).create(data, actor_id=uuid.UUID(current_user.id))
     return UserRead.model_validate(user)
 
 
@@ -58,6 +58,6 @@ async def get_user(user_id: uuid.UUID, session: SessionDep) -> UserRead:
 
 
 @router.patch("/{user_id}", response_model=UserRead, dependencies=[Depends(require_role(UserRole.ADMIN))])
-async def update_user(user_id: uuid.UUID, data: UserUpdate, session: SessionDep) -> UserRead:
-    user = await UserService(session).update(user_id, data)
+async def update_user(user_id: uuid.UUID, data: UserUpdate, session: SessionDep, current_user: CurrentUserDep) -> UserRead:
+    user = await UserService(session).update(user_id, data, actor_id=uuid.UUID(current_user.id))
     return UserRead.model_validate(user)

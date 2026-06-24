@@ -11,7 +11,9 @@ from app.schemas.dpr import (
     DprHeaderUpdate,
     DprIssueCreate,
     DprMachineryCreate,
+    DprMachineryUpdate,
     DprMaterialCreate,
+    DprMaterialUpdate,
     DprProductionBulkUpsert,
     DprProductionEntryRead,
     DprWorkItemCreate,
@@ -46,10 +48,21 @@ async def create_dpr(data: DprHeaderCreate, session: SessionDep, current_user: C
     dependencies=[Depends(require_role(*_FIELD_ROLES))],
 )
 async def update_dpr_header(
-    header_id: uuid.UUID, data: DprHeaderUpdate, session: SessionDep
+    header_id: uuid.UUID, data: DprHeaderUpdate, session: SessionDep, current_user: CurrentUserDep
 ) -> DprHeaderRead:
-    header = await DprService(session).update_header(header_id, data)
+    header = await DprService(session).update_header(header_id, data, actor_id=uuid.UUID(current_user.id))
     return DprHeaderRead.model_validate(header)
+
+
+@router.delete(
+    "/{header_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_role(*_FIELD_ROLES))],
+)
+async def delete_dpr_header(
+    header_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep
+) -> None:
+    await DprService(session).delete_header(header_id, actor_id=uuid.UUID(current_user.id))
 
 
 @router.get("/by-project/{project_id}", response_model=list[DprHeaderRead])
@@ -65,32 +78,88 @@ async def get_dpr(header_id: uuid.UUID, session: SessionDep, _: CurrentUserDep) 
 
 
 @router.post("/{header_id}/work-items", response_model=DprHeaderRead, dependencies=[Depends(require_role(*_FIELD_ROLES))])
-async def add_work_item(header_id: uuid.UUID, data: DprWorkItemCreate, session: SessionDep) -> DprHeaderRead:
-    header = await DprService(session).add_work_item(header_id, data)
+async def add_work_item(
+    header_id: uuid.UUID, data: DprWorkItemCreate, session: SessionDep, current_user: CurrentUserDep
+) -> DprHeaderRead:
+    header = await DprService(session).add_work_item(header_id, data, actor_id=uuid.UUID(current_user.id))
     return DprHeaderRead.model_validate(header)
 
 
 @router.post("/{header_id}/issues", response_model=DprHeaderRead, dependencies=[Depends(require_role(*_FIELD_ROLES))])
-async def add_issue(header_id: uuid.UUID, data: DprIssueCreate, session: SessionDep) -> DprHeaderRead:
-    header = await DprService(session).add_issue(header_id, data)
+async def add_issue(
+    header_id: uuid.UUID, data: DprIssueCreate, session: SessionDep, current_user: CurrentUserDep
+) -> DprHeaderRead:
+    header = await DprService(session).add_issue(header_id, data, actor_id=uuid.UUID(current_user.id))
     return DprHeaderRead.model_validate(header)
 
 
 @router.post("/{header_id}/materials", response_model=DprHeaderRead, dependencies=[Depends(require_role(*_FIELD_ROLES))])
-async def add_material(header_id: uuid.UUID, data: DprMaterialCreate, session: SessionDep) -> DprHeaderRead:
-    header = await DprService(session).add_material(header_id, data)
+async def add_material(
+    header_id: uuid.UUID, data: DprMaterialCreate, session: SessionDep, current_user: CurrentUserDep
+) -> DprHeaderRead:
+    header = await DprService(session).add_material(header_id, data, actor_id=uuid.UUID(current_user.id))
     return DprHeaderRead.model_validate(header)
+
+
+@router.patch(
+    "/materials/{item_id}",
+    response_model=DprHeaderRead,
+    dependencies=[Depends(require_role(*_FIELD_ROLES))],
+)
+async def update_material(
+    item_id: uuid.UUID, data: DprMaterialUpdate, session: SessionDep, current_user: CurrentUserDep
+) -> DprHeaderRead:
+    header = await DprService(session).update_material(item_id, data, actor_id=uuid.UUID(current_user.id))
+    return DprHeaderRead.model_validate(header)
+
+
+@router.delete(
+    "/materials/{item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_role(*_FIELD_ROLES))],
+)
+async def delete_material(
+    item_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep
+) -> None:
+    await DprService(session).delete_material(item_id, actor_id=uuid.UUID(current_user.id))
 
 
 @router.post("/{header_id}/machinery", response_model=DprHeaderRead, dependencies=[Depends(require_role(*_FIELD_ROLES))])
-async def add_machinery(header_id: uuid.UUID, data: DprMachineryCreate, session: SessionDep) -> DprHeaderRead:
-    header = await DprService(session).add_machinery(header_id, data)
+async def add_machinery(
+    header_id: uuid.UUID, data: DprMachineryCreate, session: SessionDep, current_user: CurrentUserDep
+) -> DprHeaderRead:
+    header = await DprService(session).add_machinery(header_id, data, actor_id=uuid.UUID(current_user.id))
     return DprHeaderRead.model_validate(header)
 
 
+@router.patch(
+    "/machinery/{item_id}",
+    response_model=DprHeaderRead,
+    dependencies=[Depends(require_role(*_FIELD_ROLES))],
+)
+async def update_machinery(
+    item_id: uuid.UUID, data: DprMachineryUpdate, session: SessionDep, current_user: CurrentUserDep
+) -> DprHeaderRead:
+    header = await DprService(session).update_machinery(item_id, data, actor_id=uuid.UUID(current_user.id))
+    return DprHeaderRead.model_validate(header)
+
+
+@router.delete(
+    "/machinery/{item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_role(*_FIELD_ROLES))],
+)
+async def delete_machinery(
+    item_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep
+) -> None:
+    await DprService(session).delete_machinery(item_id, actor_id=uuid.UUID(current_user.id))
+
+
 @router.post("/{header_id}/submit", response_model=DprHeaderRead, dependencies=[Depends(require_role(*_FIELD_ROLES))])
-async def submit_dpr(header_id: uuid.UUID, session: SessionDep, background_tasks: BackgroundTasks) -> DprHeaderRead:
-    header = await DprService(session, background_tasks).submit(header_id)
+async def submit_dpr(
+    header_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep, background_tasks: BackgroundTasks
+) -> DprHeaderRead:
+    header = await DprService(session, background_tasks).submit(header_id, actor_id=uuid.UUID(current_user.id))
     return DprHeaderRead.model_validate(header)
 
 
@@ -100,9 +169,9 @@ async def submit_dpr(header_id: uuid.UUID, session: SessionDep, background_tasks
     dependencies=[Depends(require_role(*_FIELD_ROLES))],
 )
 async def bulk_upsert_production(
-    header_id: uuid.UUID, data: DprProductionBulkUpsert, session: SessionDep
+    header_id: uuid.UUID, data: DprProductionBulkUpsert, session: SessionDep, current_user: CurrentUserDep
 ) -> list[DprProductionEntryRead]:
-    entries = await DprProductionService(session).bulk_upsert(header_id, data)
+    entries = await DprProductionService(session).bulk_upsert(header_id, data, actor_id=uuid.UUID(current_user.id))
     return [DprProductionEntryRead.model_validate(e) for e in entries]
 
 

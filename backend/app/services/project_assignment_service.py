@@ -4,10 +4,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import DomainError, NotFoundError
+from app.models.audit import AuditAction
 from app.models.project import Project
 from app.models.project_assignment import ProjectAssignment
 from app.models.user import User, UserRole
 from app.repositories.project_assignment_repo import ProjectAssignmentRepository
+from app.services.audit_service import AuditService, serialize_model
 
 _LEGACY_FIELD_BY_ROLE = {
     UserRole.PROJECT_MANAGER: "project_manager_id",
@@ -27,6 +29,7 @@ class ProjectAssignmentService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.repo = ProjectAssignmentRepository(session)
+        self.audit = AuditService(session)
 
     async def _get_project(self, project_id: uuid.UUID) -> Project:
         project = await self.session.get(Project, project_id)
@@ -38,7 +41,9 @@ class ProjectAssignmentService:
         await self._get_project(project_id)
         return await self.repo.list_for_project(project_id)
 
-    async def assign(self, project_id: uuid.UUID, user_id: uuid.UUID, role: UserRole) -> ProjectAssignment:
+    async def assign(
+        self, project_id: uuid.UUID, user_id: uuid.UUID, role: UserRole, actor_id: uuid.UUID
+    ) -> ProjectAssignment:
         await self._get_project(project_id)
 
         user = await self.session.get(User, user_id)
@@ -53,16 +58,33 @@ class ProjectAssignmentService:
 
         assignment = ProjectAssignment(project_id=project_id, user_id=user_id, role=role)
         self.repo.add(assignment)
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="PROJECT_ASSIGNMENT",
+            entity_id=assignment.id,
+            action=AuditAction.CREATE,
+            actor_id=actor_id,
+            after=serialize_model(assignment),
+        )
         await self.session.commit()
         await self.session.refresh(assignment)
         return assignment
 
-    async def unassign(self, project_id: uuid.UUID, assignment_id: uuid.UUID) -> None:
+    async def unassign(self, project_id: uuid.UUID, assignment_id: uuid.UUID, actor_id: uuid.UUID) -> None:
         await self._get_project(project_id)
         assignment = await self.repo.get(assignment_id)
         if assignment is None or assignment.project_id != project_id:
             raise NotFoundError(f"Assignment {assignment_id} not found for this project.")
+        before = serialize_model(assignment)
+        entity_id = assignment.id
         await self.repo.delete(assignment)
+        await self.audit.record(
+            entity_type="PROJECT_ASSIGNMENT",
+            entity_id=entity_id,
+            action=AuditAction.DELETE,
+            actor_id=actor_id,
+            before=before,
+        )
         await self.session.commit()
 
     async def resolve_users_for_role(self, project_id: uuid.UUID, role: UserRole) -> list[uuid.UUID]:

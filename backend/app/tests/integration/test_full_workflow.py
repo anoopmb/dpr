@@ -59,7 +59,7 @@ async def test_full_workflow():
 
         ho_location_resp = await client.post(
             "/api/v1/masters/stock-locations",
-            json={"name": "Head Office Store", "location_type": "HEAD_OFFICE", "project_id": None},
+            json={"name": f"HO Store {uuid.uuid4().hex[:8]}", "location_type": "HEAD_OFFICE", "project_id": None},
             headers=_csrf(client),
         )
         assert ho_location_resp.status_code == 201, ho_location_resp.text

@@ -15,6 +15,11 @@ class MeasurementCreate(BaseModel):
     chainage: str | None = Field(default=None, max_length=100)
 
 
+class MeasurementUpdate(BaseModel):
+    dimensions: dict[str, Decimal] = Field(min_length=1)
+    chainage: str | None = Field(default=None, max_length=100)
+
+
 class MeasurementActionRequest(BaseModel):
     remarks: str | None = Field(default=None, max_length=500)
 

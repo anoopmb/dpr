@@ -20,8 +20,8 @@ items_router = APIRouter(prefix="/boq-items", tags=["boq"])
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_role(*_WRITE_ROLES))],
 )
-async def create_boq_section(data: BoqSectionCreate, session: SessionDep) -> BoqSectionRead:
-    section = await BoqService(session).create_section(data)
+async def create_boq_section(data: BoqSectionCreate, session: SessionDep, current_user: CurrentUserDep) -> BoqSectionRead:
+    section = await BoqService(session).create_section(data, actor_id=uuid.UUID(current_user.id))
     return BoqSectionRead.model_validate(section)
 
 
@@ -38,9 +38,9 @@ async def list_boq_sections_for_project(
     dependencies=[Depends(require_role(*_WRITE_ROLES))],
 )
 async def update_boq_section(
-    section_id: uuid.UUID, data: BoqSectionUpdate, session: SessionDep
+    section_id: uuid.UUID, data: BoqSectionUpdate, session: SessionDep, current_user: CurrentUserDep
 ) -> BoqSectionRead:
-    section = await BoqService(session).update_section(section_id, data)
+    section = await BoqService(session).update_section(section_id, data, actor_id=uuid.UUID(current_user.id))
     return BoqSectionRead.model_validate(section)
 
 
@@ -49,8 +49,8 @@ async def update_boq_section(
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(require_role(*_WRITE_ROLES))],
 )
-async def delete_boq_section(section_id: uuid.UUID, session: SessionDep) -> None:
-    await BoqService(session).delete_section(section_id)
+async def delete_boq_section(section_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep) -> None:
+    await BoqService(session).delete_section(section_id, actor_id=uuid.UUID(current_user.id))
 
 
 @items_router.post(
@@ -59,8 +59,8 @@ async def delete_boq_section(section_id: uuid.UUID, session: SessionDep) -> None
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_role(*_WRITE_ROLES))],
 )
-async def create_boq_item(data: BoqItemCreate, session: SessionDep) -> BoqItemRead:
-    item = await BoqService(session).create(data)
+async def create_boq_item(data: BoqItemCreate, session: SessionDep, current_user: CurrentUserDep) -> BoqItemRead:
+    item = await BoqService(session).create(data, actor_id=uuid.UUID(current_user.id))
     return BoqItemRead.model_validate(item)
 
 
@@ -83,8 +83,10 @@ async def get_boq_item(boq_item_id: uuid.UUID, session: SessionDep, _: CurrentUs
     response_model=BoqItemRead,
     dependencies=[Depends(require_role(*_WRITE_ROLES))],
 )
-async def update_boq_item(boq_item_id: uuid.UUID, data: BoqItemUpdate, session: SessionDep) -> BoqItemRead:
-    item = await BoqService(session).update_item(boq_item_id, data)
+async def update_boq_item(
+    boq_item_id: uuid.UUID, data: BoqItemUpdate, session: SessionDep, current_user: CurrentUserDep
+) -> BoqItemRead:
+    item = await BoqService(session).update_item(boq_item_id, data, actor_id=uuid.UUID(current_user.id))
     return BoqItemRead.model_validate(item)
 
 
@@ -93,5 +95,5 @@ async def update_boq_item(boq_item_id: uuid.UUID, data: BoqItemUpdate, session: 
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(require_role(*_WRITE_ROLES))],
 )
-async def delete_boq_item(boq_item_id: uuid.UUID, session: SessionDep) -> None:
-    await BoqService(session).delete_item(boq_item_id)
+async def delete_boq_item(boq_item_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep) -> None:
+    await BoqService(session).delete_item(boq_item_id, actor_id=uuid.UUID(current_user.id))

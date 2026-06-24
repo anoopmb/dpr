@@ -82,8 +82,18 @@ class DprMaterialRead(BaseModel):
     uom_id: uuid.UUID
 
 
+class DprMaterialUpdate(BaseModel):
+    qty_consumed: Decimal = Field(gt=0)
+    uom_id: uuid.UUID
+
+
 class DprMachineryCreate(BaseModel):
     machinery_id: uuid.UUID
+    hours_used: Decimal = Field(gt=0, le=24)
+    hire_rate: Decimal | None = Field(default=None, gt=0)
+
+
+class DprMachineryUpdate(BaseModel):
     hours_used: Decimal = Field(gt=0, le=24)
     hire_rate: Decimal | None = Field(default=None, gt=0)
 

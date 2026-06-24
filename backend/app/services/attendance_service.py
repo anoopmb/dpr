@@ -7,11 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import DomainError, NotFoundError
 from app.domain.attendance.validators import GeoPoint, is_within_geofence
 from app.models.attendance import AttendanceRecord
+from app.models.audit import AuditAction
 from app.models.project import Project
 from app.models.worker import Worker
 from app.repositories.attendance_repo import AttendanceRepository
 from app.repositories.worker_repo import WorkerRepository
 from app.schemas.attendance import AttendanceCheckInCreate, MarkPresentRequest, WorkerCreate, WorkerUpdate
+from app.services.audit_service import AuditService, serialize_model
 
 
 class AlreadyCheckedInError(DomainError):
@@ -77,11 +79,19 @@ class WorkerService:
         self.session = session
         self.repo = WorkerRepository(session)
         self.attendance_repo = AttendanceRepository(session)
+        self.audit = AuditService(session)
 
     async def create(self, data: WorkerCreate, marked_by: uuid.UUID) -> Worker:
         worker = Worker(**data.model_dump(exclude={"mark_present_today"}))
         self.repo.add(worker)
         await self.session.flush()
+        await self.audit.record(
+            entity_type="WORKER",
+            entity_id=worker.id,
+            action=AuditAction.CREATE,
+            actor_id=marked_by,
+            after=serialize_model(worker),
+        )
 
         if data.mark_present_today:
             project = await self.session.get(Project, data.project_id)
@@ -91,7 +101,7 @@ class WorkerService:
                 raise VerificationRequiredError(
                     "This project requires photo/GPS verification — check the worker in instead of auto-marking."
                 )
-            await _record_attendance(
+            record = await _record_attendance(
                 self.attendance_repo,
                 project=project,
                 worker_id=worker.id,
@@ -101,17 +111,34 @@ class WorkerService:
                 longitude=None,
                 gps_accuracy_meters=None,
             )
+            await self.audit.record(
+                entity_type="ATTENDANCE_RECORD",
+                entity_id=record.id,
+                action=AuditAction.CREATE,
+                actor_id=marked_by,
+                after=serialize_model(record),
+            )
 
         await self.session.commit()
         await self.session.refresh(worker)
         return worker
 
-    async def update(self, worker_id: uuid.UUID, data: WorkerUpdate) -> Worker:
+    async def update(self, worker_id: uuid.UUID, data: WorkerUpdate, actor_id: uuid.UUID) -> Worker:
         worker = await self.repo.get(worker_id)
         if worker is None:
             raise NotFoundError(f"Worker {worker_id} not found.")
+        before = serialize_model(worker)
         for field, value in data.model_dump(exclude_none=True).items():
             setattr(worker, field, value)
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="WORKER",
+            entity_id=worker.id,
+            action=AuditAction.UPDATE,
+            actor_id=actor_id,
+            before=before,
+            after=serialize_model(worker),
+        )
         await self.session.commit()
         await self.session.refresh(worker)
         return worker
@@ -125,6 +152,7 @@ class AttendanceService:
         self.session = session
         self.repo = AttendanceRepository(session)
         self.worker_repo = WorkerRepository(session)
+        self.audit = AuditService(session)
 
     async def check_in(self, data: AttendanceCheckInCreate, marked_by: uuid.UUID) -> AttendanceRecord:
         worker = await self.worker_repo.get(data.worker_id)
@@ -151,6 +179,13 @@ class AttendanceService:
             gps_accuracy_meters=data.gps_accuracy_meters,
             location_name=data.location_name,
         )
+        await self.audit.record(
+            entity_type="ATTENDANCE_RECORD",
+            entity_id=record.id,
+            action=AuditAction.CREATE,
+            actor_id=marked_by,
+            after=serialize_model(record),
+        )
         await self.session.commit()
         await self.session.refresh(record)
         return record
@@ -172,7 +207,7 @@ class AttendanceService:
 
             existing = await self.repo.get_for_worker_and_date(worker_id, date.today())
             if existing is not None:
-                continue  # already marked — bulk action is idempotent, not an error
+                continue
 
             record = await _record_attendance(
                 self.repo,
@@ -184,6 +219,13 @@ class AttendanceService:
                 longitude=data.longitude,
                 gps_accuracy_meters=data.gps_accuracy_meters,
                 location_name=data.location_name,
+            )
+            await self.audit.record(
+                entity_type="ATTENDANCE_RECORD",
+                entity_id=record.id,
+                action=AuditAction.CREATE,
+                actor_id=marked_by,
+                after=serialize_model(record),
             )
             records.append(record)
 

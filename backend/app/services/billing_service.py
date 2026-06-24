@@ -6,12 +6,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
 from app.domain.billing.validators import validate_measurement_billable, validate_payment_within_bill_total
+from app.models.audit import AuditAction
 from app.models.billing import BillStatus, PaymentReceived, RunningBill, RunningBillItem
 from app.models.user import UserRole
 from app.repositories.billing_repo import PaymentRepository, RunningBillRepository
 from app.repositories.boq_repo import BoqRepository
 from app.repositories.measurement_repo import MeasurementRepository
 from app.schemas.billing import PaymentReceivedCreate, ProjectSummaryRead, RunningBillCreate
+from app.services.audit_service import AuditService, serialize_model
 from app.services.notification_service import NotificationService
 from app.services.project_assignment_service import ProjectAssignmentService
 
@@ -27,6 +29,7 @@ class BillingService:
         self.boq_repo = BoqRepository(session)
         self.notification_service = NotificationService(session, background_tasks)
         self.assignment_service = ProjectAssignmentService(session)
+        self.audit = AuditService(session)
 
     async def create_bill(self, data: RunningBillCreate, generated_by: uuid.UUID) -> RunningBill:
         bill = RunningBill(
@@ -53,11 +56,6 @@ class BillingService:
             if boq_item is None:
                 raise NotFoundError(f"BOQ item for measurement {measurement_id} not found.")
 
-            # Quantize explicitly to the column's declared scale (16,2) here
-            # in Python — the session is created with expire_on_commit=False,
-            # so relying on Postgres to round NUMERIC(16,2) on insert would
-            # leave this in-memory object holding the unrounded value after
-            # commit, drifting from what's actually stored.
             amount = (measurement.computed_qty * boq_item.rate).quantize(Decimal("0.01"))
             bill.items.append(
                 RunningBillItem(
@@ -73,6 +71,14 @@ class BillingService:
 
         bill.total_amount = total
         self.repo.add(bill)
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="RUNNING_BILL",
+            entity_id=bill.id,
+            action=AuditAction.CREATE,
+            actor_id=generated_by,
+            after=serialize_model(bill),
+        )
         await self.session.commit()
         return await self.get(bill.id)
 
@@ -99,6 +105,14 @@ class BillingService:
         if reached_paid:
             bill.status = BillStatus.PAID
 
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="PAYMENT",
+            entity_id=payment.id,
+            action=AuditAction.CREATE,
+            actor_id=recorded_by,
+            after=serialize_model(payment),
+        )
         await self.session.commit()
         await self.session.refresh(payment)
 

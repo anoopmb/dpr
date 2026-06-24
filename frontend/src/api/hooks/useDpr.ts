@@ -297,3 +297,70 @@ export function useSubmitDpr() {
     onSuccess: (header) => invalidateHeader(queryClient, header),
   });
 }
+
+export function useUpdateDprMaterial() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      itemId,
+      data,
+    }: {
+      itemId: string;
+      data: { qty_consumed: string; uom_id: string };
+    }) => (await apiClient.patch<DprHeaderRead>(`/dpr/materials/${itemId}`, data)).data,
+    onSuccess: (header) => invalidateHeader(queryClient, header),
+  });
+}
+
+export function useDeleteDprMaterial() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ itemId, headerId }: { itemId: string; headerId: string }) => {
+      await apiClient.delete(`/dpr/materials/${itemId}`);
+      return headerId;
+    },
+    onSuccess: (headerId) => {
+      queryClient.invalidateQueries({ queryKey: ['dpr-header', headerId] });
+    },
+  });
+}
+
+export function useUpdateDprMachinery() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      itemId,
+      data,
+    }: {
+      itemId: string;
+      data: { hours_used: string; hire_rate?: string | null };
+    }) => (await apiClient.patch<DprHeaderRead>(`/dpr/machinery/${itemId}`, data)).data,
+    onSuccess: (header) => invalidateHeader(queryClient, header),
+  });
+}
+
+export function useDeleteDprMachinery() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ itemId, headerId }: { itemId: string; headerId: string }) => {
+      await apiClient.delete(`/dpr/machinery/${itemId}`);
+      return headerId;
+    },
+    onSuccess: (headerId) => {
+      queryClient.invalidateQueries({ queryKey: ['dpr-header', headerId] });
+    },
+  });
+}
+
+export function useDeleteDprHeader() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ headerId, projectId }: { headerId: string; projectId: string }) => {
+      await apiClient.delete(`/dpr/${headerId}`);
+      return projectId;
+    },
+    onSuccess: (projectId) => {
+      queryClient.invalidateQueries({ queryKey: ['dpr', projectId] });
+    },
+  });
+}

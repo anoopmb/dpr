@@ -67,7 +67,9 @@ async def approve_indent(
 async def reject_indent(
     indent_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep, background_tasks: BackgroundTasks
 ) -> MaterialIndentRead:
-    indent = await MaterialIndentService(session, background_tasks).reject(indent_id, actor_role=current_user.role)
+    indent = await MaterialIndentService(session, background_tasks).reject(
+        indent_id, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role
+    )
     return MaterialIndentRead.model_validate(indent)
 
 

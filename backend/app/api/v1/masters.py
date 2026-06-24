@@ -72,8 +72,8 @@ def _register_master_routes(
         dependencies=[Depends(require_role(UserRole.ADMIN))],
         name=f"create_{path}",
     )
-    async def create_item(data: create_schema, session: SessionDep):
-        item = await MasterDataService(session, model).create(data)
+    async def create_item(data: create_schema, session: SessionDep, current_user: CurrentUserDep):
+        item = await MasterDataService(session, model).create(data, actor_id=uuid.UUID(current_user.id))
         return read_schema.model_validate(item)
 
     @router.patch(
@@ -82,8 +82,8 @@ def _register_master_routes(
         dependencies=[Depends(require_role(UserRole.ADMIN))],
         name=f"update_{path}",
     )
-    async def update_item(item_id: uuid.UUID, data: update_schema, session: SessionDep):
-        item = await MasterDataService(session, model).update(item_id, data)
+    async def update_item(item_id: uuid.UUID, data: update_schema, session: SessionDep, current_user: CurrentUserDep):
+        item = await MasterDataService(session, model).update(item_id, data, actor_id=uuid.UUID(current_user.id))
         return read_schema.model_validate(item)
 
     @router.delete(
@@ -92,8 +92,8 @@ def _register_master_routes(
         dependencies=[Depends(require_role(UserRole.ADMIN))],
         name=f"delete_{path}",
     )
-    async def delete_item(item_id: uuid.UUID, session: SessionDep):
-        await MasterDataService(session, model).delete(item_id)
+    async def delete_item(item_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep):
+        await MasterDataService(session, model).delete(item_id, actor_id=uuid.UUID(current_user.id))
 
 
 _register_master_routes(

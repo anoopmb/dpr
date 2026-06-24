@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import DomainError, NotFoundError, PermissionDeniedError
 from app.domain.dpr.validators import validate_report_date
+from app.models.audit import AuditAction
 from app.models.dpr import DprHeader, DprIssue, DprMachinery, DprMaterial, DprProductionEntry, DprStatus, DprWorkItem
 from app.models.master_data import MachineryMaster, UomMaster
 from app.models.project import Project
@@ -21,7 +22,9 @@ from app.schemas.dpr import (
     DprHeaderUpdate,
     DprIssueCreate,
     DprMachineryCreate,
+    DprMachineryUpdate,
     DprMaterialCreate,
+    DprMaterialUpdate,
     DprProductionBulkUpsert,
     DprWorkItemCreate,
     ProductionProgressRead,
@@ -33,6 +36,7 @@ from app.schemas.dpr_report import (
     DprReportItemRead,
     DprReportSectionRead,
 )
+from app.services.audit_service import AuditService, serialize_model
 from app.services.notification_service import NotificationService
 from app.services.project_assignment_service import ProjectAssignmentService
 
@@ -49,6 +53,7 @@ class DprService:
         self.repo = DprRepository(session)
         self.notification_service = NotificationService(session, background_tasks)
         self.assignment_service = ProjectAssignmentService(session)
+        self.audit = AuditService(session)
 
     async def create_header(
         self, data: DprHeaderCreate, submitted_by: uuid.UUID, default_supervisor_name: str | None = None
@@ -75,10 +80,18 @@ class DprService:
             status=DprStatus.DRAFT,
         )
         self.repo.add(header)
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="DPR_HEADER",
+            entity_id=header.id,
+            action=AuditAction.CREATE,
+            actor_id=submitted_by,
+            after=serialize_model(header),
+        )
         await self.session.commit()
         return await self.get(header.id)
 
-    async def update_header(self, header_id: uuid.UUID, data: DprHeaderUpdate) -> DprHeader:
+    async def update_header(self, header_id: uuid.UUID, data: DprHeaderUpdate, actor_id: uuid.UUID) -> DprHeader:
         header = await self.session.get(DprHeader, header_id)
         if header is None:
             raise NotFoundError(f"DPR {header_id} not found.")
@@ -94,8 +107,18 @@ class DprService:
                     "or machinery entries. Remove them first."
                 )
 
+        before = serialize_model(header)
         for field, value in data.model_dump(exclude_unset=True).items():
             setattr(header, field, value)
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="DPR_HEADER",
+            entity_id=header.id,
+            action=AuditAction.UPDATE,
+            actor_id=actor_id,
+            before=before,
+            after=serialize_model(header),
+        )
         await self.session.commit()
         return await self.get(header_id)
 
@@ -120,39 +143,171 @@ class DprService:
             raise DomainError("Cannot add work, material, or machinery entries on a no-work day.")
         return header
 
-    async def add_work_item(self, header_id: uuid.UUID, data: DprWorkItemCreate) -> DprHeader:
+    async def add_work_item(self, header_id: uuid.UUID, data: DprWorkItemCreate, actor_id: uuid.UUID) -> DprHeader:
         await self._get_editable_work_header(header_id)
-        self.session.add(DprWorkItem(dpr_header_id=header_id, **data.model_dump()))
+        item = DprWorkItem(dpr_header_id=header_id, **data.model_dump())
+        self.session.add(item)
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="DPR_WORK_ITEM",
+            entity_id=item.id,
+            action=AuditAction.CREATE,
+            actor_id=actor_id,
+            after=serialize_model(item),
+        )
         await self.session.commit()
         return await self.get(header_id)
 
-    async def add_issue(self, header_id: uuid.UUID, data: DprIssueCreate) -> DprHeader:
+    async def add_issue(self, header_id: uuid.UUID, data: DprIssueCreate, actor_id: uuid.UUID) -> DprHeader:
         await self._get_editable_header(header_id)
-        self.session.add(DprIssue(dpr_header_id=header_id, **data.model_dump()))
+        issue = DprIssue(dpr_header_id=header_id, **data.model_dump())
+        self.session.add(issue)
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="DPR_ISSUE",
+            entity_id=issue.id,
+            action=AuditAction.CREATE,
+            actor_id=actor_id,
+            after=serialize_model(issue),
+        )
         await self.session.commit()
         return await self.get(header_id)
 
-    async def add_material(self, header_id: uuid.UUID, data: DprMaterialCreate) -> DprHeader:
+    async def add_material(self, header_id: uuid.UUID, data: DprMaterialCreate, actor_id: uuid.UUID) -> DprHeader:
         await self._get_editable_work_header(header_id)
-        self.session.add(DprMaterial(dpr_header_id=header_id, **data.model_dump()))
+        material = DprMaterial(dpr_header_id=header_id, **data.model_dump())
+        self.session.add(material)
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="DPR_MATERIAL",
+            entity_id=material.id,
+            action=AuditAction.CREATE,
+            actor_id=actor_id,
+            after=serialize_model(material),
+        )
         await self.session.commit()
         return await self.get(header_id)
 
-    async def add_machinery(self, header_id: uuid.UUID, data: DprMachineryCreate) -> DprHeader:
+    async def add_machinery(self, header_id: uuid.UUID, data: DprMachineryCreate, actor_id: uuid.UUID) -> DprHeader:
         await self._get_editable_work_header(header_id)
         payload = data.model_dump()
         if payload["hire_rate"] is None:
             machinery = await self.session.get(MachineryMaster, data.machinery_id)
             if machinery is not None:
                 payload["hire_rate"] = machinery.hire_rate
-        self.session.add(DprMachinery(dpr_header_id=header_id, **payload))
+        entry = DprMachinery(dpr_header_id=header_id, **payload)
+        self.session.add(entry)
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="DPR_MACHINERY",
+            entity_id=entry.id,
+            action=AuditAction.CREATE,
+            actor_id=actor_id,
+            after=serialize_model(entry),
+        )
         await self.session.commit()
         return await self.get(header_id)
 
-    async def submit(self, header_id: uuid.UUID) -> DprHeader:
+    async def update_material(
+        self, item_id: uuid.UUID, data: DprMaterialUpdate, actor_id: uuid.UUID
+    ) -> DprHeader:
+        material = await self.session.get(DprMaterial, item_id)
+        if material is None:
+            raise NotFoundError(f"DPR material entry {item_id} not found.")
+        header = await self.session.get(DprHeader, material.dpr_header_id)
+        if header is None or header.status != DprStatus.DRAFT:
+            raise PermissionDeniedError("Can only edit material entries on a DRAFT DPR.")
+        before = serialize_model(material)
+        material.qty_consumed = data.qty_consumed
+        material.uom_id = data.uom_id
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="DPR_MATERIAL",
+            entity_id=material.id,
+            action=AuditAction.UPDATE,
+            actor_id=actor_id,
+            before=before,
+            after=serialize_model(material),
+        )
+        await self.session.commit()
+        return await self.get(material.dpr_header_id)
+
+    async def delete_material(self, item_id: uuid.UUID, actor_id: uuid.UUID) -> None:
+        material = await self.session.get(DprMaterial, item_id)
+        if material is None:
+            raise NotFoundError(f"DPR material entry {item_id} not found.")
+        header = await self.session.get(DprHeader, material.dpr_header_id)
+        if header is None or header.status != DprStatus.DRAFT:
+            raise PermissionDeniedError("Can only delete material entries on a DRAFT DPR.")
+        before = serialize_model(material)
+        entity_id = material.id
+        await self.session.delete(material)
+        await self.audit.record(
+            entity_type="DPR_MATERIAL",
+            entity_id=entity_id,
+            action=AuditAction.DELETE,
+            actor_id=actor_id,
+            before=before,
+        )
+        await self.session.commit()
+
+    async def update_machinery(
+        self, item_id: uuid.UUID, data: DprMachineryUpdate, actor_id: uuid.UUID
+    ) -> DprHeader:
+        entry = await self.session.get(DprMachinery, item_id)
+        if entry is None:
+            raise NotFoundError(f"DPR machinery entry {item_id} not found.")
+        header = await self.session.get(DprHeader, entry.dpr_header_id)
+        if header is None or header.status != DprStatus.DRAFT:
+            raise PermissionDeniedError("Can only edit machinery entries on a DRAFT DPR.")
+        before = serialize_model(entry)
+        entry.hours_used = data.hours_used
+        entry.hire_rate = data.hire_rate
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="DPR_MACHINERY",
+            entity_id=entry.id,
+            action=AuditAction.UPDATE,
+            actor_id=actor_id,
+            before=before,
+            after=serialize_model(entry),
+        )
+        await self.session.commit()
+        return await self.get(entry.dpr_header_id)
+
+    async def delete_machinery(self, item_id: uuid.UUID, actor_id: uuid.UUID) -> None:
+        entry = await self.session.get(DprMachinery, item_id)
+        if entry is None:
+            raise NotFoundError(f"DPR machinery entry {item_id} not found.")
+        header = await self.session.get(DprHeader, entry.dpr_header_id)
+        if header is None or header.status != DprStatus.DRAFT:
+            raise PermissionDeniedError("Can only delete machinery entries on a DRAFT DPR.")
+        before = serialize_model(entry)
+        entity_id = entry.id
+        await self.session.delete(entry)
+        await self.audit.record(
+            entity_type="DPR_MACHINERY",
+            entity_id=entity_id,
+            action=AuditAction.DELETE,
+            actor_id=actor_id,
+            before=before,
+        )
+        await self.session.commit()
+
+    async def submit(self, header_id: uuid.UUID, actor_id: uuid.UUID) -> DprHeader:
         header = await self._get_editable_header(header_id)
+        before = serialize_model(header)
         header.status = DprStatus.SUBMITTED
         header.submitted_at = datetime.now(timezone.utc)
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="DPR_HEADER",
+            entity_id=header.id,
+            action=AuditAction.STATUS_CHANGE,
+            actor_id=actor_id,
+            before=before,
+            after=serialize_model(header),
+        )
         await self.session.commit()
         result = await self.get(header_id)
 
@@ -169,6 +324,23 @@ class DprService:
         )
         return result
 
+    async def delete_header(self, header_id: uuid.UUID, actor_id: uuid.UUID) -> None:
+        header = await self.session.get(DprHeader, header_id)
+        if header is None:
+            raise NotFoundError(f"DPR {header_id} not found.")
+        if header.status != DprStatus.DRAFT:
+            raise PermissionDeniedError("Only DRAFT DPRs can be deleted.")
+        before = serialize_model(header)
+        await self.session.delete(header)
+        await self.audit.record(
+            entity_type="DPR_HEADER",
+            entity_id=header_id,
+            action=AuditAction.DELETE,
+            actor_id=actor_id,
+            before=before,
+        )
+        await self.session.commit()
+
 
 class DprProductionService:
     def __init__(self, session: AsyncSession) -> None:
@@ -178,6 +350,7 @@ class DprProductionService:
         self.section_repo = BoqSectionRepository(session)
         self.dpr_repo = DprRepository(session)
         self.measurement_repo = MeasurementRepository(session)
+        self.audit = AuditService(session)
 
     async def sync_from_measurements(
         self, project_id: uuid.UUID, boq_item_id: uuid.UUID, measurement_date: date, actor_id: uuid.UUID
@@ -230,7 +403,7 @@ class DprProductionService:
         await self.session.commit()
 
     async def bulk_upsert(
-        self, header_id: uuid.UUID, data: DprProductionBulkUpsert
+        self, header_id: uuid.UUID, data: DprProductionBulkUpsert, actor_id: uuid.UUID
     ) -> list[DprProductionEntry]:
         header = await self.session.get(DprHeader, header_id)
         if header is None:
@@ -260,16 +433,35 @@ class DprProductionService:
 
             if entry_data.qty_today == Decimal(0):
                 if existing is not None:
+                    before = serialize_model(existing)
+                    entity_id = existing.id
                     await self.session.delete(existing)
+                    await self.audit.record(
+                        entity_type="DPR_PRODUCTION_ENTRY",
+                        entity_id=entity_id,
+                        action=AuditAction.DELETE,
+                        actor_id=actor_id,
+                        before=before,
+                    )
                 continue
 
             amount = (entry_data.qty_today * boq_item.rate).quantize(Decimal("0.01"))
 
             if existing is not None:
+                before = serialize_model(existing)
                 existing.qty_today = entry_data.qty_today
                 existing.amount_today = amount
                 existing.chainage = entry_data.chainage
                 existing.remarks = entry_data.remarks
+                await self.session.flush()
+                await self.audit.record(
+                    entity_type="DPR_PRODUCTION_ENTRY",
+                    entity_id=existing.id,
+                    action=AuditAction.UPDATE,
+                    actor_id=actor_id,
+                    before=before,
+                    after=serialize_model(existing),
+                )
                 results.append(existing)
             else:
                 new_entry = DprProductionEntry(
@@ -281,6 +473,14 @@ class DprProductionService:
                     remarks=entry_data.remarks,
                 )
                 self.session.add(new_entry)
+                await self.session.flush()
+                await self.audit.record(
+                    entity_type="DPR_PRODUCTION_ENTRY",
+                    entity_id=new_entry.id,
+                    action=AuditAction.CREATE,
+                    actor_id=actor_id,
+                    after=serialize_model(new_entry),
+                )
                 results.append(new_entry)
 
         await self.session.commit()

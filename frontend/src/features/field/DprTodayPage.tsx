@@ -9,6 +9,7 @@ import {
   Input,
   InputNumber,
   List,
+  Popconfirm,
   Select,
   Space,
   Switch,
@@ -28,6 +29,7 @@ import { useAuthStore } from '@/store/auth-store';
 import {
   useBulkUpsertProduction,
   useCreateDprHeader,
+  useDeleteDprHeader,
   useDprHeader,
   useDprList,
   useDprProduction,
@@ -95,17 +97,22 @@ function ProductionTab({
 
   const [activitySummary, setActivitySummary] = useState('');
   const [production, setProduction] = useState<Record<string, ProductionState>>({});
-  const initialized = useRef(false);
+  // Tracks which rows the user has edited locally since the last save, so an
+  // external update (e.g. a Measurement syncing its qty into this same day)
+  // can still flow in for untouched rows without clobbering an in-progress edit.
+  const touchedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    if (existingEntries && !initialized.current) {
-      initialized.current = true;
-      const init: Record<string, ProductionState> = {};
+    if (!existingEntries) return;
+    setProduction((prev) => {
+      const next = { ...prev };
       for (const e of existingEntries) {
-        init[e.boq_item_id] = { qty: e.qty_today, chainage: e.chainage ?? '' };
+        if (!touchedRef.current.has(e.boq_item_id)) {
+          next[e.boq_item_id] = { qty: e.qty_today, chainage: e.chainage ?? '' };
+        }
       }
-      setProduction(init);
-    }
+      return next;
+    });
   }, [existingEntries]);
 
   const handleSave = async () => {
@@ -122,17 +129,22 @@ function ProductionTab({
         headerId,
         data: { daily_work_summary: activitySummary.trim() || null, entries },
       });
+      touchedRef.current.clear();
       message.success('Production entries saved');
     } catch {
       message.error('Could not save production entries');
     }
   };
 
-  const setQty = (boqItemId: string, qty: string) =>
+  const setQty = (boqItemId: string, qty: string) => {
+    touchedRef.current.add(boqItemId);
     setProduction((prev) => ({ ...prev, [boqItemId]: { ...prev[boqItemId], qty } }));
+  };
 
-  const setChainage = (boqItemId: string, chainage: string) =>
+  const setChainage = (boqItemId: string, chainage: string) => {
+    touchedRef.current.add(boqItemId);
     setProduction((prev) => ({ ...prev, [boqItemId]: { ...prev[boqItemId], chainage } }));
+  };
 
   const rows = buildProductionRows(sections ?? []);
 
@@ -280,10 +292,12 @@ export function DprTodayPage() {
   const selectedProjectId = useProjectContextStore((s) => s.selectedProjectId);
   const currentDprHeaderId = useProjectContextStore((s) => s.currentDprHeaderId);
   const setCurrentDprHeaderId = useProjectContextStore((s) => s.setCurrentDprHeaderId);
+  const selectedEntryDate = useProjectContextStore((s) => s.selectedEntryDate);
+  const setSelectedEntryDate = useProjectContextStore((s) => s.setSelectedEntryDate);
   const authUser = useAuthStore((s) => s.user);
 
-  const [entryDate, setEntryDate] = useState(() => dayjs());
-  const entryDateStr = entryDate.format('YYYY-MM-DD');
+  const entryDate = dayjs(selectedEntryDate);
+  const entryDateStr = selectedEntryDate;
   const isToday = entryDateStr === dayjs().format('YYYY-MM-DD');
   const { fmtDate, dateFormat } = useDateFormat();
   const { data: projects } = useProjects();
@@ -292,6 +306,7 @@ export function DprTodayPage() {
   const { data: header } = useDprHeader(currentDprHeaderId);
   const createHeader = useCreateDprHeader();
   const updateHeader = useUpdateDprHeader();
+  const deleteHeader = useDeleteDprHeader();
   const addIssue = useAddDprIssue();
   const submitDpr = useSubmitDpr();
   const uploadPhoto = useUploadPhoto();
@@ -314,36 +329,36 @@ export function DprTodayPage() {
     }
   }, [selectedDateHeader, currentDprHeaderId, setCurrentDprHeaderId, listLoading]);
 
-  // Re-initializes the form fields exactly once per header (or once per
-  // transition to "no header yet") — not on every background refetch of
-  // the same header, which would otherwise clobber an in-progress edit.
   useEffect(() => {
-    if (currentDprHeaderId === null) {
-      if (initializedForHeaderId.current !== null) {
-        initializedForHeaderId.current = null;
-        setSupervisorName(authUser?.fullName ?? '');
-        setNoWork(false);
+    const timer = setTimeout(() => {
+      if (currentDprHeaderId === null) {
+        if (initializedForHeaderId.current !== null) {
+          initializedForHeaderId.current = null;
+          setSupervisorName(authUser?.fullName ?? '');
+          setNoWork(false);
+          setNoWorkReasonKind('Rain');
+          setNoWorkReasonCustom('');
+        }
+        return;
+      }
+      if (!header || header.id !== currentDprHeaderId) return;
+      if (initializedForHeaderId.current === currentDprHeaderId) return;
+      initializedForHeaderId.current = currentDprHeaderId;
+      setSupervisorName(header.supervisor_name ?? authUser?.fullName ?? '');
+      setNoWork(header.no_work);
+      if (header.no_work_reason) {
+        if ((NO_WORK_REASONS as readonly string[]).includes(header.no_work_reason)) {
+          setNoWorkReasonKind(header.no_work_reason);
+        } else {
+          setNoWorkReasonKind('Other');
+          setNoWorkReasonCustom(header.no_work_reason);
+        }
+      } else {
         setNoWorkReasonKind('Rain');
         setNoWorkReasonCustom('');
       }
-      return;
-    }
-    if (!header || header.id !== currentDprHeaderId) return;
-    if (initializedForHeaderId.current === currentDprHeaderId) return;
-    initializedForHeaderId.current = currentDprHeaderId;
-    setSupervisorName(header.supervisor_name ?? authUser?.fullName ?? '');
-    setNoWork(header.no_work);
-    if (header.no_work_reason) {
-      if ((NO_WORK_REASONS as readonly string[]).includes(header.no_work_reason)) {
-        setNoWorkReasonKind(header.no_work_reason);
-      } else {
-        setNoWorkReasonKind('Other');
-        setNoWorkReasonCustom(header.no_work_reason);
-      }
-    } else {
-      setNoWorkReasonKind('Rain');
-      setNoWorkReasonCustom('');
-    }
+    }, 0);
+    return () => clearTimeout(timer);
   }, [currentDprHeaderId, header, authUser]);
 
   const computedNoWorkReason = noWorkReasonKind === 'Other' ? noWorkReasonCustom.trim() : noWorkReasonKind;
@@ -425,6 +440,17 @@ export function DprTodayPage() {
     }
   };
 
+  const handleDeleteDpr = async () => {
+    if (!currentDprHeaderId || !selectedProjectId) return;
+    try {
+      await deleteHeader.mutateAsync({ headerId: currentDprHeaderId, projectId: selectedProjectId });
+      setCurrentDprHeaderId(null);
+      message.success('DPR deleted');
+    } catch {
+      message.error('Could not delete DPR');
+    }
+  };
+
   if (!selectedProjectId) {
     return (
       <div>
@@ -444,7 +470,7 @@ export function DprTodayPage() {
   const entryDatePicker = (
     <DatePicker
       value={entryDate}
-      onChange={(d) => { if (d) setEntryDate(d); }}
+      onChange={(d) => { if (d) setSelectedEntryDate(d.format('YYYY-MM-DD')); }}
       disabledDate={disabledEntryDate}
       format={dateFormat}
       allowClear={false}
@@ -657,9 +683,22 @@ export function DprTodayPage() {
       )}
 
       {!isSubmitted && (
-        <Button danger block size="large" style={{ marginTop: 16 }} loading={submitDpr.isPending} onClick={handleSubmit}>
-          Submit Today's DPR
-        </Button>
+        <Space direction="vertical" style={{ width: '100%', marginTop: 16 }}>
+          <Button danger block size="large" loading={submitDpr.isPending} onClick={handleSubmit}>
+            Submit Today's DPR
+          </Button>
+          <Popconfirm
+            title="Delete this DPR?"
+            description="All production entries, materials, machinery, and issues for this date will be permanently deleted."
+            onConfirm={handleDeleteDpr}
+            okText="Delete"
+            okButtonProps={{ danger: true }}
+          >
+            <Button block size="large" loading={deleteHeader.isPending}>
+              Delete this DPR
+            </Button>
+          </Popconfirm>
+        </Space>
       )}
       </RequireAttendance>
     </div>

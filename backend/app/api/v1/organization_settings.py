@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import APIRouter, Depends
 
 from app.api.deps import CurrentUserDep, SessionDep, require_role
@@ -20,7 +22,7 @@ async def get_organization_settings(session: SessionDep, _: CurrentUserDep) -> O
     dependencies=[Depends(require_role(UserRole.ADMIN))],
 )
 async def update_organization_settings(
-    data: OrganizationSettingsUpdate, session: SessionDep
+    data: OrganizationSettingsUpdate, session: SessionDep, current_user: CurrentUserDep
 ) -> OrganizationSettingsRead:
-    settings = await OrganizationSettingsService(session).update(data)
+    settings = await OrganizationSettingsService(session).update(data, actor_id=uuid.UUID(current_user.id))
     return OrganizationSettingsRead.model_validate(settings)

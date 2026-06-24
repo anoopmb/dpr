@@ -12,11 +12,13 @@ from app.domain.material.validators import (
     validate_source_location_matches_type,
 )
 from app.domain.material.workflow import MaterialIndentStatus, transition
+from app.models.audit import AuditAction
 from app.models.material import MaterialIndent, MaterialIndentItem, MaterialIssue, MaterialReceipt
 from app.models.stock_location import StockLocation
 from app.models.user import UserRole
 from app.repositories.material_repo import MaterialIndentItemRepository, MaterialIndentRepository
 from app.schemas.material import MaterialIndentCreate, MaterialIssueCreate, MaterialReceiptCreate
+from app.services.audit_service import AuditService, serialize_model
 from app.services.notification_service import NotificationService
 from app.services.project_assignment_service import ProjectAssignmentService
 
@@ -24,9 +26,6 @@ _APPROVER_ROLES = (UserRole.STORE_KEEPER, UserRole.PROJECT_MANAGER, UserRole.ADM
 _ISSUER_ROLES = (UserRole.STORE_KEEPER, UserRole.PROJECT_MANAGER, UserRole.ADMIN)
 _RECEIVER_ROLES = (UserRole.SITE_ENGINEER, UserRole.PROJECT_MANAGER, UserRole.ADMIN)
 _INDENTS_LINK = "/material-indents"
-# Approvers (PM/Store Keeper) use the desktop page; the requester (often a
-# Site Engineer, locked out of that desktop-only route) gets the
-# field-accessible equivalent instead.
 _INDENTS_FIELD_LINK = "/field/my-indents"
 
 
@@ -37,6 +36,7 @@ class MaterialIndentService:
         self.item_repo = MaterialIndentItemRepository(session)
         self.notification_service = NotificationService(session, background_tasks)
         self.assignment_service = ProjectAssignmentService(session)
+        self.audit = AuditService(session)
 
     async def create(self, data: MaterialIndentCreate, requested_by: uuid.UUID) -> MaterialIndent:
         location = await self.session.get(StockLocation, data.source_location_id)
@@ -57,6 +57,14 @@ class MaterialIndentService:
             for item in data.items
         ]
         self.repo.add(indent)
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="MATERIAL_INDENT",
+            entity_id=indent.id,
+            action=AuditAction.CREATE,
+            actor_id=requested_by,
+            after=serialize_model(indent),
+        )
         await self.session.commit()
         return await self.get(indent.id)
 
@@ -73,7 +81,17 @@ class MaterialIndentService:
         indent = await self.get(indent_id)
         if indent.requested_by != actor_id and actor_role != UserRole.ADMIN:
             raise PermissionDeniedError("Only the requester can submit this indent.")
+        before = serialize_model(indent)
         indent.status = transition(MaterialIndentStatus(indent.status), MaterialIndentStatus.SUBMITTED)
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="MATERIAL_INDENT",
+            entity_id=indent.id,
+            action=AuditAction.STATUS_CHANGE,
+            actor_id=actor_id,
+            before=before,
+            after=serialize_model(indent),
+        )
         await self.session.commit()
         result = await self.get(indent_id)
 
@@ -99,9 +117,19 @@ class MaterialIndentService:
         if actor_role not in _APPROVER_ROLES:
             raise PermissionDeniedError("Only Store Keeper/Project Manager/Admin can approve an indent.")
         indent = await self.get(indent_id)
+        before = serialize_model(indent)
         indent.status = transition(MaterialIndentStatus(indent.status), MaterialIndentStatus.APPROVED)
         indent.approved_by = actor_id
         indent.approved_at = datetime.now(timezone.utc)
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="MATERIAL_INDENT",
+            entity_id=indent.id,
+            action=AuditAction.STATUS_CHANGE,
+            actor_id=actor_id,
+            before=before,
+            after=serialize_model(indent),
+        )
         await self.session.commit()
         result = await self.get(indent_id)
 
@@ -117,11 +145,21 @@ class MaterialIndentService:
         )
         return result
 
-    async def reject(self, indent_id: uuid.UUID, actor_role: UserRole) -> MaterialIndent:
+    async def reject(self, indent_id: uuid.UUID, actor_id: uuid.UUID, actor_role: UserRole) -> MaterialIndent:
         if actor_role not in _APPROVER_ROLES:
             raise PermissionDeniedError("Only Store Keeper/Project Manager/Admin can reject an indent.")
         indent = await self.get(indent_id)
+        before = serialize_model(indent)
         indent.status = transition(MaterialIndentStatus(indent.status), MaterialIndentStatus.REJECTED)
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="MATERIAL_INDENT",
+            entity_id=indent.id,
+            action=AuditAction.STATUS_CHANGE,
+            actor_id=actor_id,
+            before=before,
+            after=serialize_model(indent),
+        )
         await self.session.commit()
         result = await self.get(indent_id)
 
@@ -141,8 +179,18 @@ class MaterialIndentService:
         indent = await self.get(indent_id)
         if indent.requested_by != actor_id and actor_role != UserRole.ADMIN:
             raise PermissionDeniedError("Only the requester can cancel this indent.")
+        before = serialize_model(indent)
         was_submitted = indent.status == MaterialIndentStatus.SUBMITTED
         indent.status = transition(MaterialIndentStatus(indent.status), MaterialIndentStatus.CANCELLED)
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="MATERIAL_INDENT",
+            entity_id=indent.id,
+            action=AuditAction.STATUS_CHANGE,
+            actor_id=actor_id,
+            before=before,
+            after=serialize_model(indent),
+        )
         await self.session.commit()
         result = await self.get(indent_id)
 
@@ -186,20 +234,27 @@ class MaterialIndentService:
             data.issued_qty,
         )
 
-        self.session.add(
-            MaterialIssue(
-                material_indent_item_id=item.id,
-                issued_qty=data.issued_qty,
-                issued_by=actor_id,
-                issued_at=datetime.now(timezone.utc),
-                vehicle_ref=data.vehicle_ref,
-            )
+        issue = MaterialIssue(
+            material_indent_item_id=item.id,
+            issued_qty=data.issued_qty,
+            issued_by=actor_id,
+            issued_at=datetime.now(timezone.utc),
+            vehicle_ref=data.vehicle_ref,
         )
+        self.session.add(issue)
         item.issued_qty += data.issued_qty
 
         if indent.status == MaterialIndentStatus.APPROVED:
             indent.status = transition(MaterialIndentStatus.APPROVED, MaterialIndentStatus.ISSUED)
 
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="MATERIAL_ISSUE",
+            entity_id=issue.id,
+            action=AuditAction.CREATE,
+            actor_id=actor_id,
+            after=serialize_model(issue),
+        )
         await self.session.commit()
         await self.session.refresh(item)
 
@@ -239,18 +294,24 @@ class MaterialIndentService:
             data.received_qty,
         )
 
-        self.session.add(
-            MaterialReceipt(
-                material_indent_item_id=item.id,
-                received_qty=data.received_qty,
-                received_by=actor_id,
-                received_at=datetime.now(timezone.utc),
-                photo_url=data.photo_url,
-                remarks=data.remarks,
-            )
+        receipt = MaterialReceipt(
+            material_indent_item_id=item.id,
+            received_qty=data.received_qty,
+            received_by=actor_id,
+            received_at=datetime.now(timezone.utc),
+            photo_url=data.photo_url,
+            remarks=data.remarks,
         )
+        self.session.add(receipt)
         item.received_qty += data.received_qty
         await self.session.flush()
+        await self.audit.record(
+            entity_type="MATERIAL_RECEIPT",
+            entity_id=receipt.id,
+            action=AuditAction.CREATE,
+            actor_id=actor_id,
+            after=serialize_model(receipt),
+        )
 
         refreshed_indent = await self.get(indent.id)
         all_received = all(i.received_qty == i.requested_qty for i in refreshed_indent.items)
