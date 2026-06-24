@@ -104,6 +104,19 @@ body {
   background-color: rgba(255, 255, 255, 0.14) !important;
 }
 
+/* Prevent iOS Safari from auto-zooming the viewport when an input is focused.
+   iOS zooms when the focused input's font-size is < 16px. Antd defaults to 14px. */
+@media screen and (max-width: 767px) {
+  .ant-input,
+  .ant-input-number-input,
+  .ant-select-selection-search-input,
+  .ant-picker-input > input,
+  textarea.ant-input,
+  .ant-input-affix-wrapper .ant-input {
+    font-size: 16px !important;
+  }
+}
+
 @media print {
   .no-print {
     display: none !important;

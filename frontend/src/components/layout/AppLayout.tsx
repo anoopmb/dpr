@@ -15,6 +15,8 @@ import {
   IdcardOutlined,
   InboxOutlined,
   LogoutOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
   MoonFilled,
   PercentageOutlined,
   RiseOutlined,
@@ -315,12 +317,18 @@ export function AppLayout({ children }: { children: ReactNode }) {
           >
             <Button
               type="text"
+              icon={isMobile
+                ? <MenuUnfoldOutlined style={{ fontSize: 18 }} />
+                : desktopCollapsed
+                  ? <MenuUnfoldOutlined style={{ fontSize: 16 }} />
+                  : <MenuFoldOutlined style={{ fontSize: 16 }} />
+              }
               onClick={() =>
                 isMobile ? setMobileNavOpenState((prev) => !prev) : setDesktopCollapsedState((prev) => !prev)
               }
-              style={{ color: palette.headerText }}
+              style={{ color: palette.headerText, minWidth: 44, minHeight: 44 }}
             >
-              {isField ? 'Field Entry' : isAdmin ? 'Admin Dashboard' : 'Dashboard'}
+              {!isMobile && (isField ? 'Field Entry' : isAdmin ? 'Admin' : 'Menu')}
             </Button>
             <Space>
               <NotificationBell color={palette.headerText} />

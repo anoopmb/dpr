@@ -270,6 +270,7 @@ export function MeasurementsPage() {
         dataSource={rows}
         columns={columns}
         bordered
+        scroll={{ x: 800 }}
         onRow={(row) => ({ style: { background: row._type === 'date-header' ? DATE_HDR_BG : undefined } })}
       />
 

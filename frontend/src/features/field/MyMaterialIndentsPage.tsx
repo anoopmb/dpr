@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Empty, Form, InputNumber, Modal, Select, Space, Table, Tag, Typography, message } from 'antd';
+import { Button, Col, Empty, Form, InputNumber, Modal, Row, Select, Space, Table, Tag, Typography, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
@@ -138,11 +138,13 @@ export function MyMaterialIndentsPage() {
           loading={isLoading}
           dataSource={indents ?? []}
           size="small"
+          scroll={{ x: 500 }}
           expandable={{
             expandedRowRender: (indent) => (
               <Table
                 rowKey="id"
                 pagination={false}
+                scroll={{ x: 460 }}
                 dataSource={indent.items}
                 columns={[
                   { title: 'Material', dataIndex: 'material_id', render: (id: string) => materialById.get(id)?.name ?? id },
@@ -207,7 +209,6 @@ export function MyMaterialIndentsPage() {
         onCancel={() => setModalOpen(false)}
         onOk={() => form.submit()}
         confirmLoading={createIndent.isPending}
-        width={640}
         destroyOnHidden
       >
         <Form form={form} layout="vertical" onFinish={handleCreate} initialValues={{ items: [{}] }}>
@@ -229,20 +230,30 @@ export function MyMaterialIndentsPage() {
             {(fields, { add, remove }) => (
               <>
                 {fields.map((field) => (
-                  <Space key={field.key} align="baseline" style={{ display: 'flex', marginBottom: 8 }}>
-                    <Form.Item name={[field.name, 'material_id']} rules={[{ required: true }]} style={{ width: 180 }}>
-                      <Select placeholder="Material" options={(materials ?? []).map((m) => ({ value: m.id, label: m.name }))} />
-                    </Form.Item>
-                    <Form.Item name={[field.name, 'uom_id']} rules={[{ required: true }]} style={{ width: 100 }}>
-                      <Select placeholder="Unit" options={(uoms ?? []).map((u) => ({ value: u.id, label: u.code }))} />
-                    </Form.Item>
-                    <Form.Item name={[field.name, 'requested_qty']} rules={[{ required: true }]} style={{ width: 110 }}>
-                      <InputNumber min={0} placeholder="Qty" />
-                    </Form.Item>
-                    {fields.length > 1 && <Button danger onClick={() => remove(field.name)}>Remove</Button>}
-                  </Space>
+                  <Row key={field.key} gutter={[8, 0]} align="middle" style={{ marginBottom: 8 }}>
+                    <Col xs={24} sm={10}>
+                      <Form.Item name={[field.name, 'material_id']} rules={[{ required: true }]} style={{ marginBottom: 0 }}>
+                        <Select placeholder="Material" options={(materials ?? []).map((m) => ({ value: m.id, label: m.name }))} />
+                      </Form.Item>
+                    </Col>
+                    <Col xs={12} sm={5}>
+                      <Form.Item name={[field.name, 'uom_id']} rules={[{ required: true }]} style={{ marginBottom: 0 }}>
+                        <Select placeholder="Unit" options={(uoms ?? []).map((u) => ({ value: u.id, label: u.code }))} />
+                      </Form.Item>
+                    </Col>
+                    <Col xs={12} sm={5}>
+                      <Form.Item name={[field.name, 'requested_qty']} rules={[{ required: true }]} style={{ marginBottom: 0 }}>
+                        <InputNumber min={0} placeholder="Qty" style={{ width: '100%' }} />
+                      </Form.Item>
+                    </Col>
+                    {fields.length > 1 && (
+                      <Col xs={24} sm={4}>
+                        <Button danger block onClick={() => remove(field.name)}>Remove</Button>
+                      </Col>
+                    )}
+                  </Row>
                 ))}
-                <Button onClick={() => add()} block>
+                <Button onClick={() => add()} block style={{ marginTop: 4 }}>
                   Add Material Line
                 </Button>
               </>

@@ -138,7 +138,7 @@ export function MachineryUsedPage() {
                 actions={
                   isDraft
                     ? [
-                        <Button key="edit" size="small" onClick={() => openEdit(row)}>Edit</Button>,
+                        <Button key="edit" onClick={() => openEdit(row)}>Edit</Button>,
                         <Popconfirm
                           key="delete"
                           title="Delete this machinery entry?"
@@ -146,7 +146,7 @@ export function MachineryUsedPage() {
                           okText="Delete"
                           okButtonProps={{ danger: true }}
                         >
-                          <Button size="small" danger loading={deleteMachinery.isPending}>Delete</Button>
+                          <Button danger loading={deleteMachinery.isPending}>Delete</Button>
                         </Popconfirm>,
                       ]
                     : []

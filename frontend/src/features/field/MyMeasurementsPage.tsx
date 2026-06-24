@@ -170,7 +170,7 @@ export function MyMeasurementsPage() {
       {!selectedProjectId && <Empty description="Select a project to view your measurements." />}
 
       {selectedProjectId && (
-        <Table rowKey="id" loading={isLoading} dataSource={mine} columns={columns} bordered size="small" />
+        <Table rowKey="id" loading={isLoading} dataSource={mine} columns={columns} bordered size="small" scroll={{ x: 680 }} />
       )}
 
       <Modal

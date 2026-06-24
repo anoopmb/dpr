@@ -263,6 +263,7 @@ function ProductionTab({
         pagination={false}
         size="small"
         bordered
+        scroll={{ x: 560 }}
         onRow={(row) => ({
           style: { background: row._type === 'header' ? HDR_BG : undefined },
         })}

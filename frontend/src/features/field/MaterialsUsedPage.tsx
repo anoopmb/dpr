@@ -160,7 +160,7 @@ export function MaterialsUsedPage() {
                   actions={
                     isDraft
                       ? [
-                          <Button key="edit" size="small" onClick={() => openEdit(row)}>Edit</Button>,
+                          <Button key="edit" onClick={() => openEdit(row)}>Edit</Button>,
                           <Popconfirm
                             key="delete"
                             title="Delete this material entry?"
@@ -168,7 +168,7 @@ export function MaterialsUsedPage() {
                             okText="Delete"
                             okButtonProps={{ danger: true }}
                           >
-                            <Button size="small" danger loading={deleteMaterial.isPending}>Delete</Button>
+                            <Button danger loading={deleteMaterial.isPending}>Delete</Button>
                           </Popconfirm>,
                         ]
                       : []
