@@ -39,7 +39,11 @@ export function NotificationBell({ color }: { color: string }) {
   const dropdownContent = (
     <div
       style={{
-        width: 360,
+        // Fixed 360px overflowed off-screen on narrow phones (the dropdown
+        // anchors its right edge to the bell icon, so a width wider than
+        // the viewport pushes the left edge — and most of the content —
+        // off-screen). Cap it to the viewport width minus a small margin.
+        width: 'min(360px, calc(100vw - 24px))',
         maxHeight: 420,
         overflowY: 'auto',
         background: token.colorBgElevated,
