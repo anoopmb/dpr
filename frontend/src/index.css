@@ -49,6 +49,14 @@ input:-webkit-autofill:active {
 html {
   overflow-x: hidden;
   width: 100%;
+  /* scrollbar-gutter has NO effect while overflow is "visible" (the CSS
+     Overflow spec only applies it for auto/scroll/hidden) — html's
+     overflow-y was never explicitly set, so it defaulted to visible and
+     the gutter reservation below was a silent no-op. overflow-y: scroll
+     both satisfies that requirement and keeps the scrollbar permanently
+     visible, so there's never an "appears/disappears" transition for
+     antd's scroll-lock to compensate for in the first place. */
+  overflow-y: scroll;
   /* Permanently reserve the vertical scrollbar's gutter so its width is
      accounted for whether or not it's actually showing. Without this,
      opening any Modal/Drawer/Dropdown triggers antd's scroll-lock (see
