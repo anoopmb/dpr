@@ -1,4 +1,4 @@
-import { Badge, Button, Dropdown, Empty, List, Typography, theme } from 'antd';
+import { Badge, Button, Dropdown, Empty, List, Skeleton, Typography, theme } from 'antd';
 import { BellOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -17,7 +17,7 @@ export function NotificationBell({ color }: { color: string }) {
   const { token } = theme.useToken();
   const navigate = useNavigate();
   const setSelectedProjectId = useProjectContextStore((s) => s.setSelectedProjectId);
-  const { data } = useNotifications();
+  const { data, isLoading } = useNotifications();
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllNotificationsRead();
 
@@ -55,7 +55,9 @@ export function NotificationBell({ color }: { color: string }) {
           </Button>
         )}
       </div>
-      {items.length === 0 ? (
+      {isLoading ? (
+        <Skeleton active paragraph={{ rows: 3 }} style={{ padding: 14 }} />
+      ) : items.length === 0 ? (
         <Empty description="No notifications" style={{ padding: 24 }} />
       ) : (
         <List

@@ -39,7 +39,7 @@ export function AttendanceCheckInPage() {
   const { fmtDate } = useDateFormat();
 
   const { data: workers } = useWorkers(selectedProjectId);
-  const { data: attendance } = useAttendanceRecords(selectedProjectId);
+  const { data: attendance, isLoading: attendanceLoading } = useAttendanceRecords(selectedProjectId);
   const { data: categories } = useWorkerCategories();
   const createWorker = useCreateWorker();
   const checkIn = useCheckIn();
@@ -340,6 +340,7 @@ export function AttendanceCheckInPage() {
       <List
         style={{ marginTop: 24 }}
         header={<b>Today's attendance</b>}
+        loading={attendanceLoading}
         dataSource={(attendance ?? []).filter((a) => a.attendance_date === todayStr)}
         renderItem={(row) => {
           const worker = (workers ?? []).find((w) => w.id === row.worker_id);

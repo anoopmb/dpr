@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Button, Card, Col, DatePicker, Empty, Row, Space, Statistic, Table, Typography } from 'antd';
+import { Button, Card, Col, DatePicker, Empty, Row, Skeleton, Space, Statistic, Table, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
@@ -135,7 +135,9 @@ export function ProfitabilityPage() {
             />
           </Space>
 
-          {profitability && (
+          {isLoading && <Skeleton active paragraph={{ rows: 8 }} />}
+
+          {!isLoading && profitability && (
             <>
               <Row gutter={16} style={{ marginBottom: 16 }}>
                 <Col xs={12} md={6}>

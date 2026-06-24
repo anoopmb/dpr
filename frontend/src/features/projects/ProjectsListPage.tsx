@@ -14,6 +14,7 @@ import {
   Modal,
   Popconfirm,
   Select,
+  Skeleton,
   Space,
   Switch,
   Table,
@@ -66,8 +67,8 @@ interface ProjectEditFormValues {
 }
 
 function AssignmentsModal({ project, onClose }: { project: ProjectRead; onClose: () => void }) {
-  const { data: users } = useUsers();
-  const { data: assignments } = useProjectAssignments(project.id);
+  const { data: users, isLoading: usersLoading } = useUsers();
+  const { data: assignments, isLoading: assignmentsLoading } = useProjectAssignments(project.id);
   const createAssignment = useCreateProjectAssignment();
   const deleteAssignment = useDeleteProjectAssignment();
   const updateProject = useUpdateProject();
@@ -116,6 +117,7 @@ function AssignmentsModal({ project, onClose }: { project: ProjectRead; onClose:
             allowClear
             showSearch
             optionFilterProp="label"
+            loading={usersLoading}
             style={{ width: '100%', marginTop: 4 }}
             value={project.project_manager_id ?? undefined}
             onChange={(v) => handlePrimaryChange('project_manager_id', v ?? null)}
@@ -129,6 +131,7 @@ function AssignmentsModal({ project, onClose }: { project: ProjectRead; onClose:
             allowClear
             showSearch
             optionFilterProp="label"
+            loading={usersLoading}
             style={{ width: '100%', marginTop: 4 }}
             value={project.site_engineer_id ?? undefined}
             onChange={(v) => handlePrimaryChange('site_engineer_id', v ?? null)}
@@ -153,12 +156,15 @@ function AssignmentsModal({ project, onClose }: { project: ProjectRead; onClose:
               placeholder="Select user"
               showSearch
               optionFilterProp="label"
+              loading={usersLoading}
             />
             <Button type="primary" onClick={handleAdd} loading={createAssignment.isPending}>
               Add
             </Button>
           </Space.Compact>
-          {(assignments ?? []).length === 0 ? (
+          {assignmentsLoading ? (
+            <Skeleton active paragraph={{ rows: 2 }} />
+          ) : (assignments ?? []).length === 0 ? (
             <Empty description="No additional assignments" />
           ) : (
             <List

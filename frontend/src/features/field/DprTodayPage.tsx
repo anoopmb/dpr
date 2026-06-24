@@ -11,6 +11,7 @@ import {
   List,
   Popconfirm,
   Select,
+  Skeleton,
   Space,
   Switch,
   Table,
@@ -236,7 +237,7 @@ function ProductionTab({
     },
   ];
 
-  if (sectionsLoading) return <Typography.Text>Loading BOQ...</Typography.Text>;
+  if (sectionsLoading) return <Skeleton active paragraph={{ rows: 4 }} />;
 
   if ((sections ?? []).length === 0) {
     return (
@@ -463,7 +464,7 @@ export function DprTodayPage() {
     );
   }
 
-  if (listLoading) return <Typography.Text>Loading...</Typography.Text>;
+  if (listLoading) return <Skeleton active paragraph={{ rows: 4 }} />;
 
   const minDate = project ? dayjs(project.start_date) : undefined;
   const disabledEntryDate = (d: dayjs.Dayjs) =>

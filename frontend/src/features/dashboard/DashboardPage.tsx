@@ -171,10 +171,10 @@ function SectionHeading({ label }: { label: string }) {
 
 // ─── KPI card ─────────────────────────────────────────────────────────────────
 function KpiCard({
-  title, value, icon, color = P.blue, subtitle,
+  title, value, icon, color = P.blue, subtitle, loading,
 }: {
   title: string; value: string; icon: React.ReactNode;
-  color?: string; subtitle?: string;
+  color?: string; subtitle?: string; loading?: boolean;
 }) {
   const { token } = antTheme.useToken();
   return (
@@ -188,10 +188,14 @@ function KpiCard({
           <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8, color: token.colorTextSecondary, fontWeight: 600, marginBottom: 8 }}>
             {title}
           </div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: token.colorText, lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {value}
-          </div>
-          {subtitle && (
+          {loading ? (
+            <Skeleton.Input active size="small" style={{ height: 28, width: 100 }} />
+          ) : (
+            <div style={{ fontSize: 22, fontWeight: 700, color: token.colorText, lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {value}
+            </div>
+          )}
+          {subtitle && !loading && (
             <div style={{ fontSize: 11, color: token.colorTextSecondary, marginTop: 5 }}>{subtitle}</div>
           )}
         </div>
@@ -1174,7 +1178,7 @@ function AdminPortfolioView({ onSelectProject }: { onSelectProject: (id: string)
 // ─── Project Dashboard ────────────────────────────────────────────────────────
 function ProjectDashboard({ projectId, role }: { projectId: string; role: UserRole }) {
   const { data: projects }  = useProjects();
-  const { data: summary }   = useProjectSummary(projectId);
+  const { data: summary, isLoading: summaryLoading } = useProjectSummary(projectId);
   const { fmtAmt }          = useNumberFormat();
   const project             = projects?.find((p) => p.id === projectId);
 
@@ -1183,10 +1187,12 @@ function ProjectDashboard({ projectId, role }: { projectId: string; role: UserRo
   const isSe        = role === 'SITE_ENGINEER';
   const isStore     = role === 'STORE_KEEPER';
 
-  const { data: sections }  = useBoqSections(isQs || isAdminOrPm ? projectId : null);
-  const { data: meas }      = useMeasurements(isQs || isAdminOrPm ? projectId : null);
-  const { data: dprs }      = useDprList(isSe || isAdminOrPm ? projectId : null);
-  const { data: indents }   = useMaterialIndents(isStore || isAdminOrPm ? projectId : null);
+  const { data: sections, isLoading: sectionsLoading } = useBoqSections(isQs || isAdminOrPm ? projectId : null);
+  const { data: meas,     isLoading: measLoading }     = useMeasurements(isQs || isAdminOrPm ? projectId : null);
+  const { data: dprs,     isLoading: dprsLoading }     = useDprList(isSe || isAdminOrPm ? projectId : null);
+  const { data: indents,  isLoading: indentsLoading }  = useMaterialIndents(isStore || isAdminOrPm ? projectId : null);
+
+  const boqKpisLoading = sectionsLoading || measLoading;
 
   const boqKpis = useMemo(() => {
     if (!sections || !meas) return null;
@@ -1233,58 +1239,58 @@ function ProjectDashboard({ projectId, role }: { projectId: string; role: UserRo
               { title: 'Payment Received',  value: fmtAmt(summary?.total_received), icon: <CheckCircleOutlined />,         color: P.green  },
               { title: 'Outstanding',       value: fmtAmt(summary?.outstanding),    icon: <ExclamationCircleOutlined />,   color: parseFloat(summary?.outstanding ?? '0') > 0 ? P.red : P.green },
             ].map((k) => (
-              <Col key={k.title} xs={12} md={6}><KpiCard {...k} /></Col>
+              <Col key={k.title} xs={12} md={6}><KpiCard {...k} loading={summaryLoading} /></Col>
             ))}
           </Row>
         </>
       )}
 
       {/* ── QS KPI row ────────────────────────────────────── */}
-      {isQs && boqKpis && (
+      {isQs && (
         <>
           <SectionHeading label="BOQ & Billing Overview" />
           <Row gutter={[16, 16]}>
             {[
-              { title: 'Tendered Value',       value: fmtAmt(boqKpis.tendered), icon: <AuditOutlined />,        color: P.blue  },
-              { title: 'Consumed Value',        value: fmtAmt(boqKpis.consumed), icon: <SafetyOutlined />,       color: P.purple },
-              { title: 'BOQ Completion',        value: `${boqKpis.pct.toFixed(1)}%`, icon: <FundOutlined />,    color: P.green },
-              { title: 'Unbilled Measurements', value: String(boqKpis.unbilled), icon: <WarningOutlined />,      color: boqKpis.unbilled > 0 ? P.amber : P.green },
+              { title: 'Tendered Value',       value: fmtAmt(boqKpis?.tendered), icon: <AuditOutlined />,        color: P.blue  },
+              { title: 'Consumed Value',        value: fmtAmt(boqKpis?.consumed), icon: <SafetyOutlined />,       color: P.purple },
+              { title: 'BOQ Completion',        value: `${(boqKpis?.pct ?? 0).toFixed(1)}%`, icon: <FundOutlined />,    color: P.green },
+              { title: 'Unbilled Measurements', value: String(boqKpis?.unbilled ?? 0), icon: <WarningOutlined />,      color: (boqKpis?.unbilled ?? 0) > 0 ? P.amber : P.green },
             ].map((k) => (
-              <Col key={k.title} xs={12} md={6}><KpiCard {...k} /></Col>
+              <Col key={k.title} xs={12} md={6}><KpiCard {...k} loading={boqKpisLoading} /></Col>
             ))}
           </Row>
         </>
       )}
 
       {/* ── Site Engineer KPI row ─────────────────────────── */}
-      {isSe && seKpis && (
+      {isSe && (
         <>
           <SectionHeading label="Field Activity" />
           <Row gutter={[16, 16]}>
             {[
-              { title: 'DPR Entries',   value: String(seKpis.total),     icon: <CalendarOutlined />,           color: P.blue   },
-              { title: 'Work Days',     value: String(seKpis.workDays),  icon: <CheckCircleOutlined />,        color: P.green  },
-              { title: 'No-Work Days',  value: String(seKpis.noWork),    icon: <WarningOutlined />,            color: seKpis.noWork > 0 ? P.amber : P.green },
-              { title: 'Open Issues',   value: String(seKpis.openIssues),icon: <AlertOutlined />,              color: seKpis.openIssues > 0 ? P.red : P.green },
+              { title: 'DPR Entries',   value: String(seKpis?.total ?? 0),     icon: <CalendarOutlined />,           color: P.blue   },
+              { title: 'Work Days',     value: String(seKpis?.workDays ?? 0),  icon: <CheckCircleOutlined />,        color: P.green  },
+              { title: 'No-Work Days',  value: String(seKpis?.noWork ?? 0),    icon: <WarningOutlined />,            color: (seKpis?.noWork ?? 0) > 0 ? P.amber : P.green },
+              { title: 'Open Issues',   value: String(seKpis?.openIssues ?? 0),icon: <AlertOutlined />,              color: (seKpis?.openIssues ?? 0) > 0 ? P.red : P.green },
             ].map((k) => (
-              <Col key={k.title} xs={12} md={6}><KpiCard {...k} /></Col>
+              <Col key={k.title} xs={12} md={6}><KpiCard {...k} loading={dprsLoading} /></Col>
             ))}
           </Row>
         </>
       )}
 
       {/* ── Store Keeper KPI row ──────────────────────────── */}
-      {isStore && storeKpis && (
+      {isStore && (
         <>
           <SectionHeading label="Material Indents" />
           <Row gutter={[16, 16]}>
             {[
-              { title: 'Total Indents',     value: String(storeKpis.total),    icon: <AppstoreOutlined />,       color: P.blue   },
-              { title: 'Pending Approval',  value: String(storeKpis.pending),  icon: <ExclamationCircleOutlined />, color: storeKpis.pending > 0 ? P.amber : P.green },
-              { title: 'Issued',            value: String(storeKpis.issued),   icon: <ToolOutlined />,           color: P.purple },
-              { title: 'Received',          value: String(storeKpis.received), icon: <CheckCircleOutlined />,    color: P.green  },
+              { title: 'Total Indents',     value: String(storeKpis?.total ?? 0),    icon: <AppstoreOutlined />,       color: P.blue   },
+              { title: 'Pending Approval',  value: String(storeKpis?.pending ?? 0),  icon: <ExclamationCircleOutlined />, color: (storeKpis?.pending ?? 0) > 0 ? P.amber : P.green },
+              { title: 'Issued',            value: String(storeKpis?.issued ?? 0),   icon: <ToolOutlined />,           color: P.purple },
+              { title: 'Received',          value: String(storeKpis?.received ?? 0), icon: <CheckCircleOutlined />,    color: P.green  },
             ].map((k) => (
-              <Col key={k.title} xs={12} md={6}><KpiCard {...k} /></Col>
+              <Col key={k.title} xs={12} md={6}><KpiCard {...k} loading={indentsLoading} /></Col>
             ))}
           </Row>
         </>

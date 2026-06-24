@@ -401,7 +401,14 @@ export function AnalyticsPage() {
 
       <SectionHeading label="Project-wise Breakdown" />
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        {sorted.slice(0, 3).map((r) => {
+        {loading && [0, 1, 2].map((i) => (
+          <Col key={i} xs={24} md={8}>
+            <Card bordered={false} style={CARD_STYLE} styles={{ body: { padding: '16px 20px' } }}>
+              <Skeleton active paragraph={{ rows: 3 }} />
+            </Card>
+          </Col>
+        ))}
+        {!loading && sorted.slice(0, 3).map((r) => {
           const pct = r.contract > 0 ? (r.billed / r.contract) * 100 : 0;
           return (
             <Col key={r.id} xs={24} md={8}>

@@ -6,6 +6,7 @@ import {
   Input,
   InputNumber,
   Select,
+  Skeleton,
   Switch,
   Typography,
   Upload,
@@ -50,7 +51,16 @@ export function SettingsPage() {
   const [form] = Form.useForm<OrgFormValues>();
   const [logoFile, setLogoFile] = useState<UploadFile | null>(null);
 
-  if (isLoading || !settings) return null;
+  if (isLoading || !settings) {
+    return (
+      <div>
+        <Typography.Title level={3}>Organization Settings</Typography.Title>
+        <Card>
+          <Skeleton active paragraph={{ rows: 8 }} />
+        </Card>
+      </div>
+    );
+  }
 
   const handleSave = async (values: OrgFormValues) => {
     try {
