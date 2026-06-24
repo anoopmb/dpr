@@ -20,8 +20,6 @@ import {
 import {
   AlertOutlined,
   AppstoreOutlined,
-  ArrowDownOutlined,
-  ArrowUpOutlined,
   AuditOutlined,
   CalendarOutlined,
   CheckCircleOutlined,
