@@ -4,6 +4,7 @@ import type { TableColumnsType } from 'antd';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
 import { useDprList, type DprHeaderRead } from '@/api/hooks/useDpr';
+import { useThemeMode } from '@/theme/theme-context';
 import { useDateFormat } from '@/utils/format';
 
 function rowKind(header: DprHeaderRead): 'no-work' | 'pre-work' | 'normal' {
@@ -14,15 +15,17 @@ function rowKind(header: DprHeaderRead): 'no-work' | 'pre-work' | 'normal' {
   return 'normal';
 }
 
-const ROW_BG: Record<string, string> = {
-  'no-work': '#f5f5f5',
-  'pre-work': '#fffbe6',
-};
-
 export function DprHistoryPage() {
   const selectedProjectId = useProjectContextStore((s) => s.selectedProjectId);
   const { data: headers, isLoading } = useDprList(selectedProjectId);
   const { fmtDate } = useDateFormat();
+  const { resolvedMode } = useThemeMode();
+
+  const ROW_BG: Record<string, string | undefined> = {
+    'no-work': resolvedMode === 'dark' ? 'rgba(255, 255, 255, 0.04)' : '#f5f5f5',
+    'pre-work': resolvedMode === 'dark' ? 'rgba(250, 173, 20, 0.12)' : '#fffbe6',
+    normal: undefined,
+  };
 
   const [searchText, setSearchText] = useState('');
 

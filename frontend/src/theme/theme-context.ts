@@ -14,9 +14,10 @@ export interface ThemePalette {
   contentMutedText: string;
   borderColor: string;
   accent: string;
-  /** Selected sidebar nav item — a light, neutral pill with dark text, the
-   * same treatment in both themes per explicit instruction (not a solid
-   * accent fill in dark mode). */
+  /** Selected sidebar nav item — a light, neutral pill with dark text (not
+   * a solid accent fill in dark mode). Dark mode uses a brighter shade than
+   * light mode since it needs more contrast against a near-black sidebar to
+   * read clearly as "selected". */
   navItemSelectedBg: string;
   navItemSelectedColor: string;
 }
@@ -55,7 +56,7 @@ export const palettes: Record<ResolvedThemeMode, ThemePalette> = {
     contentMutedText: '#8b949e',
     borderColor: '#1f242c',
     accent: '#3b82f6',
-    navItemSelectedBg: '#e4e7eb',
+    navItemSelectedBg: '#f3f4f6',
     navItemSelectedColor: '#0f172a',
   },
 };
