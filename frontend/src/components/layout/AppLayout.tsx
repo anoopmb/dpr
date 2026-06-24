@@ -375,7 +375,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           <Dropdown
             menu={{ items: profileMenuItems, onClick: handleProfileMenuClick }}
             trigger={['click']}
-            placement={desktopCollapsed ? 'right' : 'topRight'}
+            placement={desktopCollapsed ? 'bottomRight' : 'topRight'}
           >
             <div
               style={{
