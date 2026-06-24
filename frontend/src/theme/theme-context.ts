@@ -14,6 +14,12 @@ export interface ThemePalette {
   contentMutedText: string;
   borderColor: string;
   accent: string;
+  /** Selected sidebar nav item — light theme uses a neutral gray pill with
+   * dark text; dark theme uses a solid accent-blue pill with white text.
+   * These are genuinely different treatments per the reference design, not
+   * just light/dark variants of the same color. */
+  navItemSelectedBg: string;
+  navItemSelectedColor: string;
 }
 
 export interface ThemeContextValue {
@@ -26,28 +32,32 @@ export interface ThemeContextValue {
 
 export const palettes: Record<ResolvedThemeMode, ThemePalette> = {
   light: {
-    layoutBackground: '#f3f3f3',
-    headerBackground: '#ffffff',
+    layoutBackground: '#f3f4f6',
+    headerBackground: '#f3f4f6',
     siderBackground: '#ffffff',
-    headerText: '#1f2937',
-    headerMutedText: '#64748b',
+    headerText: '#0f172a',
+    headerMutedText: '#6b7280',
     contentBackground: '#ffffff',
     contentText: '#0f172a',
-    contentMutedText: '#475569',
-    borderColor: '#e2e8f0',
+    contentMutedText: '#6b7280',
+    borderColor: '#e5e7eb',
     accent: '#1677ff',
+    navItemSelectedBg: '#f1f2f4',
+    navItemSelectedColor: '#0f172a',
   },
   dark: {
-    layoutBackground: '#0f172a',
-    headerBackground: '#1c1c1e',
-    siderBackground: '#1c1c1e',
-    headerText: '#e2e8f0',
-    headerMutedText: '#94a3b8',
-    contentBackground: '#1a202c',
-    contentText: '#e2e8f0',
-    contentMutedText: '#94a3b8',
-    borderColor: '#2c2c2e',
-    accent: '#4096ff',
+    layoutBackground: '#0b0e14',
+    headerBackground: '#0b0e14',
+    siderBackground: '#0b0e14',
+    headerText: '#f1f5f9',
+    headerMutedText: '#8b949e',
+    contentBackground: '#11151c',
+    contentText: '#f1f5f9',
+    contentMutedText: '#8b949e',
+    borderColor: '#1f242c',
+    accent: '#3b82f6',
+    navItemSelectedBg: '#3b82f6',
+    navItemSelectedColor: '#ffffff',
   },
 };
 

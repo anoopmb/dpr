@@ -58,28 +58,20 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           },
           components: {
             Menu: {
-              itemBorderRadius: 6,
-              itemMarginInline: 4,
-              itemMarginBlock: 1,
-              itemHeight: 34,
-              subMenuItemBorderRadius: 6,
+              itemBorderRadius: 8,
+              itemMarginInline: 8,
+              itemMarginBlock: 2,
+              itemHeight: 38,
               iconSize: 16,
               collapsedIconSize: 18,
               itemColor: palette.headerMutedText,
               itemHoverColor: palette.contentText,
               itemHoverBg: resolvedMode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-              // A neutral light-gray pill, not accent-tinted blue — the
-              // standard treatment most sidebars use (GitHub, VS Code,
-              // Slack): a subtle neutral highlight + bold/accent text marks
-              // the selection, rather than a saturated colored fill.
-              // Not a left-border line either — antd indents nested submenu
-              // items via padding, not by shifting the item's own box, so a
-              // border-inline-start on a deeply nested item renders at the
-              // row's outer edge, nowhere near its visually-indented text.
-              itemSelectedColor: palette.accent,
-              itemSelectedBg: resolvedMode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
-              subMenuItemSelectedColor: palette.contentText,
-              subMenuItemBg: 'transparent',
+              // Per the reference design, light and dark genuinely differ
+              // here: light uses a neutral gray pill with dark text; dark
+              // uses a solid accent-blue pill with white text.
+              itemSelectedColor: palette.navItemSelectedColor,
+              itemSelectedBg: palette.navItemSelectedBg,
             },
           },
         }}

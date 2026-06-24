@@ -3,29 +3,16 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   Sidebar theme tokens — override per [data-theme] attribute
+   Sidebar shadow — only meaningful in light mode, where the white
+   sider sits visibly above a gray canvas; in dark mode sider and
+   canvas are the same color, so no separating shadow is needed.
    ═══════════════════════════════════════════════════════════════ */
 :root {
-  /* light defaults */
-  --sb-hover-bg:          rgba(0, 0, 0, 0.04);
-  --sb-submenu-bg:        transparent;
-  --sb-group-hover-bg:    rgba(0, 0, 0, 0.04);
-  --sb-sider-bg:          #ffffff;
-  --sb-border:            #e2e8f0;
-  --sb-shadow:            2px 0 12px rgba(0, 0, 0, 0.06);
-  --sb-root-selected-bg:  rgba(0, 0, 0, 0.05);
-  --sb-root-selected-color: var(--menu-accent, #1677ff);
+  --sb-shadow: 1px 0 0 rgba(0, 0, 0, 0.06);
 }
 
 [data-theme="dark"] {
-  --sb-hover-bg:          rgba(255, 255, 255, 0.06);
-  --sb-submenu-bg:        transparent;
-  --sb-group-hover-bg:    rgba(255, 255, 255, 0.06);
-  --sb-sider-bg:          #1c1c1e; /* matches screenshot dark */
-  --sb-border:            #2c2c2e;
-  --sb-shadow:            none;
-  --sb-root-selected-bg:  rgba(255, 255, 255, 0.1);
-  --sb-root-selected-color: var(--menu-accent, #4096ff);
+  --sb-shadow: none;
 }
 
 /* ── Suppress browser autofill / saved-credential colour injection ── */
@@ -108,75 +95,33 @@ body {
 }
 
 /* ══════════════════════════════════════════════
-   Sidebar navigation — fully theme-aware
+   Sidebar navigation — flat list, fully theme-aware
    ══════════════════════════════════════════════ */
 
-/* Submenu headers should look like normal items, NOT uppercase groups */
-.sidebar-nav .ant-menu-submenu-title {
-  font-size: 14px;
-  font-weight: 500;
-  transition: background-color 0.2s ease, color 0.2s ease;
-}
-
-/* Hover styles */
-.sidebar-nav .ant-menu-submenu-title:hover,
-.sidebar-nav.ant-menu-dark .ant-menu-submenu-title:hover {
-  background-color: var(--sb-group-hover-bg) !important;
-}
-
-/* DO NOT color parent submenus when child is active in expanded mode */
-.sidebar-nav:not(.ant-menu-inline-collapsed) .ant-menu-submenu-selected > .ant-menu-submenu-title,
-.sidebar-nav:not(.ant-menu-inline-collapsed) .ant-menu-submenu-selected > .ant-menu-submenu-title .ant-menu-item-icon {
-  color: inherit !important; 
-}
-
-/* Leaf items */
 .sidebar-nav .ant-menu-item {
   font-weight: 500;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-.sidebar-nav:not(.ant-menu-inline-collapsed) .ant-menu-item-selected {
+.sidebar-nav .ant-menu-item-selected {
   font-weight: 600 !important;
 }
 
-/* Subtle tree-guide line down the side of an expanded group's children */
-.sidebar-nav .ant-menu-sub.ant-menu-inline {
-  background: transparent !important;
-}
-
-/* Remove the browser's default focus-visible outline/box on menu items and
-   group headers — without this, clicking (which moves keyboard focus to the
-   item) leaves a visible rectangular ring around the label that clashes with
-   the pill-based selected style. */
+/* Remove the browser's default focus-visible outline/box on menu items —
+   without this, clicking (which moves keyboard focus to the item) leaves a
+   visible rectangular ring around the label that clashes with the pill. */
 .sidebar-nav .ant-menu-item:focus,
-.sidebar-nav .ant-menu-item:focus-visible,
-.sidebar-nav .ant-menu-submenu-title:focus,
-.sidebar-nav .ant-menu-submenu-title:focus-visible {
+.sidebar-nav .ant-menu-item:focus-visible {
   outline: none !important;
   box-shadow: none !important;
 }
 
-/* Collapsed rail styling */
-.sidebar-nav.ant-menu-inline-collapsed .ant-menu-submenu-title,
+/* Collapsed rail: center icons, no left-aligned padding to fight with */
 .sidebar-nav.ant-menu-inline-collapsed .ant-menu-item {
   padding-inline: 0 !important;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-/* Collapsed rail: active item/group gets a tinted rounded square instead
-   of a line, since there's no room for one at 64px wide. */
-.sidebar-nav.ant-menu-inline-collapsed .ant-menu-item-selected,
-.sidebar-nav.ant-menu-inline-collapsed .ant-menu-submenu-selected > .ant-menu-submenu-title {
-  background-color: var(--sb-root-selected-bg) !important;
-  color: var(--sb-root-selected-color) !important;
-  border-radius: 8px !important;
-}
-.sidebar-nav.ant-menu-inline-collapsed .ant-menu-item-selected .ant-menu-item-icon,
-.sidebar-nav.ant-menu-inline-collapsed .ant-menu-submenu-selected > .ant-menu-submenu-title .ant-menu-item-icon {
-  color: var(--sb-root-selected-color) !important;
 }
 
 /* Prevent iOS Safari from auto-zooming the viewport when an input is focused.
