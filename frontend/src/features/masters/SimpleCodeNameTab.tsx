@@ -13,27 +13,27 @@ interface ExtraNumberField {
   defaultValue?: number;
 }
 
-interface SimpleCodeNameTabProps<TExtra extends Record<string, number> = Record<string, never>> {
+interface SimpleCodeNameTabProps<TRow extends MasterRow = MasterRow> {
   apiPath: string;
-  query: UseQueryResult<(MasterRow & TExtra)[]>;
+  query: UseQueryResult<TRow[]>;
   label: string;
   extraField?: ExtraNumberField;
 }
 
-export function SimpleCodeNameTab<TExtra extends Record<string, number> = Record<string, never>>({
+export function SimpleCodeNameTab<TRow extends MasterRow = MasterRow>({
   apiPath,
   query,
   label,
   extraField,
-}: SimpleCodeNameTabProps<TExtra>) {
+}: SimpleCodeNameTabProps<TRow>) {
   const { data, isLoading } = query;
-  type FormValues = { code: string; name: string } & Partial<TExtra>;
-  const createMaster = useCreateMaster<MasterRow & TExtra, FormValues>(apiPath);
-  const updateMaster = useUpdateMaster<MasterRow & TExtra, Partial<FormValues>>(apiPath);
+  type FormValues = { code: string; name: string } & Partial<Record<string, number>>;
+  const createMaster = useCreateMaster<TRow, FormValues>(apiPath);
+  const updateMaster = useUpdateMaster<TRow, Partial<FormValues>>(apiPath);
   const deleteMaster = useDeleteMaster(apiPath);
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<(MasterRow & TExtra) | null>(null);
+  const [editing, setEditing] = useState<TRow | null>(null);
   const [form] = Form.useForm<FormValues>();
 
   const openAdd = () => {
@@ -45,12 +45,12 @@ export function SimpleCodeNameTab<TExtra extends Record<string, number> = Record
     setModalOpen(true);
   };
 
-  const openEdit = (row: MasterRow & TExtra) => {
+  const openEdit = (row: TRow) => {
     setEditing(row);
     form.setFieldsValue({
       code: row.code,
       name: row.name,
-      ...(extraField ? { [extraField.name]: row[extraField.name as keyof TExtra] } : {}),
+      ...(extraField ? { [extraField.name]: row[extraField.name as keyof TRow] } : {}),
     } as FormValues);
     setModalOpen(true);
   };
@@ -96,16 +96,24 @@ export function SimpleCodeNameTab<TExtra extends Record<string, number> = Record
         dataSource={data ?? []}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} records` }}
         columns={[
-          { title: 'Code', dataIndex: 'code', sorter: (a: MasterRow, b: MasterRow) => a.code.localeCompare(b.code) },
-          { title: 'Name', dataIndex: 'name', sorter: (a: MasterRow, b: MasterRow) => a.name.localeCompare(b.name) },
+          {
+            title: 'Code',
+            dataIndex: 'code',
+            sorter: (a: TRow, b: TRow) => a.code.localeCompare(b.code),
+          },
+          {
+            title: 'Name',
+            dataIndex: 'name',
+            sorter: (a: TRow, b: TRow) => a.name.localeCompare(b.name),
+          },
           ...(extraField
             ? [
                 {
                   title: extraField.label,
                   dataIndex: extraField.name,
                   width: 140,
-                  sorter: (a: MasterRow & TExtra, b: MasterRow & TExtra) =>
-                    Number(a[extraField.name as keyof TExtra]) - Number(b[extraField.name as keyof TExtra]),
+                  sorter: (a: TRow, b: TRow) =>
+                    Number(a[extraField.name as keyof TRow]) - Number(b[extraField.name as keyof TRow]),
                 },
               ]
             : []),
