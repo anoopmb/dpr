@@ -174,6 +174,7 @@ function ProductionTab({
     {
       title: 'Description',
       key: 'description',
+      width: 200,
       ellipsis: true,
       onCell: (row) => (row._type === 'header' ? { colSpan: 0 } : {}),
       render: (_, row) => (row._type === 'item' ? row.item.description : null),
@@ -264,7 +265,7 @@ function ProductionTab({
         pagination={false}
         size="small"
         bordered
-        scroll={{ x: 560 }}
+        scroll={{ x: 740 }}
         onRow={(row) => ({
           style: { background: row._type === 'header' ? HDR_BG : undefined },
         })}
