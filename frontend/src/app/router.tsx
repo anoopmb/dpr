@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useAuthStore } from '@/store/auth-store';
 import { useSession } from '@/api/hooks/useSession';
+import { useOrganizationBranding } from '@/api/hooks/useOrganizationSettings';
 import { RequireRole } from '@/app/RequireRole';
 import { LoginPage } from '@/features/auth/LoginPage';
 
@@ -126,13 +127,35 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+/** Applies the org's favicon to the browser tab. Runs regardless of auth
+ * state (mounted at the top of AppRouter) since the login page also needs
+ * the right icon before any session exists. */
+function FaviconSync() {
+  const { data: branding } = useOrganizationBranding();
+
+  useEffect(() => {
+    if (!branding?.favicon_url) return;
+    let link = document.querySelector<HTMLLinkElement>("link[rel='icon']");
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.head.appendChild(link);
+    }
+    link.href = branding.favicon_url;
+  }, [branding?.favicon_url]);
+
+  return null;
+}
+
 export function AppRouter() {
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route
-        path="/*"
-        element={
+    <>
+      <FaviconSync />
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/*"
+          element={
           <RequireAuth>
             <AppLayout>
               <Suspense fallback={<AppLoadingSplash />}>
@@ -326,8 +349,9 @@ export function AppRouter() {
               </Suspense>
             </AppLayout>
           </RequireAuth>
-        }
-      />
-    </Routes>
+          }
+        />
+      </Routes>
+    </>
   );
 }

@@ -2,9 +2,11 @@ import { useState } from 'react';
 import {
   Button,
   Card,
+  Col,
   Form,
   Input,
   InputNumber,
+  Row,
   Select,
   Skeleton,
   Switch,
@@ -18,6 +20,7 @@ import {
   useOrganizationSettings,
   useUpdateOrganizationSettings,
   type DateFormat,
+  type OrganizationSettingsRead,
 } from '@/api/hooks/useOrganizationSettings';
 import { useUploadPhoto } from '@/api/hooks/useUpload';
 
@@ -28,6 +31,43 @@ const MONTHS = [
   { value: 7, label: 'July' }, { value: 8, label: 'August' },
   { value: 9, label: 'September' }, { value: 10, label: 'October' },
   { value: 11, label: 'November' }, { value: 12, label: 'December' },
+];
+
+type LogoSlotKey =
+  | 'company_logo_light_url'
+  | 'company_logo_dark_url'
+  | 'company_logo_small_light_url'
+  | 'company_logo_small_dark_url'
+  | 'favicon_url';
+
+const LOGO_SLOTS: { key: LogoSlotKey; label: string; help: string; previewBg?: string }[] = [
+  {
+    key: 'company_logo_light_url',
+    label: 'Main Logo — Light Theme',
+    help: 'Shown in the sidebar and login screen when light theme is active.',
+  },
+  {
+    key: 'company_logo_dark_url',
+    label: 'Main Logo — Dark Theme',
+    help: 'Shown in the sidebar and login screen when dark theme is active.',
+    previewBg: '#1a202c',
+  },
+  {
+    key: 'company_logo_small_light_url',
+    label: 'Small Logo (Sidebar) — Light Theme',
+    help: 'Compact mark shown in the collapsed sidebar on light theme.',
+  },
+  {
+    key: 'company_logo_small_dark_url',
+    label: 'Small Logo (Sidebar) — Dark Theme',
+    help: 'Compact mark shown in the collapsed sidebar on dark theme.',
+    previewBg: '#1a202c',
+  },
+  {
+    key: 'favicon_url',
+    label: 'Favicon',
+    help: 'Browser tab icon. Square image recommended (e.g. 64×64 PNG/SVG).',
+  },
 ];
 
 interface OrgFormValues {
@@ -44,12 +84,57 @@ interface OrgFormValues {
   email_notifications_enabled: boolean;
 }
 
+function LogoUploadField({
+  slot,
+  currentUrl,
+  file,
+  onFileChange,
+}: {
+  slot: { key: LogoSlotKey; label: string; help: string; previewBg?: string };
+  currentUrl: string | null;
+  file: UploadFile | null;
+  onFileChange: (file: UploadFile | null) => void;
+}) {
+  return (
+    <Form.Item label={slot.label} extra={slot.help}>
+      {currentUrl && !file && (
+        <div
+          style={{
+            background: slot.previewBg ?? '#f5f5f5',
+            display: 'inline-block',
+            padding: 8,
+            borderRadius: 6,
+            marginBottom: 8,
+          }}
+        >
+          <img src={currentUrl} alt={slot.label} style={{ height: 40, display: 'block', objectFit: 'contain' }} />
+        </div>
+      )}
+      <Upload
+        beforeUpload={() => false}
+        maxCount={1}
+        accept="image/*"
+        fileList={file ? [file] : []}
+        onChange={({ fileList }) => onFileChange(fileList[0] ?? null)}
+      >
+        <Button icon={<UploadOutlined />}>{currentUrl ? 'Replace' : 'Upload'}</Button>
+      </Upload>
+    </Form.Item>
+  );
+}
+
 export function SettingsPage() {
   const { data: settings, isLoading } = useOrganizationSettings();
   const updateSettings = useUpdateOrganizationSettings();
   const uploadPhoto = useUploadPhoto();
   const [form] = Form.useForm<OrgFormValues>();
-  const [logoFile, setLogoFile] = useState<UploadFile | null>(null);
+  const [logoFiles, setLogoFiles] = useState<Record<LogoSlotKey, UploadFile | null>>({
+    company_logo_light_url: null,
+    company_logo_dark_url: null,
+    company_logo_small_light_url: null,
+    company_logo_small_dark_url: null,
+    favicon_url: null,
+  });
 
   if (isLoading || !settings) {
     return (
@@ -64,14 +149,24 @@ export function SettingsPage() {
 
   const handleSave = async (values: OrgFormValues) => {
     try {
-      let company_logo_url = settings.company_logo_url;
-      if (logoFile?.originFileObj) {
-        company_logo_url = await uploadPhoto.mutateAsync({
-          prefix: 'company-logo',
-          file: logoFile.originFileObj as File,
-        });
+      const logoUpdates: Partial<Record<LogoSlotKey, string>> = {};
+      for (const slot of LOGO_SLOTS) {
+        const file = logoFiles[slot.key];
+        if (file?.originFileObj) {
+          logoUpdates[slot.key] = await uploadPhoto.mutateAsync({
+            prefix: 'company-logo',
+            file: file.originFileObj as File,
+          });
+        }
       }
-      await updateSettings.mutateAsync({ ...values, company_logo_url });
+      await updateSettings.mutateAsync({ ...values, ...logoUpdates });
+      setLogoFiles({
+        company_logo_light_url: null,
+        company_logo_dark_url: null,
+        company_logo_small_light_url: null,
+        company_logo_small_dark_url: null,
+        favicon_url: null,
+      });
       message.success('Organization settings saved');
     } catch {
       message.error('Could not save settings');
@@ -103,24 +198,21 @@ export function SettingsPage() {
           <Form.Item name="company_name" label="Company Name" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item label="Company Logo">
-            {settings.company_logo_url && !logoFile && (
-              <img
-                src={settings.company_logo_url}
-                alt="logo"
-                style={{ height: 48, marginBottom: 8, display: 'block', objectFit: 'contain' }}
-              />
-            )}
-            <Upload
-              beforeUpload={() => false}
-              maxCount={1}
-              accept="image/*"
-              fileList={logoFile ? [logoFile] : []}
-              onChange={({ fileList }) => setLogoFile(fileList[0] ?? null)}
-            >
-              <Button icon={<UploadOutlined />}>Upload Logo</Button>
-            </Upload>
-          </Form.Item>
+
+          <Typography.Title level={5} style={{ marginTop: 8 }}>Logos &amp; Favicon</Typography.Title>
+          <Row gutter={24}>
+            {LOGO_SLOTS.map((slot) => (
+              <Col key={slot.key} xs={24} md={12}>
+                <LogoUploadField
+                  slot={slot}
+                  currentUrl={settings[slot.key as keyof OrganizationSettingsRead] as string | null}
+                  file={logoFiles[slot.key]}
+                  onFileChange={(file) => setLogoFiles((prev) => ({ ...prev, [slot.key]: file }))}
+                />
+              </Col>
+            ))}
+          </Row>
+
           <Form.Item name="company_address" label="Registered Address">
             <Input.TextArea rows={2} />
           </Form.Item>

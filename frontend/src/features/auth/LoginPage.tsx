@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
 import { useAuthStore, type AuthUser, type UserRole } from '@/store/auth-store';
 import { useThemeMode } from '@/theme/theme-context';
+import { useOrganizationBranding } from '@/api/hooks/useOrganizationSettings';
 
 interface MeResponse {
   id: string;
@@ -22,6 +23,10 @@ export function LoginPage() {
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const { resolvedMode, palette } = useThemeMode();
+  const { data: branding } = useOrganizationBranding();
+
+  const logoUrl = resolvedMode === 'dark' ? branding?.company_logo_dark_url : branding?.company_logo_light_url;
+  const companyName = branding?.company_name ?? 'DPR System';
 
   const onFinish = async (values: { login_id: string; password: string }) => {
     setLoading(true);
@@ -82,42 +87,48 @@ export function LoginPage() {
       >
         {/* ── Branding ── */}
         <div style={{ marginBottom: 28, textAlign: 'center' }}>
-          {/* Logo mark */}
-          <div
-            style={{
-              width: 52,
-              height: 52,
-              background: 'linear-gradient(135deg, #1677ff 0%, #0958d9 100%)',
-              borderRadius: 12,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: 14,
-              boxShadow: '0 4px 16px rgba(22,119,255,0.35)',
-            }}
-          >
-            {/* DPR icon — stacked bars representing a Daily Progress Report */}
-            <svg
-              width="28"
-              height="28"
-              viewBox="0 0 28 28"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
+          {logoUrl ? (
+            <img
+              src={logoUrl}
+              alt={companyName}
+              style={{ height: 52, maxWidth: 220, marginBottom: 14, objectFit: 'contain' }}
+            />
+          ) : (
+            /* Fallback mark, shown until the org configures a logo */
+            <div
+              style={{
+                width: 52,
+                height: 52,
+                background: 'linear-gradient(135deg, #1677ff 0%, #0958d9 100%)',
+                borderRadius: 12,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 14,
+                boxShadow: '0 4px 16px rgba(22,119,255,0.35)',
+              }}
             >
-              <rect x="4" y="5"  width="14" height="3" rx="1.5" fill="white" />
-              <rect x="4" y="11" width="10" height="3" rx="1.5" fill="white" fillOpacity="0.85" />
-              <rect x="4" y="17" width="12" height="3" rx="1.5" fill="white" fillOpacity="0.7" />
-              {/* Tick circle */}
-              <circle cx="21" cy="21" r="5" fill="#52c41a" />
-              <path d="M18.5 21l1.8 1.8 3.2-3.2" stroke="white" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </div>
+              <svg
+                width="28"
+                height="28"
+                viewBox="0 0 28 28"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <rect x="4" y="5"  width="14" height="3" rx="1.5" fill="white" />
+                <rect x="4" y="11" width="10" height="3" rx="1.5" fill="white" fillOpacity="0.85" />
+                <rect x="4" y="17" width="12" height="3" rx="1.5" fill="white" fillOpacity="0.7" />
+                <circle cx="21" cy="21" r="5" fill="#52c41a" />
+                <path d="M18.5 21l1.8 1.8 3.2-3.2" stroke="white" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+          )}
 
           <Typography.Title
             level={3}
             style={{ margin: 0, color: titleColor, fontWeight: 700, fontSize: 22 }}
           >
-            DPR System
+            {companyName}
           </Typography.Title>
           <Typography.Text style={{ fontSize: 13, color: mutedText }}>
             Daily Progress Reporting Platform

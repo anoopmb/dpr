@@ -6,7 +6,11 @@ export type DateFormat = 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD';
 export interface OrganizationSettingsRead {
   id: string;
   company_name: string;
-  company_logo_url: string | null;
+  company_logo_light_url: string | null;
+  company_logo_dark_url: string | null;
+  company_logo_small_light_url: string | null;
+  company_logo_small_dark_url: string | null;
+  favicon_url: string | null;
   company_address: string | null;
   gst_number: string | null;
   currency_code: string;
@@ -21,7 +25,11 @@ export interface OrganizationSettingsRead {
 
 export interface OrganizationSettingsUpdateInput {
   company_name?: string;
-  company_logo_url?: string | null;
+  company_logo_light_url?: string | null;
+  company_logo_dark_url?: string | null;
+  company_logo_small_light_url?: string | null;
+  company_logo_small_dark_url?: string | null;
+  favicon_url?: string | null;
   company_address?: string | null;
   gst_number?: string | null;
   currency_code?: string;
@@ -34,7 +42,17 @@ export interface OrganizationSettingsUpdateInput {
   email_notifications_enabled?: boolean;
 }
 
+export interface OrganizationBrandingRead {
+  company_name: string;
+  company_logo_light_url: string | null;
+  company_logo_dark_url: string | null;
+  company_logo_small_light_url: string | null;
+  company_logo_small_dark_url: string | null;
+  favicon_url: string | null;
+}
+
 const QUERY_KEY = ['organization-settings'];
+const BRANDING_QUERY_KEY = ['organization-branding'];
 
 export function useOrganizationSettings() {
   return useQuery({
@@ -49,6 +67,18 @@ export function useUpdateOrganizationSettings() {
   return useMutation({
     mutationFn: async (data: OrganizationSettingsUpdateInput) =>
       (await apiClient.patch<OrganizationSettingsRead>('/settings/organization', data)).data,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEY }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: BRANDING_QUERY_KEY });
+    },
+  });
+}
+
+/** Public, unauthenticated — backs the login page and the dynamic favicon. */
+export function useOrganizationBranding() {
+  return useQuery({
+    queryKey: BRANDING_QUERY_KEY,
+    queryFn: async () => (await apiClient.get<OrganizationBrandingRead>('/settings/branding')).data,
+    staleTime: 5 * 60_000,
   });
 }

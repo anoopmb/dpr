@@ -31,6 +31,7 @@ import { useThemeMode, type ThemeMode } from '@/theme/theme-context';
 import { NotificationBell } from '@/components/layout/NotificationBell';
 import { InstallBanner } from '@/components/layout/InstallBanner';
 import { usePushSubscription } from '@/api/hooks/usePushSubscription';
+import { useOrganizationSettings } from '@/api/hooks/useOrganizationSettings';
 
 const { Sider, Header, Content } = Layout;
 const { useBreakpoint } = Grid;
@@ -133,6 +134,11 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const { mode: themeMode, resolvedMode, setMode: setThemeMode, palette } = useThemeMode();
 
   usePushSubscription(!!user);
+
+  const { data: orgSettings } = useOrganizationSettings();
+  const companyName = orgSettings?.company_name ?? 'DPR System';
+  const mainLogoUrl = resolvedMode === 'dark' ? orgSettings?.company_logo_dark_url : orgSettings?.company_logo_light_url;
+  const smallLogoUrl = resolvedMode === 'dark' ? orgSettings?.company_logo_small_dark_url : orgSettings?.company_logo_small_light_url;
 
   const isField = isFieldRole(user?.role);
   const isAdmin = user?.role === 'ADMIN';
@@ -282,10 +288,20 @@ export function AppLayout({ children }: { children: ReactNode }) {
             transition: 'transform 0.25s ease, width 0.25s ease',
           }}
         >
-          <div style={{ height: 64, display: 'flex', alignItems: 'center', paddingInline: 16 }}>
-            <Typography.Title level={desktopCollapsed ? 5 : 4} style={{ margin: 0, color: palette.headerText }}>
-              {desktopCollapsed ? 'DPR' : 'DPR System'}
-            </Typography.Title>
+          <div style={{ height: 64, display: 'flex', alignItems: 'center', paddingInline: 16, overflow: 'hidden' }}>
+            {desktopCollapsed ? (
+              smallLogoUrl ? (
+                <img src={smallLogoUrl} alt={companyName} style={{ height: 32, maxWidth: 32, objectFit: 'contain' }} />
+              ) : (
+                <Typography.Title level={5} style={{ margin: 0, color: palette.headerText }}>DPR</Typography.Title>
+              )
+            ) : mainLogoUrl ? (
+              <img src={mainLogoUrl} alt={companyName} style={{ height: 32, maxWidth: SIDER_WIDTH - 32, objectFit: 'contain' }} />
+            ) : (
+              <Typography.Title level={4} style={{ margin: 0, color: palette.headerText, whiteSpace: 'nowrap' }}>
+                {companyName}
+              </Typography.Title>
+            )}
           </div>
           <Menu
             className="sidebar-nav"

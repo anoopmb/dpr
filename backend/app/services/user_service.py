@@ -8,7 +8,7 @@ from app.core.security import hash_password, verify_password
 from app.models.audit import AuditAction
 from app.models.user import User
 from app.repositories.user_repo import UserRepository
-from app.schemas.user import ChangePasswordRequest, UserCreate, UserProfileUpdate, UserUpdate
+from app.schemas.user import AdminResetPasswordRequest, ChangePasswordRequest, UserCreate, UserProfileUpdate, UserUpdate
 from app.services.audit_service import AuditService, serialize_model
 
 
@@ -127,6 +127,20 @@ class UserService:
             entity_id=user.id,
             action=AuditAction.UPDATE,
             actor_id=user_id,
+        )
+        await self.session.commit()
+
+    async def reset_password(self, user_id: uuid.UUID, data: AdminResetPasswordRequest, actor_id: uuid.UUID) -> None:
+        """Admin-initiated reset — unlike change_password, does not require
+        knowledge of the current password."""
+        user = await self.get(user_id)
+        user.hashed_password = hash_password(data.new_password)
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="USER",
+            entity_id=user.id,
+            action=AuditAction.UPDATE,
+            actor_id=actor_id,
         )
         await self.session.commit()
 

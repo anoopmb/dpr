@@ -6,7 +6,14 @@ from app.api.deps import CurrentUserDep, SessionDep, require_role
 from app.core.session import set_session_cookies
 from app.models.user import UserRole
 from app.schemas.activity import ActivityListRead
-from app.schemas.user import ChangePasswordRequest, UserCreate, UserProfileUpdate, UserRead, UserUpdate
+from app.schemas.user import (
+    AdminResetPasswordRequest,
+    ChangePasswordRequest,
+    UserCreate,
+    UserProfileUpdate,
+    UserRead,
+    UserUpdate,
+)
 from app.services.activity_service import ActivityService
 from app.services.user_service import UserService
 
@@ -61,3 +68,14 @@ async def get_user(user_id: uuid.UUID, session: SessionDep) -> UserRead:
 async def update_user(user_id: uuid.UUID, data: UserUpdate, session: SessionDep, current_user: CurrentUserDep) -> UserRead:
     user = await UserService(session).update(user_id, data, actor_id=uuid.UUID(current_user.id))
     return UserRead.model_validate(user)
+
+
+@router.post(
+    "/{user_id}/reset-password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_role(UserRole.ADMIN))],
+)
+async def reset_user_password(
+    user_id: uuid.UUID, data: AdminResetPasswordRequest, session: SessionDep, current_user: CurrentUserDep
+) -> None:
+    await UserService(session).reset_password(user_id, data, actor_id=uuid.UUID(current_user.id))

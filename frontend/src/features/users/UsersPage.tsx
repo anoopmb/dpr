@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Button, Form, Input, Modal, Select, Switch, Table, Tag, Typography, message } from 'antd';
+import { Button, Form, Input, Modal, Select, Space, Switch, Table, Tag, Typography, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import {
   useCreateUser,
+  useResetUserPassword,
   useUpdateUser,
   useUsers,
   type UserCreateInput,
@@ -36,15 +37,22 @@ interface EditFormValues {
   is_active: boolean;
 }
 
+interface ResetPasswordFormValues {
+  new_password: string;
+}
+
 export function UsersPage() {
   const { data: users, isLoading } = useUsers();
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();
+  const resetPassword = useResetUserPassword();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserRead | null>(null);
+  const [resetPasswordUser, setResetPasswordUser] = useState<UserRead | null>(null);
   const [createForm] = Form.useForm<CreateFormValues>();
   const [editForm] = Form.useForm<EditFormValues>();
+  const [resetPasswordForm] = Form.useForm<ResetPasswordFormValues>();
 
   const handleCreate = async (values: CreateFormValues) => {
     try {
@@ -78,6 +86,18 @@ export function UsersPage() {
       setEditingUser(null);
     } catch {
       message.error('Could not update user');
+    }
+  };
+
+  const handleResetPassword = async (values: ResetPasswordFormValues) => {
+    if (!resetPasswordUser) return;
+    try {
+      await resetPassword.mutateAsync({ id: resetPasswordUser.id, new_password: values.new_password });
+      message.success(`Password reset for ${resetPasswordUser.full_name}`);
+      setResetPasswordUser(null);
+      resetPasswordForm.resetFields();
+    } catch {
+      message.error('Could not reset password');
     }
   };
 
@@ -115,7 +135,12 @@ export function UsersPage() {
           {
             title: 'Actions',
             key: 'actions',
-            render: (_, user: UserRead) => <Button size="small" onClick={() => openEdit(user)}>Edit</Button>,
+            render: (_, user: UserRead) => (
+              <Space>
+                <Button size="small" onClick={() => openEdit(user)}>Edit</Button>
+                <Button size="small" onClick={() => setResetPasswordUser(user)}>Reset Password</Button>
+              </Space>
+            ),
           },
         ]}
       />
@@ -173,6 +198,25 @@ export function UsersPage() {
           </Form.Item>
           <Form.Item name="is_active" label="Active" valuePropName="checked">
             <Switch />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`Reset Password — ${resetPasswordUser?.full_name ?? ''}`}
+        open={resetPasswordUser !== null}
+        onCancel={() => { setResetPasswordUser(null); resetPasswordForm.resetFields(); }}
+        onOk={() => resetPasswordForm.submit()}
+        confirmLoading={resetPassword.isPending}
+        destroyOnHidden
+      >
+        <Typography.Paragraph type="secondary">
+          Sets a new password for this user immediately. They will need to use it on their next sign-in — this does
+          not require their current password.
+        </Typography.Paragraph>
+        <Form form={resetPasswordForm} layout="vertical" onFinish={handleResetPassword}>
+          <Form.Item name="new_password" label="New Password" rules={[{ required: true, min: 8 }]}>
+            <Input.Password placeholder="At least 8 characters" />
           </Form.Item>
         </Form>
       </Modal>

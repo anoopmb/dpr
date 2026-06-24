@@ -4,10 +4,24 @@ from fastapi import APIRouter, Depends
 
 from app.api.deps import CurrentUserDep, SessionDep, require_role
 from app.models.user import UserRole
-from app.schemas.organization_settings import OrganizationSettingsRead, OrganizationSettingsUpdate
+from app.schemas.organization_settings import (
+    OrganizationBrandingRead,
+    OrganizationSettingsRead,
+    OrganizationSettingsUpdate,
+)
 from app.services.organization_settings_service import OrganizationSettingsService
 
 router = APIRouter(prefix="/settings/organization", tags=["settings"])
+
+branding_router = APIRouter(prefix="/settings/branding", tags=["settings"])
+
+
+@branding_router.get("", response_model=OrganizationBrandingRead)
+async def get_organization_branding(session: SessionDep) -> OrganizationBrandingRead:
+    """Unauthenticated — backs the login page and the dynamic favicon, both
+    of which render before any session exists."""
+    settings = await OrganizationSettingsService(session).get()
+    return OrganizationBrandingRead.model_validate(settings)
 
 
 @router.get("", response_model=OrganizationSettingsRead)

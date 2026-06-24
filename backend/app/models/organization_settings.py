@@ -20,7 +20,18 @@ class OrganizationSettings(TimestampedBase):
     __tablename__ = "organization_settings"
 
     company_name: Mapped[str] = mapped_column(String(255), nullable=False, default="My Company")
-    company_logo_url: Mapped[str | None] = mapped_column(String(500))
+
+    # Branding images. Light/dark variants are picked by the frontend based on
+    # the active theme; "small" variants are the compact mark shown in the
+    # collapsed/mobile sidebar. favicon_url drives the browser tab icon —
+    # applied at runtime via JS since it must also work on the pre-auth login
+    # page where the SPA's static index.html favicon can't be templated.
+    company_logo_light_url: Mapped[str | None] = mapped_column(String(500))
+    company_logo_dark_url: Mapped[str | None] = mapped_column(String(500))
+    company_logo_small_light_url: Mapped[str | None] = mapped_column(String(500))
+    company_logo_small_dark_url: Mapped[str | None] = mapped_column(String(500))
+    favicon_url: Mapped[str | None] = mapped_column(String(500))
+
     company_address: Mapped[str | None] = mapped_column(String(500))
     gst_number: Mapped[str | None] = mapped_column(String(20))
 

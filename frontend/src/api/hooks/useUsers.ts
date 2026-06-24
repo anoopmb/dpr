@@ -75,3 +75,10 @@ export function useChangeMyPassword() {
       apiClient.post('/users/me/change-password', data),
   });
 }
+
+export function useResetUserPassword() {
+  return useMutation({
+    mutationFn: async ({ id, new_password }: { id: string; new_password: string }) =>
+      apiClient.post(`/users/${id}/reset-password`, { new_password }),
+  });
+}
