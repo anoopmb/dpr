@@ -15,7 +15,8 @@ export interface ProjectRead {
   site_latitude: string | null;
   site_longitude: string | null;
   geofence_radius_meters: number;
-  attendance_verification_required: boolean;
+  attendance_photo_required: boolean;
+  attendance_gps_required: boolean;
   status: 'ACTIVE' | 'COMPLETED' | 'SUSPENDED';
 }
 
@@ -27,7 +28,8 @@ export interface ProjectCreateInput {
   contract_value: string;
   start_date: string;
   completion_date: string;
-  attendance_verification_required?: boolean;
+  attendance_photo_required?: boolean;
+  attendance_gps_required?: boolean;
 }
 
 export interface ProjectUpdateInput {
@@ -38,7 +40,8 @@ export interface ProjectUpdateInput {
   status?: ProjectRead['status'];
   site_engineer_id?: string | null;
   project_manager_id?: string | null;
-  attendance_verification_required?: boolean;
+  attendance_photo_required?: boolean;
+  attendance_gps_required?: boolean;
   site_latitude?: number | null;
   site_longitude?: number | null;
   geofence_radius_meters?: number;

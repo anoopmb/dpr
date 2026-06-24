@@ -27,9 +27,9 @@ class AttendanceRecord(TimestampedBase):
     )
     attendance_date: Mapped[date] = mapped_column(Date, nullable=False)
     check_in_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    # Nullable because a project can configure attendance verification as
-    # optional (Project.attendance_verification_required = False) — in
-    # that mode workers are auto-marked present with no photo/GPS captured.
+    # Nullable because a project can configure photo verification as
+    # optional (Project.attendance_photo_required = False) — in that mode
+    # workers can be auto-marked present with no photo captured.
     photo_url: Mapped[str | None] = mapped_column(String(500))
     latitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
     longitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))

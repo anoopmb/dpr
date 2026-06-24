@@ -333,13 +333,15 @@ async def test_configurable_attendance_verification():
                 "contract_value": "1000000.00",
                 "start_date": "2026-01-01",
                 "completion_date": "2027-01-01",
-                "attendance_verification_required": False,
+                "attendance_photo_required": False,
+                "attendance_gps_required": False,
             },
             headers=_csrf(client),
         )
         assert relaxed_project_resp.status_code == 201, relaxed_project_resp.text
         relaxed_project_id = relaxed_project_resp.json()["id"]
-        assert relaxed_project_resp.json()["attendance_verification_required"] is False
+        assert relaxed_project_resp.json()["attendance_photo_required"] is False
+        assert relaxed_project_resp.json()["attendance_gps_required"] is False
 
         await _login(client, "SITE_ENGINEER")
 
@@ -406,7 +408,8 @@ async def test_configurable_attendance_verification():
             headers=_csrf(client),
         )
         strict_project_id = strict_project_resp.json()["id"]
-        assert strict_project_resp.json()["attendance_verification_required"] is True
+        assert strict_project_resp.json()["attendance_photo_required"] is True
+        assert strict_project_resp.json()["attendance_gps_required"] is True
 
         await _login(client, "SITE_ENGINEER")
         rejected_worker_resp = await client.post(

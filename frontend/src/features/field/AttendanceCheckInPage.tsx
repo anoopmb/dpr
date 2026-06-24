@@ -33,7 +33,9 @@ export function AttendanceCheckInPage() {
   const selectedProjectId = useProjectContextStore((s) => s.selectedProjectId);
   const { data: projects } = useProjects();
   const project = (projects ?? []).find((p) => p.id === selectedProjectId);
-  const verificationRequired = project?.attendance_verification_required ?? true;
+  const photoRequired = project?.attendance_photo_required ?? true;
+  const gpsRequired = project?.attendance_gps_required ?? true;
+  const verificationRequired = photoRequired || gpsRequired;
   const { fmtDate } = useDateFormat();
 
   const { data: workers } = useWorkers(selectedProjectId);
@@ -118,27 +120,31 @@ export function AttendanceCheckInPage() {
   };
 
   const handleVerifiedCheckIn = async () => {
-    if (!selectedWorkerId || !photo) {
-      message.warning('Select a worker and capture a photo first');
+    if (!selectedWorkerId) {
+      message.warning('Select a worker first');
+      return;
+    }
+    if (photoRequired && !photo) {
+      message.warning('Capture a photo first');
       return;
     }
     try {
-      const pos = location ?? (await (async () => {
+      let pos: CapturedLocation | null = location;
+      if (gpsRequired && !pos) {
         const p = await getCurrentPosition();
         const name = await reverseGeocode(p.latitude, p.longitude);
-        const loc = { ...p, locationName: name };
-        setLocation(loc);
-        return loc;
-      })());
+        pos = { ...p, locationName: name };
+        setLocation(pos);
+      }
 
-      const photoUrl = await uploadPhoto.mutateAsync({ prefix: 'attendance', file: photo });
+      const photoUrl = photo ? await uploadPhoto.mutateAsync({ prefix: 'attendance', file: photo }) : undefined;
       const record = await checkIn.mutateAsync({
         worker_id: selectedWorkerId,
         project_id: selectedProjectId,
-        latitude: pos.latitude,
-        longitude: pos.longitude,
-        gps_accuracy_meters: pos.accuracy,
-        location_name: pos.locationName,
+        latitude: pos?.latitude,
+        longitude: pos?.longitude,
+        gps_accuracy_meters: pos?.accuracy,
+        location_name: pos?.locationName,
         photo_url: photoUrl,
       });
       message.success(
@@ -258,7 +264,10 @@ export function AttendanceCheckInPage() {
 
       {verificationRequired ? (
         <>
-          <Card title="Check-in (Photo + GPS required)" style={{ marginBottom: 16 }}>
+          <Card
+            title={`Check-in (${[photoRequired && 'Photo', gpsRequired && 'GPS'].filter(Boolean).join(' + ')} required)`}
+            style={{ marginBottom: 16 }}
+          >
             <Form.Item label="Select Worker">
               <Select
                 size="large"
@@ -272,7 +281,10 @@ export function AttendanceCheckInPage() {
                 }))}
               />
             </Form.Item>
-            <PhotoCapture label="Capture Check-in Photo" onCapture={setPhoto} />
+            <PhotoCapture
+              label={photoRequired ? 'Capture Check-in Photo' : 'Capture Check-in Photo (optional)'}
+              onCapture={setPhoto}
+            />
           </Card>
           <Button
             type="primary"

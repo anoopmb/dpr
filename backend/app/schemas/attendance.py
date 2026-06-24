@@ -52,7 +52,7 @@ class AttendanceCheckInCreate(BaseModel):
 
 class MarkPresentRequest(BaseModel):
     """Bulk, no-verification attendance marking — only allowed on projects
-    where attendance_verification_required is False."""
+    where neither attendance_photo_required nor attendance_gps_required is set."""
 
     project_id: uuid.UUID
     worker_ids: list[uuid.UUID] = Field(min_length=1)

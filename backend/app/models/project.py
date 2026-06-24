@@ -47,11 +47,13 @@ class Project(TimestampedBase):
     site_longitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
     geofence_radius_meters: Mapped[int] = mapped_column(Integer, nullable=False, default=500)
 
-    # Settings-page toggle: when True, attendance check-in requires a photo
-    # + GPS fix per worker (domain/attendance verification). When False,
-    # supervisors can mark workers present in bulk with no photo/GPS — the
-    # act of adding a worker for the day can itself mark them present.
-    attendance_verification_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Settings-page toggles, independently configurable: when either is
+    # True, attendance check-in must go through the per-worker verified
+    # flow and capture that piece (photo and/or GPS fix). Only when BOTH
+    # are False can supervisors mark workers present in bulk with neither —
+    # the act of adding a worker for the day can itself mark them present.
+    attendance_photo_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    attendance_gps_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     status: Mapped[ProjectStatus] = mapped_column(String(20), nullable=False, default=ProjectStatus.ACTIVE)
 

@@ -52,7 +52,8 @@ interface ProjectFormValues {
   contract_value: number;
   start_date: Dayjs;
   completion_date: Dayjs;
-  attendance_verification_required: boolean;
+  attendance_photo_required: boolean;
+  attendance_gps_required: boolean;
 }
 
 interface ProjectEditFormValues {
@@ -189,9 +190,18 @@ function ProjectSettingsDrawer({ project, onClose }: { project: ProjectRead; onC
   const [geoRadius, setGeoRadius] = useState<number>(project.geofence_radius_meters ?? 500);
   const [locatingMe, setLocatingMe] = useState(false);
 
-  const handleToggle = async (checked: boolean) => {
+  const handleTogglePhoto = async (checked: boolean) => {
     try {
-      await updateProject.mutateAsync({ id: project.id, data: { attendance_verification_required: checked } });
+      await updateProject.mutateAsync({ id: project.id, data: { attendance_photo_required: checked } });
+      message.success('Setting updated');
+    } catch {
+      message.error('Could not update setting');
+    }
+  };
+
+  const handleToggleGps = async (checked: boolean) => {
+    try {
+      await updateProject.mutateAsync({ id: project.id, data: { attendance_gps_required: checked } });
       message.success('Setting updated');
     } catch {
       message.error('Could not update setting');
@@ -223,16 +233,25 @@ function ProjectSettingsDrawer({ project, onClose }: { project: ProjectRead; onC
   return (
     <Drawer title={`Project Settings — ${project.name}`} open onClose={onClose} width={560} destroyOnHidden>
       <Card title="Attendance" style={{ marginBottom: 16 }}>
+        <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+          When either is on, check-in must go through the per-worker verified flow and capture that piece. Only
+          when both are off can supervisors mark all workers present in bulk with neither.
+        </Typography.Text>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 24, marginBottom: 16 }}>
+          <div>
+            <Typography.Text strong>Require photo</Typography.Text>
+            <br />
+            <Typography.Text type="secondary">Every check-in needs a captured photo.</Typography.Text>
+          </div>
+          <Switch checked={project.attendance_photo_required} loading={updateProject.isPending} onChange={handleTogglePhoto} />
+        </div>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 24 }}>
           <div>
-            <Typography.Text strong>Require photo + GPS verification</Typography.Text>
+            <Typography.Text strong>Require GPS</Typography.Text>
             <br />
-            <Typography.Text type="secondary">
-              <b>On (default):</b> every check-in needs a captured photo and GPS fix.<br />
-              <b>Off:</b> supervisors can mark all workers present in bulk with no photo/GPS.
-            </Typography.Text>
+            <Typography.Text type="secondary">Every check-in needs a captured GPS fix.</Typography.Text>
           </div>
-          <Switch checked={project.attendance_verification_required} loading={updateProject.isPending} onChange={handleToggle} />
+          <Switch checked={project.attendance_gps_required} loading={updateProject.isPending} onChange={handleToggleGps} />
         </div>
       </Card>
 
@@ -296,7 +315,8 @@ export function ProjectsListPage() {
         contract_value: String(values.contract_value),
         start_date: values.start_date.format('YYYY-MM-DD'),
         completion_date: values.completion_date.format('YYYY-MM-DD'),
-        attendance_verification_required: values.attendance_verification_required,
+        attendance_photo_required: values.attendance_photo_required,
+        attendance_gps_required: values.attendance_gps_required,
       });
       message.success('Project created');
       setModalOpen(false);
@@ -390,7 +410,7 @@ export function ProjectsListPage() {
         confirmLoading={createProject.isPending}
         destroyOnHidden
       >
-        <Form form={form} layout="vertical" onFinish={handleCreate} initialValues={{ attendance_verification_required: true }}>
+        <Form form={form} layout="vertical" onFinish={handleCreate} initialValues={{ attendance_photo_required: true, attendance_gps_required: true }}>
           <Form.Item name="department_id" label="Department" rules={[{ required: true }]}>
             <Select options={(departments ?? []).map((d) => ({ value: d.id, label: d.name }))} />
           </Form.Item>
@@ -422,7 +442,10 @@ export function ProjectsListPage() {
           >
             <DatePicker style={{ width: '100%' }} format={dateFormat} />
           </Form.Item>
-          <Form.Item name="attendance_verification_required" label="Require photo + GPS for attendance" valuePropName="checked">
+          <Form.Item name="attendance_photo_required" label="Require photo for attendance" valuePropName="checked">
+            <Switch />
+          </Form.Item>
+          <Form.Item name="attendance_gps_required" label="Require GPS for attendance" valuePropName="checked">
             <Switch />
           </Form.Item>
         </Form>

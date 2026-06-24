@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7
     cors_origins: str = "http://localhost:5173"
 
+    storage_backend: str = "s3"  # "s3" or "local"
+    local_upload_dir: str = "uploads"
+    public_base_url: str = "http://localhost:8000"
+
     s3_endpoint_url: str | None = None
     s3_access_key: str | None = None
     s3_secret_key: str | None = None

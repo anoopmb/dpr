@@ -87,7 +87,7 @@ class WorkerService:
             project = await self.session.get(Project, data.project_id)
             if project is None:
                 raise NotFoundError(f"Project {data.project_id} not found.")
-            if project.attendance_verification_required:
+            if project.attendance_photo_required or project.attendance_gps_required:
                 raise VerificationRequiredError(
                     "This project requires photo/GPS verification — check the worker in instead of auto-marking."
                 )
@@ -135,10 +135,10 @@ class AttendanceService:
         if project is None:
             raise NotFoundError(f"Project {data.project_id} not found.")
 
-        if project.attendance_verification_required and (
-            not data.photo_url or data.latitude is None or data.longitude is None
-        ):
-            raise VerificationRequiredError("This project requires a photo and GPS location to mark attendance.")
+        if project.attendance_photo_required and not data.photo_url:
+            raise VerificationRequiredError("This project requires a photo to mark attendance.")
+        if project.attendance_gps_required and (data.latitude is None or data.longitude is None):
+            raise VerificationRequiredError("This project requires a GPS location to mark attendance.")
 
         record = await _record_attendance(
             self.repo,
@@ -159,7 +159,7 @@ class AttendanceService:
         project = await self.session.get(Project, data.project_id)
         if project is None:
             raise NotFoundError(f"Project {data.project_id} not found.")
-        if project.attendance_verification_required:
+        if project.attendance_photo_required or project.attendance_gps_required:
             raise VerificationRequiredError(
                 "This project requires photo/GPS verification — use check-in instead of bulk marking."
             )
