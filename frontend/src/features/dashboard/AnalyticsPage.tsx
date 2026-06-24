@@ -1,22 +1,13 @@
 import { Skeleton, Table, Tag, Typography } from 'antd';
 import { useProjects } from '@/api/hooks/useProjects';
-import { useOrganizationSettings } from '@/api/hooks/useOrganizationSettings';
 import { apiClient } from '@/api/client';
 import { useQueries } from '@tanstack/react-query';
 import type { ProjectSummaryRead } from '@/api/hooks/useProjects';
-
-function fmt(value: string | undefined, symbol: string, decimals: number): string {
-  if (value === undefined) return '—';
-  const n = parseFloat(value);
-  return `${symbol}${n.toLocaleString('en-IN', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
-}
+import { useNumberFormat } from '@/utils/format';
 
 export function AnalyticsPage() {
   const { data: projects, isLoading: projectsLoading } = useProjects();
-  const { data: orgSettings } = useOrganizationSettings();
-
-  const symbol = orgSettings?.currency_symbol ?? '₹';
-  const decimals = orgSettings?.decimal_places ?? 2;
+  const { fmtAmt } = useNumberFormat();
 
   const summaryQueries = useQueries({
     queries: (projects ?? []).map((p) => ({
@@ -32,10 +23,10 @@ export function AnalyticsPage() {
     key: p.id,
     name: p.name,
     status: p.status,
-    contract_value: fmt(p.contract_value, symbol, decimals),
-    total_billed: fmt(summaryQueries[i]?.data?.total_billed, symbol, decimals),
-    total_received: fmt(summaryQueries[i]?.data?.total_received, symbol, decimals),
-    outstanding: fmt(summaryQueries[i]?.data?.outstanding, symbol, decimals),
+    contract_value: fmtAmt(p.contract_value),
+    total_billed: fmtAmt(summaryQueries[i]?.data?.total_billed),
+    total_received: fmtAmt(summaryQueries[i]?.data?.total_received),
+    outstanding: fmtAmt(summaryQueries[i]?.data?.outstanding),
     outstanding_raw: parseFloat(summaryQueries[i]?.data?.outstanding ?? '0'),
   }));
 
@@ -87,22 +78,17 @@ export function AnalyticsPage() {
                   <b>Total ({data.length} projects)</b>
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={2} align="right">
-                  <b>
-                    {symbol}
-                    {(projects ?? [])
-                      .reduce((acc, p) => acc + parseFloat(p.contract_value), 0)
-                      .toLocaleString('en-IN', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}
-                  </b>
+                  <b>{fmtAmt((projects ?? []).reduce((acc, p) => acc + parseFloat(p.contract_value), 0))}</b>
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={3} align="right">
-                  <b>{fmt(String(totalBilledRaw), symbol, decimals)}</b>
+                  <b>{fmtAmt(totalBilledRaw)}</b>
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={4} align="right">
-                  <b>{fmt(String(totalReceivedRaw), symbol, decimals)}</b>
+                  <b>{fmtAmt(totalReceivedRaw)}</b>
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={5} align="right">
                   <b style={{ color: totalOutstandingRaw > 0 ? '#cf1322' : undefined }}>
-                    {fmt(String(totalOutstandingRaw), symbol, decimals)}
+                    {fmtAmt(totalOutstandingRaw)}
                   </b>
                 </Table.Summary.Cell>
               </Table.Summary.Row>

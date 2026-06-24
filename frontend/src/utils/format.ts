@@ -7,6 +7,7 @@
  *   fmtQty(554.25)      →  "554.250"
  */
 
+import dayjs, { type Dayjs } from 'dayjs';
 import { useOrganizationSettings } from '@/api/hooks/useOrganizationSettings';
 import { useUoms } from '@/api/hooks/useMasters';
 
@@ -64,4 +65,24 @@ export function useNumberFormat(): NumberFormat {
     rawFmt(v, unitCode ? uomDecimalsByCode.get(unitCode) ?? 3 : 3, useThousands, locale);
 
   return { fmtAmt, fmtQty, fmtQtyByUnit, symbol, ready: !!settings };
+}
+
+export interface DateFormat {
+  /** Format a date (ISO string, Date, or Dayjs) per the org's date_format setting */
+  fmtDate: (v: string | Date | Dayjs | null | undefined) => string;
+  /** The org's date_format setting, usable directly as an AntD DatePicker `format` prop */
+  dateFormat: string;
+}
+
+export function useDateFormat(): DateFormat {
+  const { data: settings } = useOrganizationSettings();
+  const dateFormat = settings?.date_format ?? 'DD/MM/YYYY';
+
+  const fmtDate = (v: string | Date | Dayjs | null | undefined): string => {
+    if (v === null || v === undefined || v === '') return '—';
+    const d = dayjs(v);
+    return d.isValid() ? d.format(dateFormat) : '—';
+  };
+
+  return { fmtDate, dateFormat };
 }

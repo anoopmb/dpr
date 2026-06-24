@@ -13,6 +13,7 @@ import {
   useSubmitIndent,
   type MaterialIndentStatus,
 } from '@/api/hooks/useMaterialIndents';
+import { useDateFormat } from '@/utils/format';
 
 const STATUS_COLOR: Record<MaterialIndentStatus, string> = {
   DRAFT: 'default',
@@ -49,6 +50,7 @@ export function MyMaterialIndentsPage() {
   const submitIndent = useSubmitIndent();
   const cancelIndent = useCancelIndent();
   const receiveItem = useReceiveIndentItem();
+  const { fmtDate } = useDateFormat();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm<IndentFormValues>();
@@ -173,7 +175,7 @@ export function MyMaterialIndentsPage() {
               dataIndex: 'status',
               render: (status: MaterialIndentStatus) => <Tag color={STATUS_COLOR[status]}>{status}</Tag>,
             },
-            { title: 'Needed By', dataIndex: 'needed_by_date', render: (v: string | null) => v ?? '—' },
+            { title: 'Needed By', dataIndex: 'needed_by_date', render: (v: string | null) => fmtDate(v) },
             {
               title: 'Actions',
               key: 'actions',

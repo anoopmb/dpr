@@ -22,6 +22,7 @@ import {
 } from '@/api/hooks/useMasters';
 import { useProjects } from '@/api/hooks/useProjects';
 import { SimpleCodeNameTab } from '@/features/masters/SimpleCodeNameTab';
+import { useNumberFormat } from '@/utils/format';
 
 function fkError(err: unknown, label: string) {
   const status = (err as AxiosError)?.response?.status;
@@ -135,6 +136,7 @@ interface MaterialFormValues {
 function MaterialsTab() {
   const query = useMaterials();
   const { data: uoms } = useUoms();
+  const { fmtAmt, symbol } = useNumberFormat();
   const createMaterial = useCreateMaster<MaterialRow, MaterialFormValues>('materials');
   const updateMaterial = useUpdateMaster<MaterialRow, Partial<MaterialFormValues>>('materials');
   const deleteMaterial = useDeleteMaster('materials');
@@ -177,7 +179,7 @@ function MaterialsTab() {
           { title: 'Code', dataIndex: 'code', sorter: (a: MaterialRow, b: MaterialRow) => a.code.localeCompare(b.code) },
           { title: 'Name', dataIndex: 'name', sorter: (a: MaterialRow, b: MaterialRow) => a.name.localeCompare(b.name) },
           { title: 'Category', dataIndex: 'category', sorter: (a: MaterialRow, b: MaterialRow) => (a.category ?? '').localeCompare(b.category ?? '') },
-          { title: 'Cost Rate (₹)', dataIndex: 'cost_rate', render: (v: string | null, row: MaterialRow) => v !== null ? `₹ ${v}${row.cost_rate_unit ? ` / ${row.cost_rate_unit}` : ''}` : '—' },
+          { title: 'Cost Rate', dataIndex: 'cost_rate', render: (v: string | null, row: MaterialRow) => v !== null ? `${fmtAmt(v)}${row.cost_rate_unit ? ` / ${row.cost_rate_unit}` : ''}` : '—' },
           {
             title: 'Actions', key: 'actions', width: 100,
             render: (_, row) => (
@@ -199,7 +201,7 @@ function MaterialsTab() {
             <Select options={(uoms ?? []).map((u) => ({ value: u.id, label: `${u.code} — ${u.name}` }))} />
           </Form.Item>
           <Form.Item name="category" label="Category"><Input /></Form.Item>
-          <Form.Item name="cost_rate" label="Cost Rate (₹, optional)"><InputNumber style={{ width: '100%' }} min={0} /></Form.Item>
+          <Form.Item name="cost_rate" label={`Cost Rate (${symbol}, optional)`}><InputNumber style={{ width: '100%' }} min={0} /></Form.Item>
           <Form.Item name="cost_rate_unit" label="Cost Rate Unit (e.g. bag, Kg, Cum)"><Input /></Form.Item>
         </Form>
       </Modal>
@@ -216,6 +218,7 @@ interface MachineryFormValues {
 
 function MachineryTab() {
   const query = useMachinery();
+  const { fmtAmt, symbol } = useNumberFormat();
   const createMachinery = useCreateMaster<MachineryRow, MachineryFormValues>('machinery');
   const updateMachinery = useUpdateMaster<MachineryRow, Partial<MachineryFormValues>>('machinery');
   const deleteMachinery = useDeleteMaster('machinery');
@@ -257,7 +260,7 @@ function MachineryTab() {
         columns={[
           { title: 'Code', dataIndex: 'code', sorter: (a: MachineryRow, b: MachineryRow) => a.code.localeCompare(b.code) },
           { title: 'Name', dataIndex: 'name', sorter: (a: MachineryRow, b: MachineryRow) => a.name.localeCompare(b.name) },
-          { title: 'Hire Rate (₹)', dataIndex: 'hire_rate', render: (v: string | null, row: MachineryRow) => v !== null ? `₹ ${v}${row.hire_unit ? ` / ${row.hire_unit}` : ''}` : '—' },
+          { title: 'Hire Rate', dataIndex: 'hire_rate', render: (v: string | null, row: MachineryRow) => v !== null ? `${fmtAmt(v)}${row.hire_unit ? ` / ${row.hire_unit}` : ''}` : '—' },
           {
             title: 'Actions', key: 'actions', width: 100,
             render: (_, row) => (
@@ -275,7 +278,7 @@ function MachineryTab() {
         <Form form={form} layout="vertical" onFinish={handleSave}>
           <Form.Item name="code" label="Code" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="name" label="Name" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="hire_rate" label="Hire Rate (₹, optional)"><InputNumber style={{ width: '100%' }} min={0} /></Form.Item>
+          <Form.Item name="hire_rate" label={`Hire Rate (${symbol}, optional)`}><InputNumber style={{ width: '100%' }} min={0} /></Form.Item>
           <Form.Item name="hire_unit" label="Hire Unit (e.g. Daily, Hr)"><Input /></Form.Item>
         </Form>
       </Modal>
@@ -291,6 +294,7 @@ interface WorkerCategoryFormValues {
 
 function WorkerCategoryTab() {
   const query = useWorkerCategories();
+  const { fmtAmt, symbol } = useNumberFormat();
   const createWorkerCategory = useCreateMaster<WorkerCategoryRow, WorkerCategoryFormValues>('worker-categories');
   const updateWorkerCategory = useUpdateMaster<WorkerCategoryRow, Partial<WorkerCategoryFormValues>>('worker-categories');
   const deleteWorkerCategory = useDeleteMaster('worker-categories');
@@ -332,7 +336,7 @@ function WorkerCategoryTab() {
         columns={[
           { title: 'Code', dataIndex: 'code', sorter: (a: WorkerCategoryRow, b: WorkerCategoryRow) => a.code.localeCompare(b.code) },
           { title: 'Name', dataIndex: 'name', sorter: (a: WorkerCategoryRow, b: WorkerCategoryRow) => a.name.localeCompare(b.name) },
-          { title: 'Daily Rate (₹)', dataIndex: 'daily_rate', render: (v: string | null) => v !== null ? `₹ ${v}` : '—' },
+          { title: 'Daily Rate', dataIndex: 'daily_rate', render: (v: string | null) => fmtAmt(v) },
           {
             title: 'Actions', key: 'actions', width: 100,
             render: (_, row) => (
@@ -350,7 +354,7 @@ function WorkerCategoryTab() {
         <Form form={form} layout="vertical" onFinish={handleSave}>
           <Form.Item name="code" label="Code" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="name" label="Name" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="daily_rate" label="Daily Rate (₹, optional)"><InputNumber style={{ width: '100%' }} min={0} /></Form.Item>
+          <Form.Item name="daily_rate" label={`Daily Rate (${symbol}, optional)`}><InputNumber style={{ width: '100%' }} min={0} /></Form.Item>
         </Form>
       </Modal>
     </div>

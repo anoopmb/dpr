@@ -30,21 +30,19 @@ import {
 } from '@/api/hooks/useBoq';
 import { useUoms, useWorkTypes } from '@/api/hooks/useMasters';
 import { useThemeMode } from '@/theme/theme-context';
+import { useNumberFormat } from '@/utils/format';
 
 type RowType =
   | { _type: 'header'; section: BoqSectionRead; key: string }
   | { _type: 'item'; item: BoqItemRead; key: string }
   | { _type: 'subtotal'; section: BoqSectionRead; key: string };
 
-
-function fmtAmt(qty: string, rate: string): string {
-  const v = parseFloat(qty) * parseFloat(rate);
-  return v.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+function itemValue(item: BoqItemRead): number {
+  return parseFloat(item.tendered_qty) * parseFloat(item.rate);
 }
 
-function sectionAmount(items: BoqItemRead[], field: 'tendered_qty' | 'consumed_qty'): string {
-  const total = items.reduce((acc, i) => acc + parseFloat(i[field]) * parseFloat(i.rate), 0);
-  return total.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+function sectionAmount(items: BoqItemRead[], field: 'tendered_qty' | 'consumed_qty'): number {
+  return items.reduce((acc, i) => acc + parseFloat(i[field]) * parseFloat(i.rate), 0);
 }
 
 interface ItemFormValues {
@@ -75,6 +73,7 @@ export function BoqPage() {
   const updateSection = useUpdateBoqSection();
   const deleteSection = useDeleteBoqSection();
   const { resolvedMode } = useThemeMode();
+  const { fmtAmt, fmtQty, symbol } = useNumberFormat();
 
   // Theme-aware row backgrounds — bypass Ant Design's token so we override precisely
   const SECTION_HEADER_BG =
@@ -299,7 +298,7 @@ export function BoqPage() {
       },
       render: (_, row) => {
         if (row._type === 'item') return parseFloat(row.item.tendered_qty).toLocaleString('en-IN', { maximumFractionDigits: 3 });
-        if (row._type === 'subtotal') return `₹ ${sectionAmount(row.section.items, 'tendered_qty')}`;
+        if (row._type === 'subtotal') return fmtAmt(sectionAmount(row.section.items, 'tendered_qty'));
         return null;
       },
     },
@@ -315,12 +314,12 @@ export function BoqPage() {
       },
       render: (_, row) => {
         if (row._type === 'item') return parseFloat(row.item.consumed_qty).toLocaleString('en-IN', { maximumFractionDigits: 3 });
-        if (row._type === 'subtotal') return `₹ ${sectionAmount(row.section.items, 'consumed_qty')}`;
+        if (row._type === 'subtotal') return fmtAmt(sectionAmount(row.section.items, 'consumed_qty'));
         return null;
       },
     },
     {
-      title: 'Rate (₹)',
+      title: `Rate (${symbol})`,
       key: 'rate',
       width: 90,
       align: 'right' as const,
@@ -329,13 +328,10 @@ export function BoqPage() {
         if (row._type === 'subtotal') return { colSpan: 0, style: { background: SUBTOTAL_BG } };
         return {};
       },
-      render: (_, row) =>
-        row._type === 'item'
-          ? parseFloat(row.item.rate).toLocaleString('en-IN', { maximumFractionDigits: 2 })
-          : null,
+      render: (_, row) => (row._type === 'item' ? fmtQty(row.item.rate, 2) : null),
     },
     {
-      title: 'Tendered Value (₹)',
+      title: 'Tendered Value',
       key: 'tendered_value',
       width: 130,
       align: 'right' as const,
@@ -344,8 +340,7 @@ export function BoqPage() {
         if (row._type === 'subtotal') return { colSpan: 0, style: { background: SUBTOTAL_BG } };
         return {};
       },
-      render: (_, row) =>
-        row._type === 'item' ? fmtAmt(row.item.tendered_qty, row.item.rate) : null,
+      render: (_, row) => (row._type === 'item' ? fmtAmt(itemValue(row.item)) : null),
     },
     {
       title: 'Actions',
@@ -485,7 +480,7 @@ export function BoqPage() {
           <Form.Item name="tendered_qty" label="Tendered Quantity" rules={[{ required: true }]}>
             <InputNumber min={0.001} step={0.001} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="rate" label="Rate (₹)" rules={[{ required: true }]}>
+          <Form.Item name="rate" label={`Rate (${symbol})`} rules={[{ required: true }]}>
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
         </Form>
@@ -518,7 +513,7 @@ export function BoqPage() {
           <Form.Item name="tendered_qty" label="Tendered Quantity" rules={[{ required: true }]}>
             <InputNumber min={0.001} step={0.001} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="rate" label="Rate (₹)" rules={[{ required: true }]}>
+          <Form.Item name="rate" label={`Rate (${symbol})`} rules={[{ required: true }]}>
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
         </Form>

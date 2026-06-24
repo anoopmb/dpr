@@ -59,7 +59,7 @@ export function DprMonthlyReportPage() {
   const [month, setMonth] = useState<Dayjs>(dayjs());
   const monthStr = month.format('YYYY-MM');
   const { resolvedMode } = useThemeMode();
-  const { fmtAmt, fmtQty, fmtQtyByUnit } = useNumberFormat();
+  const { fmtAmt, fmtQty, fmtQtyByUnit, symbol } = useNumberFormat();
 
   const HDR_BG = resolvedMode === 'dark' ? 'rgba(22, 119, 255, 0.10)' : '#f0f5ff';
   const SUB_BG = resolvedMode === 'dark' ? 'rgba(255, 255, 255, 0.04)' : '#fafafa';
@@ -88,8 +88,6 @@ export function DprMonthlyReportPage() {
 
   const totalLeafColumns = 5 + 2 + daysInMonth * 2 + 2;
 
-  const headerOnCell = (row: ReportRow) =>
-    row._type === 'header' ? { colSpan: totalLeafColumns } : row._type === 'subtotal' ? { colSpan: 0 } : {};
   const headerItemNoOnCell = (row: ReportRow) =>
     row._type === 'header'
       ? { colSpan: totalLeafColumns }
@@ -145,7 +143,7 @@ export function DprMonthlyReportPage() {
         render: (_, row) => (row._type === 'item' ? row.item.unit : null),
       },
       {
-        title: 'Rate (₹)',
+        title: `Rate (${symbol})`,
         key: 'rate',
         width: 80,
         align: 'right' as const,

@@ -6,7 +6,7 @@ import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
 import { useProductionProgress, type BoqItemProgressRead, type SectionProgressRead } from '@/api/hooks/useDpr';
 import { useThemeMode } from '@/theme/theme-context';
-import { useNumberFormat } from '@/utils/format';
+import { useDateFormat, useNumberFormat } from '@/utils/format';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -80,7 +80,8 @@ export function ProductionProgressPage() {
   const selectedProjectId = useProjectContextStore((s) => s.selectedProjectId);
   const [asOf, setAsOf] = useState<Dayjs>(dayjs());
   const { resolvedMode } = useThemeMode();
-  const { fmtAmt, fmtQty, fmtQtyByUnit } = useNumberFormat();
+  const { fmtAmt, fmtQty, fmtQtyByUnit, symbol } = useNumberFormat();
+  const { dateFormat } = useDateFormat();
 
   const HDR_BG   = resolvedMode === 'dark' ? 'rgba(22, 119, 255, 0.10)' : '#f0f5ff';
   const SUB_BG   = resolvedMode === 'dark' ? 'rgba(255, 255, 255, 0.06)' : '#f5f5f5';
@@ -156,7 +157,7 @@ export function ProductionProgressPage() {
 
     // ── Col 3: Rate — colSpan 0 for header and subtotal
     {
-      title: 'Rate (₹)',
+      title: `Rate (${symbol})`,
       key: 'rate',
       width: 100,
       align: 'right' as const,
@@ -291,6 +292,7 @@ export function ProductionProgressPage() {
           value={asOf}
           onChange={(d) => { if (d) setAsOf(d); }}
           disabledDate={(d) => d.isAfter(dayjs())}
+          format={dateFormat}
           allowClear={false}
         />
       </div>

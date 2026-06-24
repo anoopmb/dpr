@@ -6,15 +6,9 @@ import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
 import { useProjects } from '@/api/hooks/useProjects';
 import { useProfitability, type DailyProfitabilityRead } from '@/api/hooks/useProfitability';
+import { useDateFormat, useNumberFormat } from '@/utils/format';
 
 const { RangePicker } = DatePicker;
-
-function fmtMoney(v: string | number | null | undefined) {
-  if (v === null || v === undefined) return '—';
-  const n = typeof v === 'string' ? parseFloat(v) : v;
-  if (isNaN(n)) return '—';
-  return n.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 });
-}
 
 function fmtPct(v: string | null) {
   if (v === null) return '—';
@@ -29,6 +23,8 @@ export function ProfitabilityPage() {
   const selectedProjectId = useProjectContextStore((s) => s.selectedProjectId);
   const { data: projects } = useProjects();
   const project = projects?.find((p) => p.id === selectedProjectId);
+  const { fmtDate, dateFormat } = useDateFormat();
+  const { fmtAmt } = useNumberFormat();
 
   const [range, setRange] = useState<[Dayjs, Dayjs]>([dayjs().startOf('month'), dayjs().endOf('month')]);
 
@@ -58,37 +54,37 @@ export function ProfitabilityPage() {
   const totalBreakdown = breakdownSegments.reduce((sum, s) => sum + s.amount, 0);
 
   const dailyColumns: TableColumnsType<DailyProfitabilityRead> = [
-    { title: 'Date', dataIndex: 'date', width: 110 },
+    { title: 'Date', dataIndex: 'date', width: 110, render: fmtDate },
     {
-      title: 'Production Value (₹)',
+      title: 'Production Value',
       dataIndex: 'production_value',
       align: 'right' as const,
-      render: (v: string) => fmtMoney(v),
+      render: (v: string) => fmtAmt(v),
     },
     {
-      title: 'Machinery Cost (₹)',
+      title: 'Machinery Cost',
       dataIndex: 'machinery_cost',
       align: 'right' as const,
-      render: (v: string) => fmtMoney(v),
+      render: (v: string) => fmtAmt(v),
     },
     {
-      title: 'Expense Cost (₹)',
+      title: 'Expense Cost',
       dataIndex: 'expense_cost',
       align: 'right' as const,
-      render: (v: string) => fmtMoney(v),
+      render: (v: string) => fmtAmt(v),
     },
     {
-      title: 'Total Cost (₹)',
+      title: 'Total Cost',
       dataIndex: 'total_cost',
       align: 'right' as const,
-      render: (v: string) => fmtMoney(v),
+      render: (v: string) => fmtAmt(v),
     },
     {
-      title: 'Net P&L (₹)',
+      title: 'Net P&L',
       dataIndex: 'net_profit',
       align: 'right' as const,
       render: (v: string) => (
-        <span style={{ color: parseFloat(v) < 0 ? '#cf1322' : '#3f8600' }}>{fmtMoney(v)}</span>
+        <span style={{ color: parseFloat(v) < 0 ? '#cf1322' : '#3f8600' }}>{fmtAmt(v)}</span>
       ),
     },
     {
@@ -126,6 +122,7 @@ export function ProfitabilityPage() {
               onChange={(values) => {
                 if (values && values[0] && values[1]) setRange([values[0], values[1]]);
               }}
+              format={dateFormat}
               allowClear={false}
             />
           </Space>
@@ -135,20 +132,19 @@ export function ProfitabilityPage() {
               <Row gutter={16} style={{ marginBottom: 16 }}>
                 <Col xs={12} md={6}>
                   <Card>
-                    <Statistic title="Production Value" prefix="₹" value={fmtMoney(profitability.production_value)} />
+                    <Statistic title="Production Value" value={fmtAmt(profitability.production_value)} />
                   </Card>
                 </Col>
                 <Col xs={12} md={6}>
                   <Card>
-                    <Statistic title="Total Cost" prefix="₹" value={fmtMoney(profitability.total_cost)} />
+                    <Statistic title="Total Cost" value={fmtAmt(profitability.total_cost)} />
                   </Card>
                 </Col>
                 <Col xs={12} md={6}>
                   <Card>
                     <Statistic
                       title="Net P&L"
-                      prefix="₹"
-                      value={fmtMoney(profitability.net_profit)}
+                      value={fmtAmt(profitability.net_profit)}
                       valueStyle={{ color: parseFloat(profitability.net_profit) < 0 ? '#cf1322' : '#3f8600' }}
                     />
                   </Card>
@@ -181,7 +177,7 @@ export function ProfitabilityPage() {
                           width: `${(seg.amount / totalBreakdown) * 100}%`,
                           background: BAR_COLORS[i % BAR_COLORS.length],
                         }}
-                        title={`${seg.label}: ₹ ${fmtMoney(seg.amount)}`}
+                        title={`${seg.label}: ${fmtAmt(seg.amount)}`}
                       />
                     ))}
                   </div>
@@ -198,7 +194,7 @@ export function ProfitabilityPage() {
                           }}
                         />
                         <Typography.Text>
-                          {seg.label}: ₹ {fmtMoney(seg.amount)}
+                          {seg.label}: {fmtAmt(seg.amount)}
                         </Typography.Text>
                       </Space>
                     ))}

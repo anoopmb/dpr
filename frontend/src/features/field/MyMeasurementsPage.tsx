@@ -6,6 +6,7 @@ import { useProjectContextStore } from '@/store/project-context-store';
 import { useAuthStore } from '@/store/auth-store';
 import { useMeasurements, useSubmitMeasurement, type MeasurementRead, type MeasurementStatus } from '@/api/hooks/useMeasurements';
 import { useBoqItems } from '@/api/hooks/useBoq';
+import { useDateFormat } from '@/utils/format';
 
 const STATUS_COLOR: Record<MeasurementStatus, string> = {
   DRAFT: 'default',
@@ -22,6 +23,7 @@ export function MyMeasurementsPage() {
   const { data: measurements, isLoading } = useMeasurements(selectedProjectId);
   const { data: boqItems } = useBoqItems(selectedProjectId);
   const submitMeasurement = useSubmitMeasurement();
+  const { fmtDate } = useDateFormat();
 
   const boqById = new Map((boqItems ?? []).map((b) => [b.id, b]));
 
@@ -40,7 +42,7 @@ export function MyMeasurementsPage() {
   };
 
   const columns: TableColumnsType<MeasurementRead> = [
-    { title: 'Date', dataIndex: 'measurement_date', width: 100 },
+    { title: 'Date', dataIndex: 'measurement_date', width: 100, render: fmtDate },
     {
       title: 'BOQ Item',
       dataIndex: 'boq_item_id',

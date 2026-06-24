@@ -5,6 +5,7 @@ import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
 import { useWorkerCategories } from '@/api/hooks/useMasters';
 import { useAttendanceRecords, useCreateWorker, useUpdateWorker, useWorkers, type WorkerRead } from '@/api/hooks/useAttendance';
+import { useDateFormat } from '@/utils/format';
 
 interface WorkerCreateFormValues {
   full_name: string;
@@ -28,6 +29,7 @@ export function WorkersPage() {
   const { data: categories } = useWorkerCategories();
   const createWorker = useCreateWorker();
   const updateWorker = useUpdateWorker();
+  const { fmtDate } = useDateFormat();
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editingWorker, setEditingWorker] = useState<WorkerRead | null>(null);
@@ -130,7 +132,7 @@ export function WorkersPage() {
                 dataSource={attendance ?? []}
                 pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} records` }}
                 columns={[
-                  { title: 'Date', dataIndex: 'attendance_date', sorter: (a, b) => a.attendance_date.localeCompare(b.attendance_date) },
+                  { title: 'Date', dataIndex: 'attendance_date', sorter: (a, b) => a.attendance_date.localeCompare(b.attendance_date), render: fmtDate },
                   { title: 'Worker', dataIndex: 'worker_id', render: (id: string) => workerById.get(id) ?? id },
                   { title: 'Check-in Time', dataIndex: 'check_in_time', sorter: (a, b) => a.check_in_time.localeCompare(b.check_in_time) },
                   {

@@ -27,6 +27,7 @@ import {
   type MaterialIndentStatus,
 } from '@/api/hooks/useMaterialIndents';
 import { useAuthStore } from '@/store/auth-store';
+import { useDateFormat } from '@/utils/format';
 
 const STATUS_COLOR: Record<MaterialIndentStatus, string> = {
   DRAFT: 'default',
@@ -66,6 +67,7 @@ export function MaterialIndentsPage() {
   const cancelIndent = useCancelIndent();
   const issueItem = useIssueIndentItem();
   const receiveItem = useReceiveIndentItem();
+  const { fmtDate } = useDateFormat();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm<IndentFormValues>();
@@ -206,7 +208,7 @@ export function MaterialIndentsPage() {
             sorter: (a, b) => a.status.localeCompare(b.status),
             render: (status: MaterialIndentStatus) => <Tag color={STATUS_COLOR[status]}>{status}</Tag>,
           },
-          { title: 'Needed By', dataIndex: 'needed_by_date', sorter: (a, b) => (a.needed_by_date ?? '').localeCompare(b.needed_by_date ?? '') },
+          { title: 'Needed By', dataIndex: 'needed_by_date', sorter: (a, b) => (a.needed_by_date ?? '').localeCompare(b.needed_by_date ?? ''), render: (v: string | null) => fmtDate(v) },
           {
             title: 'Actions',
             key: 'actions',

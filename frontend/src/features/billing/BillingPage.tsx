@@ -23,6 +23,7 @@ import {
   useRunningBills,
   type RunningBillRead,
 } from '@/api/hooks/useBilling';
+import { useDateFormat, useNumberFormat } from '@/utils/format';
 
 const BILL_STATUS_COLOR: Record<string, string> = { DRAFT: 'default', SUBMITTED: 'blue', APPROVED: 'gold', PAID: 'green' };
 
@@ -46,6 +47,8 @@ export function BillingPage() {
   const { data: measurements } = useMeasurements(selectedProjectId);
   const createBill = useCreateRunningBill();
   const recordPayment = useRecordPayment();
+  const { fmtDate, dateFormat } = useDateFormat();
+  const { fmtAmt } = useNumberFormat();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm<BillFormValues>();
@@ -112,9 +115,9 @@ export function BillingPage() {
         dataSource={bills ?? []}
         columns={[
           { title: 'Bill No', dataIndex: 'bill_number' },
-          { title: 'From', dataIndex: 'from_date' },
-          { title: 'To', dataIndex: 'to_date' },
-          { title: 'Total', dataIndex: 'total_amount' },
+          { title: 'From', dataIndex: 'from_date', render: fmtDate },
+          { title: 'To', dataIndex: 'to_date', render: fmtDate },
+          { title: 'Total', dataIndex: 'total_amount', render: fmtAmt },
           {
             title: 'Status',
             dataIndex: 'status',
@@ -147,13 +150,13 @@ export function BillingPage() {
             <Input />
           </Form.Item>
           <Form.Item name="bill_date" label="Bill Date" rules={[{ required: true }]}>
-            <DatePicker style={{ width: '100%' }} />
+            <DatePicker style={{ width: '100%' }} format={dateFormat} />
           </Form.Item>
           <Form.Item name="from_date" label="Period From" rules={[{ required: true }]}>
-            <DatePicker style={{ width: '100%' }} />
+            <DatePicker style={{ width: '100%' }} format={dateFormat} />
           </Form.Item>
           <Form.Item name="to_date" label="Period To" rules={[{ required: true }]}>
-            <DatePicker style={{ width: '100%' }} />
+            <DatePicker style={{ width: '100%' }} format={dateFormat} />
           </Form.Item>
           <Form.Item
             name="measurement_ids"
@@ -170,7 +173,7 @@ export function BillingPage() {
                 onChange: (selectedKeys) => form.setFieldValue('measurement_ids', selectedKeys),
               }}
               columns={[
-                { title: 'Date', dataIndex: 'measurement_date' },
+                { title: 'Date', dataIndex: 'measurement_date', render: fmtDate },
                 { title: 'Qty', dataIndex: 'computed_qty' },
               ]}
             />
@@ -187,14 +190,14 @@ export function BillingPage() {
         destroyOnHidden
       >
         <Typography.Paragraph type="secondary">
-          Total: {paymentBill?.total_amount}
+          Total: {fmtAmt(paymentBill?.total_amount)}
         </Typography.Paragraph>
         <Form form={paymentForm} layout="vertical" onFinish={handlePayment} initialValues={{ received_date: dayjs() }}>
           <Form.Item name="amount_received" label="Amount Received" rules={[{ required: true }]}>
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="received_date" label="Received Date" rules={[{ required: true }]}>
-            <DatePicker style={{ width: '100%' }} />
+            <DatePicker style={{ width: '100%' }} format={dateFormat} />
           </Form.Item>
           <Form.Item name="reference_no" label="Reference No (cheque/UTR)">
             <Input />

@@ -3,6 +3,7 @@ import type { TableColumnsType } from 'antd';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
 import { useDprList, type DprHeaderRead } from '@/api/hooks/useDpr';
+import { useDateFormat } from '@/utils/format';
 
 function rowKind(header: DprHeaderRead): 'no-work' | 'pre-work' | 'normal' {
   if (header.no_work) return 'no-work';
@@ -20,11 +21,12 @@ const ROW_BG: Record<string, string> = {
 export function DprHistoryPage() {
   const selectedProjectId = useProjectContextStore((s) => s.selectedProjectId);
   const { data: headers, isLoading } = useDprList(selectedProjectId);
+  const { fmtDate } = useDateFormat();
 
   const sorted = [...(headers ?? [])].sort((a, b) => (a.report_date < b.report_date ? 1 : -1));
 
   const columns: TableColumnsType<DprHeaderRead> = [
-    { title: 'Date', dataIndex: 'report_date', width: 110 },
+    { title: 'Date', dataIndex: 'report_date', width: 110, render: fmtDate },
     {
       title: 'Status',
       dataIndex: 'status',

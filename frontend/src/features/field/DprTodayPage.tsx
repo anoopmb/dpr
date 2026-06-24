@@ -37,6 +37,7 @@ import {
 import { useBoqSections, type BoqItemRead, type BoqSectionRead } from '@/api/hooks/useBoq';
 import { useUploadPhoto } from '@/api/hooks/useUpload';
 import { useThemeMode } from '@/theme/theme-context';
+import { useDateFormat, useNumberFormat } from '@/utils/format';
 
 const TASKS = [
   { key: '/field/materials', label: 'Materials Used' },
@@ -85,6 +86,7 @@ function ProductionTab({
   const { data: existingEntries } = useDprProduction(headerId);
   const bulkUpsert = useBulkUpsertProduction();
   const { resolvedMode } = useThemeMode();
+  const { fmtAmt } = useNumberFormat();
 
   const HDR_BG = resolvedMode === 'dark' ? 'rgba(22, 119, 255, 0.10)' : '#f0f5ff';
 
@@ -135,7 +137,7 @@ function ProductionTab({
     const q = parseFloat(qty || '0');
     const r = parseFloat(item.rate);
     if (isNaN(q) || isNaN(r)) return '—';
-    return (q * r).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+    return fmtAmt(q * r);
   };
 
   const columns: TableColumnsType<ProductionRow> = [
@@ -181,7 +183,7 @@ function ProductionTab({
       },
     },
     {
-      title: 'Amount (₹)',
+      title: 'Amount',
       key: 'amount',
       width: 110,
       align: 'right' as const,
@@ -270,6 +272,7 @@ export function DprTodayPage() {
   const authUser = useAuthStore((s) => s.user);
 
   const today = dayjs().format('YYYY-MM-DD');
+  const { fmtDate } = useDateFormat();
   const { data: dprList, isLoading: listLoading } = useDprList(selectedProjectId);
   const { data: header } = useDprHeader(currentDprHeaderId);
   const createHeader = useCreateDprHeader();
@@ -439,7 +442,7 @@ export function DprTodayPage() {
               )}
             </Space>
           )}
-          <Empty description={`No DPR started for ${today} yet`}>
+          <Empty description={`No DPR started for ${fmtDate(today)} yet`}>
             <Button type="primary" size="large" loading={createHeader.isPending} onClick={handleStart}>
               Start Today's DPR
             </Button>
@@ -535,7 +538,7 @@ export function DprTodayPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>
-          Today's DPR — {today}
+          Today's DPR — {fmtDate(today)}
         </Typography.Title>
         <Tag color={isSubmitted ? 'green' : 'blue'}>{isSubmitted ? 'SUBMITTED' : 'DRAFT'}</Tag>
       </div>

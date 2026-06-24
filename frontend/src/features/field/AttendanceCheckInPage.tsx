@@ -17,6 +17,7 @@ import { useWorkerCategories } from '@/api/hooks/useMasters';
 import { useProjects } from '@/api/hooks/useProjects';
 import { useUploadPhoto } from '@/api/hooks/useUpload';
 import { getCurrentPosition, haversineDistanceMeters, reverseGeocode } from '@/utils/geolocation';
+import { useDateFormat } from '@/utils/format';
 
 const todayStr = new Date().toISOString().slice(0, 10);
 
@@ -32,6 +33,7 @@ export function AttendanceCheckInPage() {
   const { data: projects } = useProjects();
   const project = (projects ?? []).find((p) => p.id === selectedProjectId);
   const verificationRequired = project?.attendance_verification_required ?? true;
+  const { fmtDate } = useDateFormat();
 
   const { data: workers } = useWorkers(selectedProjectId);
   const { data: attendance } = useAttendanceRecords(selectedProjectId);
@@ -226,7 +228,7 @@ export function AttendanceCheckInPage() {
 
   return (
     <div>
-      <Typography.Title level={4}>Attendance — {todayStr}</Typography.Title>
+      <Typography.Title level={4}>Attendance — {fmtDate(todayStr)}</Typography.Title>
 
       {locationCard}
 

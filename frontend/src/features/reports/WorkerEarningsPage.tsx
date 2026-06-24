@@ -5,19 +5,15 @@ import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
 import { useWorkerCategories } from '@/api/hooks/useMasters';
 import { useWorkerEarningsReport } from '@/api/hooks/useWorkerEarnings';
+import { useDateFormat, useNumberFormat } from '@/utils/format';
 
 const { RangePicker } = DatePicker;
-
-function fmt(v: string | null) {
-  if (v === null) return '—';
-  const n = parseFloat(v);
-  if (isNaN(n)) return '—';
-  return n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
-}
 
 export function WorkerEarningsPage() {
   const selectedProjectId = useProjectContextStore((s) => s.selectedProjectId);
   const { data: categories } = useWorkerCategories();
+  const { dateFormat } = useDateFormat();
+  const { fmtAmt } = useNumberFormat();
   const [range, setRange] = useState<[Dayjs, Dayjs]>([dayjs().startOf('month'), dayjs()]);
   const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
 
@@ -41,6 +37,7 @@ export function WorkerEarningsPage() {
           onChange={(values) => {
             if (values && values[0] && values[1]) setRange([values[0], values[1]]);
           }}
+          format={dateFormat}
           allowClear={false}
         />
         <Select
@@ -64,8 +61,8 @@ export function WorkerEarningsPage() {
             { title: 'Worker', dataIndex: 'worker_name' },
             { title: 'Category', dataIndex: 'category_name' },
             { title: 'Days Present', dataIndex: 'days_present', align: 'right' as const },
-            { title: 'Daily Rate (₹)', dataIndex: 'daily_rate', align: 'right' as const, render: fmt },
-            { title: 'Total (₹)', dataIndex: 'total_earnings', align: 'right' as const, render: fmt },
+            { title: 'Daily Rate', dataIndex: 'daily_rate', align: 'right' as const, render: fmtAmt },
+            { title: 'Total', dataIndex: 'total_earnings', align: 'right' as const, render: fmtAmt },
           ]}
           summary={() =>
             report ? (
@@ -79,7 +76,7 @@ export function WorkerEarningsPage() {
                   </Table.Summary.Cell>
                   <Table.Summary.Cell index={3} />
                   <Table.Summary.Cell index={4} align="right">
-                    ₹ {fmt(report.total_earnings)}
+                    {fmtAmt(report.total_earnings)}
                   </Table.Summary.Cell>
                 </Table.Summary.Row>
               </Table.Summary>

@@ -2,22 +2,13 @@ import { Alert, Card, Col, Row, Skeleton, Statistic, Typography } from 'antd';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
 import { useProjects, useProjectSummary } from '@/api/hooks/useProjects';
-import { useOrganizationSettings } from '@/api/hooks/useOrganizationSettings';
-
-function fmt(value: string | undefined, symbol: string, decimals: number): string {
-  if (value === undefined) return '—';
-  const n = parseFloat(value);
-  return `${symbol}${n.toLocaleString('en-IN', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
-}
+import { useNumberFormat } from '@/utils/format';
 
 export function DashboardPage() {
   const selectedProjectId = useProjectContextStore((s) => s.selectedProjectId);
   const { data: projects } = useProjects();
   const { data: summary, isLoading: summaryLoading } = useProjectSummary(selectedProjectId);
-  const { data: orgSettings } = useOrganizationSettings();
-
-  const symbol = orgSettings?.currency_symbol ?? '₹';
-  const decimals = orgSettings?.decimal_places ?? 2;
+  const { fmtAmt } = useNumberFormat();
 
   const allProjectsContractTotal = (projects ?? []).reduce(
     (acc, p) => acc + parseFloat(p.contract_value),
@@ -51,7 +42,7 @@ export function DashboardPage() {
               <Card>
                 <Statistic
                   title="Contract Value"
-                  value={fmt(summary?.contract_value, symbol, decimals)}
+                  value={fmtAmt(summary?.contract_value)}
                   valueStyle={{ fontSize: 20 }}
                 />
               </Card>
@@ -60,7 +51,7 @@ export function DashboardPage() {
               <Card>
                 <Statistic
                   title="Work Billed"
-                  value={fmt(summary?.total_billed, symbol, decimals)}
+                  value={fmtAmt(summary?.total_billed)}
                   valueStyle={{ fontSize: 20 }}
                 />
               </Card>
@@ -69,7 +60,7 @@ export function DashboardPage() {
               <Card>
                 <Statistic
                   title="Payment Received"
-                  value={fmt(summary?.total_received, symbol, decimals)}
+                  value={fmtAmt(summary?.total_received)}
                   valueStyle={{ fontSize: 20, color: '#389e0d' }}
                 />
               </Card>
@@ -78,7 +69,7 @@ export function DashboardPage() {
               <Card>
                 <Statistic
                   title="Outstanding"
-                  value={fmt(summary?.outstanding, symbol, decimals)}
+                  value={fmtAmt(summary?.outstanding)}
                   valueStyle={{ fontSize: 20, color: parseFloat(summary?.outstanding ?? '0') > 0 ? '#cf1322' : undefined }}
                 />
               </Card>
@@ -91,7 +82,7 @@ export function DashboardPage() {
             <Card>
               <Statistic
                 title="Total Contract Value"
-                value={`${symbol}${allProjectsContractTotal.toLocaleString('en-IN', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`}
+                value={fmtAmt(allProjectsContractTotal)}
                 valueStyle={{ fontSize: 20 }}
               />
             </Card>

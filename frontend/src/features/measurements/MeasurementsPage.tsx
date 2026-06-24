@@ -15,6 +15,7 @@ import {
 import { useAuthStore } from '@/store/auth-store';
 import { useBoqItems } from '@/api/hooks/useBoq';
 import { useThemeMode } from '@/theme/theme-context';
+import { useDateFormat } from '@/utils/format';
 
 const STATUS_COLOR: Record<MeasurementStatus, string> = {
   DRAFT: 'default',
@@ -52,6 +53,7 @@ export function MeasurementsPage() {
   const { data: boqItems } = useBoqItems(selectedProjectId);
   const user = useAuthStore((s) => s.user);
   const { resolvedMode } = useThemeMode();
+  const { fmtDate } = useDateFormat();
 
   const DATE_HDR_BG = resolvedMode === 'dark' ? 'rgba(22, 119, 255, 0.10)' : '#f0f5ff';
 
@@ -118,7 +120,7 @@ export function MeasurementsPage() {
       key: 'boq_item',
       onCell: (row) => (row._type === 'date-header' ? { colSpan: NCOLS, style: { background: DATE_HDR_BG, fontWeight: 600 } } : {}),
       render: (_, row) => {
-        if (row._type === 'date-header') return `${row.date} (${row.count} entr${row.count === 1 ? 'y' : 'ies'})`;
+        if (row._type === 'date-header') return `${fmtDate(row.date)} (${row.count} entr${row.count === 1 ? 'y' : 'ies'})`;
         const item = boqById.get(row.measurement.boq_item_id);
         return item ? `${item.item_no} — ${item.description}` : row.measurement.boq_item_id;
       },

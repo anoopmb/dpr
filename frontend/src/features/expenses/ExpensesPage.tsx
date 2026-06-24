@@ -7,6 +7,7 @@ import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
 import { useExpenseCategories } from '@/api/hooks/useMasters';
 import { useCreateExpense, useDeleteExpense, useExpenses, useUpdateExpense, type ExpenseRead } from '@/api/hooks/useExpenses';
+import { useDateFormat, useNumberFormat } from '@/utils/format';
 
 interface ExpenseFormValues {
   expense_category_id: string;
@@ -23,6 +24,8 @@ export function ExpensesPage() {
   const createExpense = useCreateExpense();
   const updateExpense = useUpdateExpense();
   const deleteExpense = useDeleteExpense();
+  const { fmtDate, dateFormat } = useDateFormat();
+  const { fmtAmt } = useNumberFormat();
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<ExpenseRead | null>(null);
@@ -113,9 +116,9 @@ export function ExpensesPage() {
         dataSource={expenses ?? []}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} expenses` }}
         columns={[
-          { title: 'Date', dataIndex: 'expense_date', sorter: (a: ExpenseRead, b: ExpenseRead) => a.expense_date.localeCompare(b.expense_date) },
+          { title: 'Date', dataIndex: 'expense_date', sorter: (a: ExpenseRead, b: ExpenseRead) => a.expense_date.localeCompare(b.expense_date), render: fmtDate },
           { title: 'Category', dataIndex: 'expense_category_id', render: (id: string) => categoryById.get(id) ?? id },
-          { title: 'Amount', dataIndex: 'amount', sorter: (a: ExpenseRead, b: ExpenseRead) => parseFloat(a.amount) - parseFloat(b.amount) },
+          { title: 'Amount', dataIndex: 'amount', sorter: (a: ExpenseRead, b: ExpenseRead) => parseFloat(a.amount) - parseFloat(b.amount), render: fmtAmt },
           { title: 'Vendor', dataIndex: 'vendor_name', sorter: (a: ExpenseRead, b: ExpenseRead) => (a.vendor_name ?? '').localeCompare(b.vendor_name ?? '') },
           { title: 'Remarks', dataIndex: 'remarks' },
           {
@@ -156,7 +159,7 @@ export function ExpensesPage() {
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="expense_date" label="Date" rules={[{ required: true }]}>
-            <DatePicker style={{ width: '100%' }} />
+            <DatePicker style={{ width: '100%' }} format={dateFormat} />
           </Form.Item>
           <Form.Item name="vendor_name" label="Vendor (reference only)">
             <Input />
@@ -183,7 +186,7 @@ export function ExpensesPage() {
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="expense_date" label="Date" rules={[{ required: true }]}>
-            <DatePicker style={{ width: '100%' }} />
+            <DatePicker style={{ width: '100%' }} format={dateFormat} />
           </Form.Item>
           <Form.Item name="vendor_name" label="Vendor">
             <Input />

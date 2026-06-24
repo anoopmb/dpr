@@ -33,6 +33,7 @@ import {
   useProjectAssignments,
 } from '@/api/hooks/useProjectAssignments';
 import type { UserRole } from '@/store/auth-store';
+import { useDateFormat, useNumberFormat } from '@/utils/format';
 
 const STATUS_COLOR: Record<string, string> = { ACTIVE: 'green', COMPLETED: 'blue', SUSPENDED: 'orange' };
 
@@ -276,6 +277,8 @@ export function ProjectsListPage() {
   const { data: departments } = useDepartments();
   const createProject = useCreateProject();
   const updateProject = useUpdateProject();
+  const { fmtDate, dateFormat } = useDateFormat();
+  const { fmtAmt } = useNumberFormat();
   const [modalOpen, setModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectRead | null>(null);
   const [settingsProject, setSettingsProject] = useState<ProjectRead | null>(null);
@@ -353,9 +356,9 @@ export function ProjectsListPage() {
         columns={[
           { title: 'Tender No', dataIndex: 'tender_no', sorter: (a: ProjectRead, b: ProjectRead) => a.tender_no.localeCompare(b.tender_no) },
           { title: 'Name', dataIndex: 'name', sorter: (a: ProjectRead, b: ProjectRead) => a.name.localeCompare(b.name) },
-          { title: 'Contract Value', dataIndex: 'contract_value', sorter: (a: ProjectRead, b: ProjectRead) => parseFloat(a.contract_value) - parseFloat(b.contract_value) },
-          { title: 'Start', dataIndex: 'start_date', sorter: (a: ProjectRead, b: ProjectRead) => a.start_date.localeCompare(b.start_date) },
-          { title: 'Completion', dataIndex: 'completion_date', sorter: (a: ProjectRead, b: ProjectRead) => a.completion_date.localeCompare(b.completion_date) },
+          { title: 'Contract Value', dataIndex: 'contract_value', sorter: (a: ProjectRead, b: ProjectRead) => parseFloat(a.contract_value) - parseFloat(b.contract_value), render: fmtAmt },
+          { title: 'Start', dataIndex: 'start_date', sorter: (a: ProjectRead, b: ProjectRead) => a.start_date.localeCompare(b.start_date), render: fmtDate },
+          { title: 'Completion', dataIndex: 'completion_date', sorter: (a: ProjectRead, b: ProjectRead) => a.completion_date.localeCompare(b.completion_date), render: fmtDate },
           {
             title: 'Status',
             dataIndex: 'status',
@@ -409,7 +412,7 @@ export function ProjectsListPage() {
             rules={[{ required: true }]}
             initialValue={dayjs()}
           >
-            <DatePicker style={{ width: '100%' }} />
+            <DatePicker style={{ width: '100%' }} format={dateFormat} />
           </Form.Item>
           <Form.Item
             name="completion_date"
@@ -417,7 +420,7 @@ export function ProjectsListPage() {
             rules={[{ required: true }]}
             initialValue={dayjs().add(1, 'year')}
           >
-            <DatePicker style={{ width: '100%' }} />
+            <DatePicker style={{ width: '100%' }} format={dateFormat} />
           </Form.Item>
           <Form.Item name="attendance_verification_required" label="Require photo + GPS for attendance" valuePropName="checked">
             <Switch />
@@ -444,7 +447,7 @@ export function ProjectsListPage() {
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="completion_date" label="Completion Date" rules={[{ required: true }]}>
-            <DatePicker style={{ width: '100%' }} />
+            <DatePicker style={{ width: '100%' }} format={dateFormat} />
           </Form.Item>
           <Form.Item name="status" label="Status" rules={[{ required: true }]}>
             <Select options={[{ value: 'ACTIVE', label: 'Active' }, { value: 'COMPLETED', label: 'Completed' }, { value: 'SUSPENDED', label: 'Suspended' }]} />
