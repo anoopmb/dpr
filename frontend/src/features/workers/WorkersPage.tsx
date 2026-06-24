@@ -6,6 +6,7 @@ import { useProjectContextStore } from '@/store/project-context-store';
 import { useWorkerCategories } from '@/api/hooks/useMasters';
 import { useAttendanceRecords, useCreateWorker, useUpdateWorker, useWorkers, type WorkerRead } from '@/api/hooks/useAttendance';
 import { useDateFormat } from '@/utils/format';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 interface WorkerCreateFormValues {
   full_name: string;
@@ -23,6 +24,7 @@ interface WorkerEditFormValues {
 }
 
 export function WorkersPage() {
+  const isMobile = useIsMobile();
   const selectedProjectId = useProjectContextStore((s) => s.selectedProjectId);
   const { data: workers, isLoading: workersLoading } = useWorkers(selectedProjectId);
   const { data: attendance, isLoading: attendanceLoading } = useAttendanceRecords(selectedProjectId);
@@ -101,7 +103,7 @@ export function WorkersPage() {
         <Space>
           <ProjectSelector />
           <Button type="primary" icon={<PlusOutlined />} disabled={!selectedProjectId} onClick={() => setCreateModalOpen(true)}>
-            Add Worker
+            {!isMobile && 'Add Worker'}
           </Button>
         </Space>
       </div>

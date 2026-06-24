@@ -1,6 +1,6 @@
 import React, { useMemo, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Avatar, Button, Dropdown, Grid, Layout, Menu, Space, Typography, type MenuProps } from 'antd';
+import { Avatar, Button, Dropdown, Layout, Menu, Space, Typography, type MenuProps } from 'antd';
 import {
   ApartmentOutlined,
   BarChartOutlined,
@@ -34,9 +34,9 @@ import { NotificationBell } from '@/components/layout/NotificationBell';
 import { InstallBanner } from '@/components/layout/InstallBanner';
 import { usePushSubscription } from '@/api/hooks/usePushSubscription';
 import { useOrganizationSettings } from '@/api/hooks/useOrganizationSettings';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 const { Sider, Header, Content } = Layout;
-const { useBreakpoint } = Grid;
 
 const SIDER_WIDTH = 220;
 const HEADER_HEIGHT = 50;
@@ -133,8 +133,7 @@ const fieldMenuItems = [
 export function AppLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const screens = useBreakpoint();
-  const isMobile = screens.lg === false;
+  const isMobile = useIsMobile();
   // Independent per-breakpoint state instead of one "collapsed" flag kept
   // in sync via an effect — each toggle only ever touches the state that's
   // relevant to the current breakpoint, so there's nothing to synchronize.

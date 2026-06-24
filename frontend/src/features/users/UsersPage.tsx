@@ -11,6 +11,7 @@ import {
   type UserUpdateInput,
 } from '@/api/hooks/useUsers';
 import type { UserRole } from '@/store/auth-store';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
   { value: 'SITE_ENGINEER', label: 'Site Engineer' },
@@ -42,6 +43,7 @@ interface ResetPasswordFormValues {
 }
 
 export function UsersPage() {
+  const isMobile = useIsMobile();
   const { data: users, isLoading } = useUsers();
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();
@@ -128,7 +130,7 @@ export function UsersPage() {
             onChange={(e) => setSearchText(e.target.value)}
           />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-            Add User
+            {!isMobile && 'Add User'}
           </Button>
         </Space>
       </div>

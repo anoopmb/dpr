@@ -31,6 +31,7 @@ import {
 } from '@/api/hooks/useMaterialIndents';
 import { useAuthStore } from '@/store/auth-store';
 import { useDateFormat } from '@/utils/format';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 const STATUS_COLOR: Record<MaterialIndentStatus, string> = {
   DRAFT: 'default',
@@ -56,6 +57,7 @@ interface IndentFormValues {
 }
 
 export function MaterialIndentsPage() {
+  const isMobile = useIsMobile();
   const selectedProjectId = useProjectContextStore((s) => s.selectedProjectId);
   const { data: indents, isLoading } = useMaterialIndents(selectedProjectId);
   const { data: materials } = useMaterials();
@@ -171,7 +173,7 @@ export function MaterialIndentsPage() {
             onChange={(e) => setSearchText(e.target.value)}
           />
           <Button type="primary" icon={<PlusOutlined />} disabled={!selectedProjectId} onClick={() => setModalOpen(true)}>
-            New Indent
+            {!isMobile && 'New Indent'}
           </Button>
         </Space>
       </div>

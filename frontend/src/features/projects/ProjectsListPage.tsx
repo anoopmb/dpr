@@ -36,6 +36,7 @@ import {
 } from '@/api/hooks/useProjectAssignments';
 import { useAuthStore, type UserRole } from '@/store/auth-store';
 import { useDateFormat, useNumberFormat } from '@/utils/format';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 const STATUS_COLOR: Record<string, string> = { ACTIVE: 'green', COMPLETED: 'blue', SUSPENDED: 'orange' };
 
@@ -305,6 +306,7 @@ function ProjectSettingsDrawer({ project, onClose }: { project: ProjectRead; onC
 }
 
 export function ProjectsListPage() {
+  const isMobile = useIsMobile();
   const { data: projects, isLoading } = useProjects();
   const { data: departments } = useDepartments();
   const createProject = useCreateProject();
@@ -410,7 +412,7 @@ export function ProjectsListPage() {
             onChange={(e) => setSearchText(e.target.value)}
           />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
-            New Project
+            {!isMobile && 'New Project'}
           </Button>
         </Space>
       </div>

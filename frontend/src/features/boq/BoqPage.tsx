@@ -28,6 +28,7 @@ import {
 import type { TableColumnsType } from 'antd';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import {
   useBoqSections,
   useCreateBoqItem,
@@ -220,6 +221,7 @@ function resolveImportRows(
 }
 
 export function BoqPage() {
+  const isMobile = useIsMobile();
   const selectedProjectId = useProjectContextStore((s) => s.selectedProjectId);
   const { data: sections, isLoading } = useBoqSections(selectedProjectId);
   const { data: workTypes } = useWorkTypes();
@@ -496,7 +498,7 @@ export function BoqPage() {
                 {row.section.items.length} items
               </Tag>
               <Button size="small" icon={<PlusOutlined />} onClick={() => openAddItem(row.section.id)}>
-                Add Item
+                {!isMobile && 'Add Item'}
               </Button>
               <Button size="small" icon={<EditOutlined />} onClick={() => openEditSection(row.section)} />
               <Popconfirm
@@ -700,10 +702,10 @@ export function BoqPage() {
             onChange={(e) => setSearchText(e.target.value)}
           />
           <Button icon={<PlusOutlined />} disabled={!selectedProjectId} onClick={openAddSection}>
-            Add Section
+            {!isMobile && 'Add Section'}
           </Button>
           <Button type="primary" icon={<PlusOutlined />} disabled={!selectedProjectId} onClick={() => openAddItem()}>
-            Add BOQ Item
+            {!isMobile && 'Add BOQ Item'}
           </Button>
         </Space>
         <Space wrap>

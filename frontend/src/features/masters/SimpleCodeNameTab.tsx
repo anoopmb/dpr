@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button, Form, Input, InputNumber, Modal, Popconfirm, Space, Table, message } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { useCreateMaster, useDeleteMaster, useUpdateMaster, type MasterRow } from '@/api/hooks/useMasters';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import type { UseQueryResult } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
 
@@ -26,6 +27,7 @@ export function SimpleCodeNameTab<TRow extends MasterRow = MasterRow>({
   label,
   extraField,
 }: SimpleCodeNameTabProps<TRow>) {
+  const isMobile = useIsMobile();
   const { data, isLoading } = query;
   type FormValues = { code: string; name: string } & Partial<Record<string, number>>;
   const createMaster = useCreateMaster<TRow, FormValues>(apiPath);
@@ -96,7 +98,7 @@ export function SimpleCodeNameTab<TRow extends MasterRow = MasterRow>({
     <div>
       <Space style={{ marginBottom: 16 }}>
         <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>
-          Add {label}
+          {!isMobile && `Add ${label}`}
         </Button>
         <Input.Search
           placeholder={`Search ${label.toLowerCase()}s by code or name`}

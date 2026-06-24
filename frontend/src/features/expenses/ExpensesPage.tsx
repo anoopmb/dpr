@@ -8,6 +8,7 @@ import { useProjectContextStore } from '@/store/project-context-store';
 import { useExpenseCategories } from '@/api/hooks/useMasters';
 import { useCreateExpense, useDeleteExpense, useExpenses, useUpdateExpense, type ExpenseRead } from '@/api/hooks/useExpenses';
 import { useDateFormat, useNumberFormat } from '@/utils/format';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 interface ExpenseFormValues {
   expense_category_id: string;
@@ -18,6 +19,7 @@ interface ExpenseFormValues {
 }
 
 export function ExpensesPage() {
+  const isMobile = useIsMobile();
   const selectedProjectId = useProjectContextStore((s) => s.selectedProjectId);
   const { data: expenses, isLoading } = useExpenses(selectedProjectId);
   const { data: categories } = useExpenseCategories();
@@ -123,7 +125,7 @@ export function ExpensesPage() {
             onChange={(e) => setSearchText(e.target.value)}
           />
           <Button type="primary" icon={<PlusOutlined />} disabled={!selectedProjectId} onClick={() => setCreateModalOpen(true)}>
-            Add Expense
+            {!isMobile && 'Add Expense'}
           </Button>
         </Space>
       </div>

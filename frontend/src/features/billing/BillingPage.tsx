@@ -17,6 +17,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
 import { useMeasurements } from '@/api/hooks/useMeasurements';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import {
   useCreateRunningBill,
   useRecordPayment,
@@ -42,6 +43,7 @@ interface PaymentFormValues {
 }
 
 export function BillingPage() {
+  const isMobile = useIsMobile();
   const selectedProjectId = useProjectContextStore((s) => s.selectedProjectId);
   const { data: bills, isLoading } = useRunningBills(selectedProjectId);
   const { data: measurements } = useMeasurements(selectedProjectId);
@@ -118,7 +120,7 @@ export function BillingPage() {
             onChange={(e) => setSearchText(e.target.value)}
           />
           <Button type="primary" icon={<PlusOutlined />} disabled={!selectedProjectId} onClick={() => setModalOpen(true)}>
-            New Bill
+            {!isMobile && 'New Bill'}
           </Button>
         </Space>
       </div>

@@ -23,6 +23,7 @@ import {
 import { useProjects } from '@/api/hooks/useProjects';
 import { SimpleCodeNameTab } from '@/features/masters/SimpleCodeNameTab';
 import { useNumberFormat } from '@/utils/format';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 function fkError(err: unknown, label: string) {
   const status = (err as AxiosError)?.response?.status;
@@ -47,6 +48,7 @@ interface WorkTypeCreateInput {
 }
 
 function WorkTypesTab() {
+  const isMobile = useIsMobile();
   const query = useWorkTypes();
   const { data: uoms } = useUoms();
   const createWorkType = useCreateMaster<WorkTypeRow, WorkTypeCreateInput>('work-types');
@@ -93,7 +95,7 @@ function WorkTypesTab() {
   return (
     <div>
       <Space style={{ marginBottom: 16 }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>Add Work Type</Button>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>{!isMobile && 'Add Work Type'}</Button>
         <Input.Search placeholder="Search by code or name" allowClear style={{ width: 280 }} value={searchText} onChange={(e) => setSearchText(e.target.value)} />
       </Space>
       <Table
@@ -145,6 +147,7 @@ interface MaterialFormValues {
 }
 
 function MaterialsTab() {
+  const isMobile = useIsMobile();
   const query = useMaterials();
   const { data: uoms } = useUoms();
   const { fmtAmt, symbol } = useNumberFormat();
@@ -190,7 +193,7 @@ function MaterialsTab() {
   return (
     <div>
       <Space style={{ marginBottom: 16 }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>Add Material</Button>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>{!isMobile && 'Add Material'}</Button>
         <Input.Search placeholder="Search by code, name, or category" allowClear style={{ width: 280 }} value={searchText} onChange={(e) => setSearchText(e.target.value)} />
       </Space>
       <Table
@@ -239,6 +242,7 @@ interface MachineryFormValues {
 }
 
 function MachineryTab() {
+  const isMobile = useIsMobile();
   const query = useMachinery();
   const { fmtAmt, symbol } = useNumberFormat();
   const createMachinery = useCreateMaster<MachineryRow, MachineryFormValues>('machinery');
@@ -283,7 +287,7 @@ function MachineryTab() {
   return (
     <div>
       <Space style={{ marginBottom: 16 }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>Add Machinery</Button>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>{!isMobile && 'Add Machinery'}</Button>
         <Input.Search placeholder="Search by code or name" allowClear style={{ width: 280 }} value={searchText} onChange={(e) => setSearchText(e.target.value)} />
       </Space>
       <Table
@@ -326,6 +330,7 @@ interface WorkerCategoryFormValues {
 }
 
 function WorkerCategoryTab() {
+  const isMobile = useIsMobile();
   const query = useWorkerCategories();
   const { fmtAmt, symbol } = useNumberFormat();
   const createWorkerCategory = useCreateMaster<WorkerCategoryRow, WorkerCategoryFormValues>('worker-categories');
@@ -370,7 +375,7 @@ function WorkerCategoryTab() {
   return (
     <div>
       <Space style={{ marginBottom: 16 }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>Add Worker Category</Button>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>{!isMobile && 'Add Worker Category'}</Button>
         <Input.Search placeholder="Search by code or name" allowClear style={{ width: 280 }} value={searchText} onChange={(e) => setSearchText(e.target.value)} />
       </Space>
       <Table
@@ -418,6 +423,7 @@ interface StockLocationCreateInput {
 }
 
 function StockLocationsTab() {
+  const isMobile = useIsMobile();
   const query = useStockLocations();
   const { data: projects } = useProjects();
   const createLocation = useCreateMaster<StockLocationRow, StockLocationCreateInput>('stock-locations');
@@ -463,7 +469,7 @@ function StockLocationsTab() {
   return (
     <div>
       <Space style={{ marginBottom: 16 }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>Add Stock Location</Button>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>{!isMobile && 'Add Stock Location'}</Button>
         <Input.Search placeholder="Search by name" allowClear style={{ width: 280 }} value={searchText} onChange={(e) => setSearchText(e.target.value)} />
       </Space>
       <Table
