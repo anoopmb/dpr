@@ -6,7 +6,7 @@ import uuid
 from decimal import Decimal
 from enum import StrEnum
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Numeric, String
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Integer, Numeric, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -18,6 +18,8 @@ class UomMaster(TimestampedBase):
 
     code: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Drives quantity display precision wherever this UOM is used (e.g. Nos=0, Cum/Sqm=3).
+    decimal_places: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
 
 
 class WorkTypeFormula(StrEnum):

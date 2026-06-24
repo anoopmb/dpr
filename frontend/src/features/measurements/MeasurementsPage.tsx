@@ -14,6 +14,7 @@ import {
 } from '@/api/hooks/useMeasurements';
 import { useAuthStore } from '@/store/auth-store';
 import { useBoqItems } from '@/api/hooks/useBoq';
+import { useThemeMode } from '@/theme/theme-context';
 
 const STATUS_COLOR: Record<MeasurementStatus, string> = {
   DRAFT: 'default',
@@ -25,7 +26,6 @@ const STATUS_COLOR: Record<MeasurementStatus, string> = {
 };
 
 const NCOLS = 6;
-const DATE_HDR_BG = '#f0f5ff';
 
 type MeasurementRow =
   | { _type: 'date-header'; date: string; count: number; key: string }
@@ -51,6 +51,9 @@ export function MeasurementsPage() {
   const { data: measurements, isLoading } = useMeasurements(selectedProjectId);
   const { data: boqItems } = useBoqItems(selectedProjectId);
   const user = useAuthStore((s) => s.user);
+  const { resolvedMode } = useThemeMode();
+
+  const DATE_HDR_BG = resolvedMode === 'dark' ? 'rgba(22, 119, 255, 0.10)' : '#f0f5ff';
 
   const submit = useSubmitMeasurement();
   const approve = useApproveMeasurement();

@@ -89,7 +89,7 @@ function WorkTypesTab() {
         rowKey="id" loading={query.isLoading} dataSource={query.data ?? []}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} records` }}
         columns={[
-          { title: 'Code', dataIndex: 'code', sorter: (a: WorkTypeRow, b: WorkTypeRow) => a.code.localeCompare(b.code), defaultSortOrder: 'ascend' as const },
+          { title: 'Code', dataIndex: 'code', sorter: (a: WorkTypeRow, b: WorkTypeRow) => a.code.localeCompare(b.code) },
           { title: 'Name', dataIndex: 'name', sorter: (a: WorkTypeRow, b: WorkTypeRow) => a.name.localeCompare(b.name) },
           { title: 'Formula', dataIndex: 'formula', sorter: (a: WorkTypeRow, b: WorkTypeRow) => a.formula.localeCompare(b.formula) },
           { title: 'Dimension Fields', dataIndex: 'dimension_fields', render: (f: string[]) => f.join(', ') },
@@ -174,7 +174,7 @@ function MaterialsTab() {
         rowKey="id" loading={query.isLoading} dataSource={query.data ?? []}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} records` }}
         columns={[
-          { title: 'Code', dataIndex: 'code', sorter: (a: MaterialRow, b: MaterialRow) => a.code.localeCompare(b.code), defaultSortOrder: 'ascend' as const },
+          { title: 'Code', dataIndex: 'code', sorter: (a: MaterialRow, b: MaterialRow) => a.code.localeCompare(b.code) },
           { title: 'Name', dataIndex: 'name', sorter: (a: MaterialRow, b: MaterialRow) => a.name.localeCompare(b.name) },
           { title: 'Category', dataIndex: 'category', sorter: (a: MaterialRow, b: MaterialRow) => (a.category ?? '').localeCompare(b.category ?? '') },
           { title: 'Cost Rate (₹)', dataIndex: 'cost_rate', render: (v: string | null, row: MaterialRow) => v !== null ? `₹ ${v}${row.cost_rate_unit ? ` / ${row.cost_rate_unit}` : ''}` : '—' },
@@ -255,7 +255,7 @@ function MachineryTab() {
         rowKey="id" loading={query.isLoading} dataSource={query.data ?? []}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} records` }}
         columns={[
-          { title: 'Code', dataIndex: 'code', sorter: (a: MachineryRow, b: MachineryRow) => a.code.localeCompare(b.code), defaultSortOrder: 'ascend' as const },
+          { title: 'Code', dataIndex: 'code', sorter: (a: MachineryRow, b: MachineryRow) => a.code.localeCompare(b.code) },
           { title: 'Name', dataIndex: 'name', sorter: (a: MachineryRow, b: MachineryRow) => a.name.localeCompare(b.name) },
           { title: 'Hire Rate (₹)', dataIndex: 'hire_rate', render: (v: string | null, row: MachineryRow) => v !== null ? `₹ ${v}${row.hire_unit ? ` / ${row.hire_unit}` : ''}` : '—' },
           {
@@ -330,7 +330,7 @@ function WorkerCategoryTab() {
         rowKey="id" loading={query.isLoading} dataSource={query.data ?? []}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} records` }}
         columns={[
-          { title: 'Code', dataIndex: 'code', sorter: (a: WorkerCategoryRow, b: WorkerCategoryRow) => a.code.localeCompare(b.code), defaultSortOrder: 'ascend' as const },
+          { title: 'Code', dataIndex: 'code', sorter: (a: WorkerCategoryRow, b: WorkerCategoryRow) => a.code.localeCompare(b.code) },
           { title: 'Name', dataIndex: 'name', sorter: (a: WorkerCategoryRow, b: WorkerCategoryRow) => a.name.localeCompare(b.name) },
           { title: 'Daily Rate (₹)', dataIndex: 'daily_rate', render: (v: string | null) => v !== null ? `₹ ${v}` : '—' },
           {
@@ -412,7 +412,7 @@ function StockLocationsTab() {
         rowKey="id" loading={query.isLoading} dataSource={query.data ?? []}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} records` }}
         columns={[
-          { title: 'Name', dataIndex: 'name', sorter: (a: StockLocationRow, b: StockLocationRow) => a.name.localeCompare(b.name), defaultSortOrder: 'ascend' as const },
+          { title: 'Name', dataIndex: 'name', sorter: (a: StockLocationRow, b: StockLocationRow) => a.name.localeCompare(b.name) },
           { title: 'Type', dataIndex: 'location_type', sorter: (a: StockLocationRow, b: StockLocationRow) => a.location_type.localeCompare(b.location_type), render: (v: string) => v === 'HEAD_OFFICE' ? 'Head Office' : 'Site' },
           {
             title: 'Actions', key: 'actions', width: 100,
@@ -453,7 +453,18 @@ export function MastersPage() {
       <Tabs
         items={[
           { key: 'departments', label: 'Departments', children: <SimpleCodeNameTab apiPath="departments" query={departments} label="Department" /> },
-          { key: 'uoms', label: 'Units of Measure', children: <SimpleCodeNameTab apiPath="uoms" query={uoms} label="Unit" /> },
+          {
+            key: 'uoms',
+            label: 'Units of Measure',
+            children: (
+              <SimpleCodeNameTab
+                apiPath="uoms"
+                query={uoms}
+                label="Unit"
+                extraField={{ name: 'decimal_places', label: 'Qty Decimal Places', min: 0, max: 4, defaultValue: 3 }}
+              />
+            ),
+          },
           { key: 'work-types', label: 'Work Types', children: <WorkTypesTab /> },
           { key: 'materials', label: 'Materials', children: <MaterialsTab /> },
           { key: 'machinery', label: 'Machinery', children: <MachineryTab /> },

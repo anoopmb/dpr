@@ -11,7 +11,9 @@ export interface DepartmentRow extends MasterRow {
   is_active: boolean;
 }
 
-export type UomRow = MasterRow;
+export interface UomRow extends MasterRow {
+  decimal_places: number;
+}
 
 export interface WorkTypeRow extends MasterRow {
   dimension_fields: string[];

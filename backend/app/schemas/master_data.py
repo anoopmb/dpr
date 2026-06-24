@@ -26,11 +26,13 @@ class DepartmentRead(DepartmentCreate):
 class UomCreate(BaseModel):
     code: str = Field(min_length=1, max_length=20)
     name: str = Field(min_length=1, max_length=100)
+    decimal_places: int = Field(default=3, ge=0, le=4)
 
 
 class UomUpdate(BaseModel):
     code: str | None = Field(default=None, min_length=1, max_length=20)
     name: str | None = Field(default=None, min_length=1, max_length=100)
+    decimal_places: int | None = Field(default=None, ge=0, le=4)
 
 
 class UomRead(UomCreate):

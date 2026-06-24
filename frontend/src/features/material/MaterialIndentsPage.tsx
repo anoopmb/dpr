@@ -204,7 +204,6 @@ export function MaterialIndentsPage() {
             title: 'Status',
             dataIndex: 'status',
             sorter: (a, b) => a.status.localeCompare(b.status),
-            defaultSortOrder: 'ascend' as const,
             render: (status: MaterialIndentStatus) => <Tag color={STATUS_COLOR[status]}>{status}</Tag>,
           },
           { title: 'Needed By', dataIndex: 'needed_by_date', sorter: (a, b) => (a.needed_by_date ?? '').localeCompare(b.needed_by_date ?? '') },

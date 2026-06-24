@@ -36,6 +36,7 @@ import {
 } from '@/api/hooks/useDpr';
 import { useBoqSections, type BoqItemRead, type BoqSectionRead } from '@/api/hooks/useBoq';
 import { useUploadPhoto } from '@/api/hooks/useUpload';
+import { useThemeMode } from '@/theme/theme-context';
 
 const TASKS = [
   { key: '/field/materials', label: 'Materials Used' },
@@ -83,6 +84,9 @@ function ProductionTab({
   const { data: sections, isLoading: sectionsLoading } = useBoqSections(selectedProjectId);
   const { data: existingEntries } = useDprProduction(headerId);
   const bulkUpsert = useBulkUpsertProduction();
+  const { resolvedMode } = useThemeMode();
+
+  const HDR_BG = resolvedMode === 'dark' ? 'rgba(22, 119, 255, 0.10)' : '#f0f5ff';
 
   const [activitySummary, setActivitySummary] = useState('');
   const [production, setProduction] = useState<Record<string, ProductionState>>({});
@@ -141,7 +145,7 @@ function ProductionTab({
       width: 80,
       onCell: (row) =>
         row._type === 'header'
-          ? { colSpan: 5, style: { background: '#f0f5ff', fontWeight: 600, padding: '6px 12px' } }
+          ? { colSpan: 5, style: { background: HDR_BG, fontWeight: 600, padding: '6px 12px' } }
           : {},
       render: (_, row) => {
         if (row._type === 'header')
@@ -235,7 +239,7 @@ function ProductionTab({
         size="small"
         bordered
         onRow={(row) => ({
-          style: { background: row._type === 'header' ? '#f0f5ff' : undefined },
+          style: { background: row._type === 'header' ? HDR_BG : undefined },
         })}
       />
 

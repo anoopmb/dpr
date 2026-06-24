@@ -113,7 +113,7 @@ export function ExpensesPage() {
         dataSource={expenses ?? []}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} expenses` }}
         columns={[
-          { title: 'Date', dataIndex: 'expense_date', sorter: (a: ExpenseRead, b: ExpenseRead) => a.expense_date.localeCompare(b.expense_date), defaultSortOrder: 'descend' as const },
+          { title: 'Date', dataIndex: 'expense_date', sorter: (a: ExpenseRead, b: ExpenseRead) => a.expense_date.localeCompare(b.expense_date) },
           { title: 'Category', dataIndex: 'expense_category_id', render: (id: string) => categoryById.get(id) ?? id },
           { title: 'Amount', dataIndex: 'amount', sorter: (a: ExpenseRead, b: ExpenseRead) => parseFloat(a.amount) - parseFloat(b.amount) },
           { title: 'Vendor', dataIndex: 'vendor_name', sorter: (a: ExpenseRead, b: ExpenseRead) => (a.vendor_name ?? '').localeCompare(b.vendor_name ?? '') },

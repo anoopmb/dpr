@@ -98,7 +98,7 @@ export function WorkersPage() {
                 dataSource={workers ?? []}
                 pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} workers` }}
                 columns={[
-                  { title: 'Name', dataIndex: 'full_name', sorter: (a: WorkerRead, b: WorkerRead) => a.full_name.localeCompare(b.full_name), defaultSortOrder: 'ascend' as const },
+                  { title: 'Name', dataIndex: 'full_name', sorter: (a: WorkerRead, b: WorkerRead) => a.full_name.localeCompare(b.full_name) },
                   { title: 'Category', dataIndex: 'worker_category_id', render: (id: string) => categoryById.get(id) ?? id },
                   { title: 'Phone', dataIndex: 'phone' },
                   { title: 'Contractor', dataIndex: 'contractor_name', sorter: (a: WorkerRead, b: WorkerRead) => (a.contractor_name ?? '').localeCompare(b.contractor_name ?? '') },
@@ -130,7 +130,7 @@ export function WorkersPage() {
                 dataSource={attendance ?? []}
                 pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} records` }}
                 columns={[
-                  { title: 'Date', dataIndex: 'attendance_date', sorter: (a, b) => a.attendance_date.localeCompare(b.attendance_date), defaultSortOrder: 'descend' as const },
+                  { title: 'Date', dataIndex: 'attendance_date', sorter: (a, b) => a.attendance_date.localeCompare(b.attendance_date) },
                   { title: 'Worker', dataIndex: 'worker_id', render: (id: string) => workerById.get(id) ?? id },
                   { title: 'Check-in Time', dataIndex: 'check_in_time', sorter: (a, b) => a.check_in_time.localeCompare(b.check_in_time) },
                   {

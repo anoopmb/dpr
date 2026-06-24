@@ -10,18 +10,8 @@ import {
   type DprReportItemRead,
   type DprReportSectionRead,
 } from '@/api/hooks/useDpr';
-
-function fmtQty(v: string) {
-  const n = parseFloat(v);
-  if (isNaN(n) || n === 0) return '—';
-  return n.toLocaleString('en-IN', { maximumFractionDigits: 3 });
-}
-
-function fmtAmt(v: string) {
-  const n = parseFloat(v);
-  if (isNaN(n) || n === 0) return '—';
-  return n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
-}
+import { useThemeMode } from '@/theme/theme-context';
+import { useNumberFormat } from '@/utils/format';
 
 interface SectionSubtotal {
   agreed_amount: string;
@@ -63,13 +53,16 @@ type ReportRow =
   | { _type: 'item'; item: DprReportItemRead; key: string }
   | { _type: 'subtotal'; section: DprReportSectionRead; subtotal: SectionSubtotal; key: string };
 
-const HDR_BG = '#f0f5ff';
-const SUB_BG = '#fafafa';
 
 export function DprMonthlyReportPage() {
   const selectedProjectId = useProjectContextStore((s) => s.selectedProjectId);
   const [month, setMonth] = useState<Dayjs>(dayjs());
   const monthStr = month.format('YYYY-MM');
+  const { resolvedMode } = useThemeMode();
+  const { fmtAmt, fmtQty, fmtQtyByUnit } = useNumberFormat();
+
+  const HDR_BG = resolvedMode === 'dark' ? 'rgba(22, 119, 255, 0.10)' : '#f0f5ff';
+  const SUB_BG = resolvedMode === 'dark' ? 'rgba(255, 255, 255, 0.04)' : '#fafafa';
 
   const { data: report, isLoading } = useDprMonthlyReport(selectedProjectId, monthStr);
 
@@ -97,12 +90,25 @@ export function DprMonthlyReportPage() {
 
   const headerOnCell = (row: ReportRow) =>
     row._type === 'header' ? { colSpan: totalLeafColumns } : row._type === 'subtotal' ? { colSpan: 0 } : {};
+  const headerItemNoOnCell = (row: ReportRow) =>
+    row._type === 'header'
+      ? { colSpan: totalLeafColumns }
+      : row._type === 'subtotal'
+      ? { colSpan: 5, style: { background: SUB_BG, fontWeight: 600, padding: '6px 12px' } }
+      : {};
   const blankOnCell = (row: ReportRow) =>
     row._type === 'header' ? { colSpan: 0 } : row._type === 'subtotal' ? { colSpan: 0 } : {};
-  const subtotalLabelOnCell = (row: ReportRow) =>
-    row._type === 'header' ? { colSpan: 0 } : row._type === 'subtotal' ? { colSpan: 4, style: { background: SUB_BG, fontWeight: 600 } } : {};
   const subtotalSkipOnCell = (row: ReportRow) =>
     row._type === 'header' ? { colSpan: 0 } : row._type === 'subtotal' ? { colSpan: 0 } : {};
+  // Like blankOnCell, but keeps the cell visible (styled) for subtotal rows
+  // instead of hiding it — used for every numeric column past the label span
+  // so section subtotals (daily qty/amt, opening/closing qty) actually render.
+  const dataOnCell = (row: ReportRow) =>
+    row._type === 'header'
+      ? { colSpan: 0 }
+      : row._type === 'subtotal'
+      ? { style: { background: SUB_BG, fontWeight: 700, whiteSpace: 'nowrap' as const } }
+      : {};
 
   const columns: TableColumnsType<ReportRow> = useMemo(() => {
     const cols: TableColumnsType<ReportRow> = [
@@ -111,10 +117,11 @@ export function DprMonthlyReportPage() {
         key: 'item_no',
         fixed: 'left',
         width: 80,
-        onCell: headerOnCell,
+        onCell: headerItemNoOnCell,
         render: (_, row) => {
           if (row._type === 'header') return `${row.section.section_no ? row.section.section_no + '. ' : ''}${row.section.section_name.toUpperCase()}`;
           if (row._type === 'item') return row.item.item_no;
+          if (row._type === 'subtotal') return 'Section Total';
           return null;
         },
       },
@@ -124,10 +131,9 @@ export function DprMonthlyReportPage() {
         fixed: 'left',
         width: 220,
         ellipsis: true,
-        onCell: (row) => (row._type === 'header' ? { colSpan: 0 } : row._type === 'subtotal' ? subtotalLabelOnCell(row) : {}),
+        onCell: blankOnCell,
         render: (_, row) => {
           if (row._type === 'item') return row.item.description;
-          if (row._type === 'subtotal') return 'Section Total';
           return null;
         },
       },
@@ -144,7 +150,7 @@ export function DprMonthlyReportPage() {
         width: 80,
         align: 'right' as const,
         onCell: (row) => (row._type === 'subtotal' ? subtotalSkipOnCell(row) : blankOnCell(row)),
-        render: (_, row) => (row._type === 'item' ? fmtAmt(row.item.rate) : null),
+        render: (_, row) => (row._type === 'item' ? fmtQty(row.item.rate, 2) : null),
       },
       {
         title: 'Agreed Qty',
@@ -152,7 +158,7 @@ export function DprMonthlyReportPage() {
         width: 90,
         align: 'right' as const,
         onCell: (row) => (row._type === 'subtotal' ? subtotalSkipOnCell(row) : blankOnCell(row)),
-        render: (_, row) => (row._type === 'item' ? fmtQty(row.item.agreed_qty) : null),
+        render: (_, row) => (row._type === 'item' ? fmtQtyByUnit(row.item.agreed_qty, row.item.unit) : null),
       },
       {
         title: 'Up to Date (Start of Month)',
@@ -162,22 +168,22 @@ export function DprMonthlyReportPage() {
             key: 'opening_qty',
             width: 80,
             align: 'right' as const,
-            onCell: blankOnCell,
+            onCell: dataOnCell,
             render: (_, row) => {
-              if (row._type === 'item') return fmtQty(row.item.opening_qty);
-              if (row._type === 'subtotal') return fmtQty(String(row.subtotal.opening_qty));
+              if (row._type === 'item') return fmtQtyByUnit(row.item.opening_qty, row.item.unit);
+              if (row._type === 'subtotal') return fmtQty(row.subtotal.opening_qty);
               return null;
             },
           },
           {
-            title: 'Amt (₹)',
+            title: 'Amt',
             key: 'opening_amount',
             width: 95,
             align: 'right' as const,
-            onCell: (row) => (row._type === 'subtotal' ? { style: { background: SUB_BG, fontWeight: 600 } } : blankOnCell(row)),
+            onCell: dataOnCell,
             render: (_, row) => {
               if (row._type === 'item') return fmtAmt(row.item.opening_amount);
-              if (row._type === 'subtotal') return fmtAmt(String(row.subtotal.opening_amount));
+              if (row._type === 'subtotal') return fmtAmt(row.subtotal.opening_amount);
               return null;
             },
           },
@@ -193,10 +199,10 @@ export function DprMonthlyReportPage() {
               key: `day_${day}_qty`,
               width: 65,
               align: 'right' as const,
-              onCell: blankOnCell,
+              onCell: dataOnCell,
               render: (_: unknown, row: ReportRow) => {
-                if (row._type === 'item') return fmtQty(row.item.daily[i].qty);
-                if (row._type === 'subtotal') return fmtQty(String(row.subtotal.daily[i].qty));
+                if (row._type === 'item') return fmtQtyByUnit(row.item.daily[i].qty, row.item.unit);
+                if (row._type === 'subtotal') return fmtQty(row.subtotal.daily[i].qty);
                 return null;
               },
             },
@@ -205,10 +211,10 @@ export function DprMonthlyReportPage() {
               key: `day_${day}_amt`,
               width: 75,
               align: 'right' as const,
-              onCell: blankOnCell,
+              onCell: dataOnCell,
               render: (_: unknown, row: ReportRow) => {
                 if (row._type === 'item') return fmtAmt(row.item.daily[i].amount);
-                if (row._type === 'subtotal') return fmtAmt(String(row.subtotal.daily[i].amount));
+                if (row._type === 'subtotal') return fmtAmt(row.subtotal.daily[i].amount);
                 return null;
               },
             },
@@ -223,22 +229,22 @@ export function DprMonthlyReportPage() {
             key: 'closing_qty',
             width: 80,
             align: 'right' as const,
-            onCell: blankOnCell,
+            onCell: dataOnCell,
             render: (_, row) => {
-              if (row._type === 'item') return fmtQty(row.item.closing_qty);
-              if (row._type === 'subtotal') return fmtQty(String(row.subtotal.closing_qty));
+              if (row._type === 'item') return fmtQtyByUnit(row.item.closing_qty, row.item.unit);
+              if (row._type === 'subtotal') return fmtQty(row.subtotal.closing_qty);
               return null;
             },
           },
           {
-            title: 'Amt (₹)',
+            title: 'Amt',
             key: 'closing_amount',
             width: 95,
             align: 'right' as const,
-            onCell: (row) => (row._type === 'subtotal' ? { style: { background: SUB_BG, fontWeight: 600 } } : blankOnCell(row)),
+            onCell: dataOnCell,
             render: (_, row) => {
               if (row._type === 'item') return fmtAmt(row.item.closing_amount);
-              if (row._type === 'subtotal') return fmtAmt(String(row.subtotal.closing_amount));
+              if (row._type === 'subtotal') return fmtAmt(row.subtotal.closing_amount);
               return null;
             },
           },
@@ -247,7 +253,7 @@ export function DprMonthlyReportPage() {
     ];
     return cols;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [daysInMonth]);
+  }, [daysInMonth, fmtAmt, fmtQty]);
 
   return (
     <div>

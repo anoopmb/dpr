@@ -352,7 +352,7 @@ export function ProjectsListPage() {
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50'], showTotal: (total) => `${total} projects` }}
         columns={[
           { title: 'Tender No', dataIndex: 'tender_no', sorter: (a: ProjectRead, b: ProjectRead) => a.tender_no.localeCompare(b.tender_no) },
-          { title: 'Name', dataIndex: 'name', sorter: (a: ProjectRead, b: ProjectRead) => a.name.localeCompare(b.name), defaultSortOrder: 'ascend' as const },
+          { title: 'Name', dataIndex: 'name', sorter: (a: ProjectRead, b: ProjectRead) => a.name.localeCompare(b.name) },
           { title: 'Contract Value', dataIndex: 'contract_value', sorter: (a: ProjectRead, b: ProjectRead) => parseFloat(a.contract_value) - parseFloat(b.contract_value) },
           { title: 'Start', dataIndex: 'start_date', sorter: (a: ProjectRead, b: ProjectRead) => a.start_date.localeCompare(b.start_date) },
           { title: 'Completion', dataIndex: 'completion_date', sorter: (a: ProjectRead, b: ProjectRead) => a.completion_date.localeCompare(b.completion_date) },

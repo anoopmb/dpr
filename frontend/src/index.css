@@ -62,6 +62,25 @@ body {
   flex-direction: column;
 }
 
+/* ── Remove auto-focus ring + background on Ant Design sortable column headers ── */
+.ant-table-thead th:focus,
+.ant-table-thead th:focus-visible,
+.ant-table-thead th.ant-table-column-has-sorters:focus,
+.ant-table-thead th.ant-table-column-has-sorters:focus-visible,
+.ant-table-column-sorters:focus,
+.ant-table-column-sorters:focus-visible,
+.ant-table-thead td:focus,
+.ant-table-thead td:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  background: inherit !important;
+}
+
+/* Prevent the sort-hover tint from firing on keyboard focus */
+.ant-table-thead th.ant-table-column-has-sorters:focus-within {
+  background: inherit !important;
+}
+
 /* Sidebar collapsible group headers */
 .sidebar-nav .ant-menu-submenu-title {
   background-color: rgba(0, 0, 0, 0.05);

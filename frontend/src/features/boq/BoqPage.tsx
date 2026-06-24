@@ -29,14 +29,13 @@ import {
   type BoqSectionRead,
 } from '@/api/hooks/useBoq';
 import { useUoms, useWorkTypes } from '@/api/hooks/useMasters';
+import { useThemeMode } from '@/theme/theme-context';
 
 type RowType =
   | { _type: 'header'; section: BoqSectionRead; key: string }
   | { _type: 'item'; item: BoqItemRead; key: string }
   | { _type: 'subtotal'; section: BoqSectionRead; key: string };
 
-const SECTION_HEADER_BG = '#f0f5ff';
-const SUBTOTAL_BG = '#fafafa';
 
 function fmtAmt(qty: string, rate: string): string {
   const v = parseFloat(qty) * parseFloat(rate);
@@ -75,6 +74,13 @@ export function BoqPage() {
   const createSection = useCreateBoqSection();
   const updateSection = useUpdateBoqSection();
   const deleteSection = useDeleteBoqSection();
+  const { resolvedMode } = useThemeMode();
+
+  // Theme-aware row backgrounds — bypass Ant Design's token so we override precisely
+  const SECTION_HEADER_BG =
+    resolvedMode === 'dark' ? 'rgba(22, 119, 255, 0.10)' : '#f0f5ff';
+  const SUBTOTAL_BG =
+    resolvedMode === 'dark' ? 'rgba(255, 255, 255, 0.04)' : '#fafafa';
 
   const [itemModal, setItemModal] = useState<{ open: boolean; defaultSectionId?: string }>({ open: false });
   const [editItemModal, setEditItemModal] = useState<{ open: boolean; item?: BoqItemRead }>({ open: false });
