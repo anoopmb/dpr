@@ -24,6 +24,7 @@ import {
   SettingOutlined,
   SunFilled,
   TeamOutlined,
+  ToolOutlined,
   UserOutlined,
 } from '@ant-design/icons';
 import { apiClient } from '@/api/client';
@@ -38,6 +39,7 @@ const { Sider, Header, Content } = Layout;
 const { useBreakpoint } = Grid;
 
 const SIDER_WIDTH = 220;
+const HEADER_HEIGHT = 50;
 
 const ROLE_LABELS: Record<UserRole, string> = {
   SITE_ENGINEER: 'Site Engineer',
@@ -54,27 +56,68 @@ interface NavItem {
   roles: UserRole[] | null;
 }
 
-// Flat single-level list — no expandable groups. Order is preserved as
-// rendered, role-filtered per item.
-const desktopNavItems: NavItem[] = [
-  { key: '/dashboard', label: 'Dashboard', icon: <DashboardOutlined />, roles: null },
-  { key: '/projects', label: 'Projects', icon: <ApartmentOutlined />, roles: ['PROJECT_MANAGER', 'ADMIN'] },
-  { key: '/boq', label: 'BOQ', icon: <FileTextOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
-  { key: '/measurements', label: 'Measurements (MB)', icon: <FileTextOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
-  { key: '/dpr-history', label: 'DPR History', icon: <FileTextOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
-  { key: '/dpr-monthly-report', label: 'Monthly DPR Report', icon: <FileTextOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
-  { key: '/material-indents', label: 'Material Indents', icon: <InboxOutlined />, roles: ['PROJECT_MANAGER', 'STORE_KEEPER', 'ADMIN'] },
-  { key: '/workers', label: 'Workers & Attendance', icon: <TeamOutlined />, roles: ['PROJECT_MANAGER', 'ADMIN'] },
-  { key: '/expenses', label: 'Expenses', icon: <CarOutlined />, roles: ['PROJECT_MANAGER', 'STORE_KEEPER', 'ADMIN'] },
-  { key: '/billing', label: 'Running Bills', icon: <DollarOutlined />, roles: ['QUANTITY_SURVEYOR', 'PROJECT_MANAGER', 'ADMIN'] },
-  { key: '/production-progress', label: 'Production Progress', icon: <RiseOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
-  { key: '/profitability', label: 'Profitability', icon: <PercentageOutlined />, roles: ['PROJECT_MANAGER', 'ADMIN'] },
-  { key: '/analytics', label: 'Analytics', icon: <BarChartOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
-  { key: '/worker-earnings', label: 'Worker Earnings', icon: <TeamOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
-  { key: '/daily-labour-log', label: 'Daily Labour Log', icon: <TeamOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
-  { key: '/masters', label: 'Master Data', icon: <SettingOutlined />, roles: ['ADMIN'] },
-  { key: '/users', label: 'Users', icon: <IdcardOutlined />, roles: ['ADMIN'] },
-  { key: '/settings', label: 'Organization Settings', icon: <GlobalOutlined />, roles: ['ADMIN'] },
+interface NavGroup {
+  key: string;
+  label: string;
+  icon: React.ReactNode;
+  children: NavItem[];
+}
+
+const dashboardNavItem: NavItem = { key: '/dashboard', label: 'Dashboard', icon: <DashboardOutlined />, roles: null };
+
+const desktopMenuGroups: NavGroup[] = [
+  {
+    key: 'grp-project',
+    label: 'Project',
+    icon: <ApartmentOutlined />,
+    children: [
+      { key: '/projects', label: 'Projects', icon: <ApartmentOutlined />, roles: ['PROJECT_MANAGER', 'ADMIN'] },
+      { key: '/boq', label: 'BOQ', icon: <FileTextOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
+      { key: '/measurements', label: 'Measurements (MB)', icon: <FileTextOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
+      { key: '/dpr-history', label: 'DPR History', icon: <FileTextOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
+      { key: '/dpr-monthly-report', label: 'Monthly DPR Report', icon: <FileTextOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
+    ],
+  },
+  {
+    key: 'grp-resources',
+    label: 'Resources',
+    icon: <ToolOutlined />,
+    children: [
+      { key: '/material-indents', label: 'Material Indents', icon: <InboxOutlined />, roles: ['PROJECT_MANAGER', 'STORE_KEEPER', 'ADMIN'] },
+      { key: '/workers', label: 'Workers & Attendance', icon: <TeamOutlined />, roles: ['PROJECT_MANAGER', 'ADMIN'] },
+      { key: '/expenses', label: 'Expenses', icon: <CarOutlined />, roles: ['PROJECT_MANAGER', 'STORE_KEEPER', 'ADMIN'] },
+    ],
+  },
+  {
+    key: 'grp-finance',
+    label: 'Finance',
+    icon: <DollarOutlined />,
+    children: [
+      { key: '/billing', label: 'Running Bills', icon: <DollarOutlined />, roles: ['QUANTITY_SURVEYOR', 'PROJECT_MANAGER', 'ADMIN'] },
+    ],
+  },
+  {
+    key: 'grp-reports',
+    label: 'Reports',
+    icon: <BarChartOutlined />,
+    children: [
+      { key: '/production-progress', label: 'Production Progress', icon: <RiseOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
+      { key: '/profitability', label: 'Profitability', icon: <PercentageOutlined />, roles: ['PROJECT_MANAGER', 'ADMIN'] },
+      { key: '/analytics', label: 'Analytics', icon: <BarChartOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
+      { key: '/worker-earnings', label: 'Worker Earnings', icon: <TeamOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
+      { key: '/daily-labour-log', label: 'Daily Labour Log', icon: <TeamOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
+    ],
+  },
+  {
+    key: 'grp-admin',
+    label: 'Administration',
+    icon: <SettingOutlined />,
+    children: [
+      { key: '/masters', label: 'Master Data', icon: <SettingOutlined />, roles: ['ADMIN'] },
+      { key: '/users', label: 'Users', icon: <IdcardOutlined />, roles: ['ADMIN'] },
+      { key: '/settings', label: 'Organization Settings', icon: <GlobalOutlined />, roles: ['ADMIN'] },
+    ],
+  },
 ];
 
 const fieldMenuItems = [
@@ -86,15 +129,6 @@ const fieldMenuItems = [
   { key: '/field/my-measurements', label: 'My Measurements', icon: <FileTextOutlined /> },
   { key: '/field/my-indents', label: 'My Material Indents', icon: <InboxOutlined /> },
 ] as const;
-
-// Admin sees the field-entry screens too, appended after the desktop items —
-// still one flat list, no group wrapper, matching the reference's simplicity.
-const adminFieldNavItems: NavItem[] = fieldMenuItems.map((item) => ({
-  key: item.key,
-  label: item.label,
-  icon: <MobileOutlined />,
-  roles: ['ADMIN'],
-}));
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
@@ -121,20 +155,65 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const isField = isFieldRole(user?.role);
   const isAdmin = user?.role === 'ADMIN';
 
-  const visibleNavItems = useMemo((): NavItem[] => {
-    if (isField) return fieldMenuItems.map((item) => ({ key: item.key, label: item.label, icon: item.icon, roles: null }));
-    const all = isAdmin ? [...desktopNavItems, ...adminFieldNavItems] : desktopNavItems;
-    return all.filter((item) => !item.roles || item.roles.includes(user?.role as UserRole));
+  const menuItems = useMemo((): MenuProps['items'] => {
+    if (isField) return fieldMenuItems.map((item) => ({ key: item.key, icon: item.icon, label: item.label }));
+
+    const items: MenuProps['items'] = [
+      { key: dashboardNavItem.key, icon: dashboardNavItem.icon, label: dashboardNavItem.label },
+    ];
+    for (const group of desktopMenuGroups) {
+      const visible = group.children.filter(
+        (item) => !item.roles || item.roles.includes(user?.role as UserRole),
+      );
+      if (visible.length === 0) continue;
+      items.push({
+        key: group.key,
+        icon: group.icon,
+        label: group.label,
+        children: visible.map((item) => ({ key: item.key, icon: item.icon, label: item.label })),
+      });
+    }
+    if (isAdmin) {
+      items.push({
+        key: 'grp-field',
+        icon: <MobileOutlined />,
+        label: 'Field Access',
+        children: fieldMenuItems.map((item) => ({ key: item.key, icon: item.icon, label: item.label })),
+      });
+    }
+    return items;
   }, [isField, isAdmin, user?.role]);
 
-  const menuItems = useMemo((): MenuProps['items'] =>
-    visibleNavItems.map((item) => ({ key: item.key, icon: item.icon, label: item.label })),
-  [visibleNavItems]);
+  const allNavKeys = useMemo(() => {
+    if (isField) return fieldMenuItems.map((item) => item.key as string);
+    const keys: string[] = [dashboardNavItem.key];
+    for (const group of desktopMenuGroups) {
+      for (const item of group.children) {
+        if (!item.roles || item.roles.includes(user?.role as UserRole)) keys.push(item.key);
+      }
+    }
+    if (isAdmin) fieldMenuItems.forEach((item) => keys.push(item.key));
+    return keys;
+  }, [isField, isAdmin, user?.role]);
+
+  const [openKeys, setOpenKeys] = useState<string[]>(() => {
+    if (isField) return [];
+    for (const group of desktopMenuGroups) {
+      if (group.children.some((item) => location.pathname.startsWith(item.key))) return [group.key];
+    }
+    if (isAdmin && fieldMenuItems.some((item) => location.pathname.startsWith(item.key))) return ['grp-field'];
+    return [];
+  });
+
+  const handleOpenChange = (keys: string[]) => {
+    const latestKey = keys.find((k) => !openKeys.includes(k));
+    setOpenKeys(latestKey ? [latestKey] : []);
+  };
 
   const selectedKey = useMemo(() => {
-    const match = visibleNavItems.find((item) => location.pathname.startsWith(item.key));
-    return match ? [match.key] : [visibleNavItems[0]?.key].filter(Boolean) as string[];
-  }, [visibleNavItems, location.pathname]);
+    const match = allNavKeys.find((k) => location.pathname.startsWith(k));
+    return match ? [match] : [allNavKeys[0]];
+  }, [allNavKeys, location.pathname]);
 
   const handleLogout = () => {
     apiClient.post('/auth/logout').catch(() => undefined).finally(() => {
@@ -187,6 +266,16 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const desktopCollapsed = !isMobile && desktopCollapsedState;
   const mobileNavOpen = isMobile && mobileNavOpenState;
 
+  // Collapsing the rail and the popout-on-hover submenu share the same
+  // `openKeys` state in rc-menu. Clear it whenever the rail is toggled (see
+  // the onClick handler below) so a group left expanded from inline mode
+  // doesn't immediately reappear as an already-open popup — it should only
+  // open once the user actually hovers or clicks its icon.
+  const toggleDesktopCollapsed = () => {
+    setDesktopCollapsedState((prev) => !prev);
+    setOpenKeys([]);
+  };
+
   const roleLabel = user?.role ? ROLE_LABELS[user.role] : '';
 
   const profileTrigger = (
@@ -201,17 +290,14 @@ export function AppLayout({ children }: { children: ReactNode }) {
       // item. Push the popup above both.
       styles={{ root: { zIndex: 1300 } }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-        <Avatar size={36} icon={<UserOutlined />} style={{ backgroundColor: '#1f2937', flexShrink: 0 }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+        <Avatar size={28} icon={<UserOutlined />} style={{ backgroundColor: '#1f2937', flexShrink: 0 }} />
         {!isMobile && (
-          <div style={{ minWidth: 0, lineHeight: 1.3, textAlign: 'right' }}>
-            <div style={{ color: palette.headerText, fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap' }}>
+          <div style={{ minWidth: 0, lineHeight: 1.25, textAlign: 'right' }}>
+            <div style={{ color: palette.headerText, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
               {user?.fullName ?? 'Guest'}
             </div>
-            <div style={{ color: palette.headerMutedText, fontSize: 12, whiteSpace: 'nowrap' }}>
-              {user?.email ?? ''}
-            </div>
-            <div style={{ color: palette.headerMutedText, fontSize: 11, whiteSpace: 'nowrap' }}>
+            <div style={{ color: palette.headerMutedText, fontSize: 10, whiteSpace: 'nowrap' }}>
               {roleLabel}
             </div>
           </div>
@@ -237,7 +323,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           trigger={null}
           width={SIDER_WIDTH}
           onCollapse={(value) => {
-            if (!isMobile) setDesktopCollapsedState(value);
+            if (!isMobile && value !== desktopCollapsedState) toggleDesktopCollapsed();
           }}
           style={{
             backgroundColor: palette.siderBackground,
@@ -260,7 +346,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             <div
               style={{
-                height: 64,
+                height: 56,
                 flexShrink: 0,
                 display: 'flex',
                 alignItems: 'center',
@@ -288,6 +374,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
               mode="inline"
               inlineCollapsed={desktopCollapsed}
               selectedKeys={selectedKey}
+              openKeys={openKeys}
+              onOpenChange={handleOpenChange}
               items={menuItems}
               style={{ background: 'transparent', borderInlineEnd: 'none', paddingTop: 4, flex: 1, overflowY: 'auto', overflowX: 'hidden' }}
               onClick={({ key }) => {
@@ -305,7 +393,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                     ? <MenuUnfoldOutlined style={{ fontSize: 14 }} />
                     : <MenuFoldOutlined style={{ fontSize: 14 }} />
                   }
-                  onClick={() => setDesktopCollapsedState((prev) => !prev)}
+                  onClick={toggleDesktopCollapsed}
                   style={{ color: palette.headerMutedText }}
                 />
               </div>
@@ -322,43 +410,39 @@ export function AppLayout({ children }: { children: ReactNode }) {
           <InstallBanner />
           <Header
             style={{
-              paddingInline: 24,
-              paddingBlock: 12,
+              paddingInline: 16,
               background: palette.headerBackground,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              height: 'auto',
-              minHeight: 72,
-              gap: 16,
+              height: HEADER_HEIGHT,
+              lineHeight: `${HEADER_HEIGHT}px`,
+              gap: 12,
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
               {isMobile && (
                 <Button
                   type="text"
-                  icon={<MenuUnfoldOutlined style={{ fontSize: 18 }} />}
+                  icon={<MenuUnfoldOutlined style={{ fontSize: 16 }} />}
                   onClick={() => setMobileNavOpenState((prev) => !prev)}
-                  style={{ color: palette.headerText, minWidth: 44, minHeight: 44, flexShrink: 0 }}
+                  style={{ color: palette.headerText, width: HEADER_HEIGHT, height: HEADER_HEIGHT, flexShrink: 0 }}
                 />
               )}
-              <div style={{ minWidth: 0 }}>
-                <Typography.Title level={4} style={{ margin: 0, color: palette.headerText, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {companyName}
-                </Typography.Title>
-                {!isMobile && (
-                  <Typography.Text style={{ color: palette.headerMutedText, fontSize: 13 }}>
-                    Daily Progress Reporting Platform
-                  </Typography.Text>
-                )}
-              </div>
+              <Typography.Text
+                strong
+                style={{ color: palette.headerText, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              >
+                {companyName}
+              </Typography.Text>
             </div>
-            <Space size={16}>
+            <Space size={12}>
               <NotificationBell color={palette.headerText} />
               <Button
                 type="text"
                 shape="circle"
-                icon={resolvedMode === 'dark' ? <SunFilled style={{ fontSize: 17 }} /> : <MoonFilled style={{ fontSize: 17 }} />}
+                size="small"
+                icon={resolvedMode === 'dark' ? <SunFilled style={{ fontSize: 15 }} /> : <MoonFilled style={{ fontSize: 15 }} />}
                 onClick={toggleMode}
                 style={{ color: palette.headerText }}
               />

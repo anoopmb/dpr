@@ -72,6 +72,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
               // uses a solid accent-blue pill with white text.
               itemSelectedColor: palette.navItemSelectedColor,
               itemSelectedBg: palette.navItemSelectedBg,
+              // Group headers (SubMenu titles) use the same idle/hover
+              // treatment as leaf items, and an expanded group's child list
+              // keeps the sidebar's own background rather than antd's
+              // default slightly-different submenu strip.
+              subMenuItemBg: 'transparent',
             },
           },
         }}

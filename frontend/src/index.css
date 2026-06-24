@@ -95,10 +95,11 @@ body {
 }
 
 /* ══════════════════════════════════════════════
-   Sidebar navigation — flat list, fully theme-aware
+   Sidebar navigation — grouped list, fully theme-aware
    ══════════════════════════════════════════════ */
 
-.sidebar-nav .ant-menu-item {
+.sidebar-nav .ant-menu-item,
+.sidebar-nav .ant-menu-submenu-title {
   font-weight: 500;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
@@ -107,17 +108,28 @@ body {
   font-weight: 600 !important;
 }
 
+/* Group headers (SubMenu titles) should never pick up the child's selected
+   accent color just because one of its children is the active route —
+   only the actual selected leaf item should be highlighted. */
+.sidebar-nav .ant-menu-submenu-selected > .ant-menu-submenu-title,
+.sidebar-nav .ant-menu-submenu-selected > .ant-menu-submenu-title .ant-menu-item-icon {
+  color: inherit !important;
+}
+
 /* Remove the browser's default focus-visible outline/box on menu items —
    without this, clicking (which moves keyboard focus to the item) leaves a
    visible rectangular ring around the label that clashes with the pill. */
 .sidebar-nav .ant-menu-item:focus,
-.sidebar-nav .ant-menu-item:focus-visible {
+.sidebar-nav .ant-menu-item:focus-visible,
+.sidebar-nav .ant-menu-submenu-title:focus,
+.sidebar-nav .ant-menu-submenu-title:focus-visible {
   outline: none !important;
   box-shadow: none !important;
 }
 
 /* Collapsed rail: center icons, no left-aligned padding to fight with */
-.sidebar-nav.ant-menu-inline-collapsed .ant-menu-item {
+.sidebar-nav.ant-menu-inline-collapsed .ant-menu-item,
+.sidebar-nav.ant-menu-inline-collapsed .ant-menu-submenu-title {
   padding-inline: 0 !important;
   display: flex;
   align-items: center;
