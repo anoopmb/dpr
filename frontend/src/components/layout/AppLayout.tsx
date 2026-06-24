@@ -29,6 +29,7 @@ import {
 } from '@ant-design/icons';
 import { apiClient } from '@/api/client';
 import { useAuthStore, isFieldRole, type UserRole } from '@/store/auth-store';
+import { ROLE_LABELS } from '@/utils/roles';
 import { useThemeMode, type ThemeMode } from '@/theme/theme-context';
 import { NotificationBell } from '@/components/layout/NotificationBell';
 import { InstallBanner } from '@/components/layout/InstallBanner';
@@ -40,14 +41,6 @@ const { Sider, Header, Content } = Layout;
 
 const SIDER_WIDTH = 220;
 const HEADER_HEIGHT = 50;
-
-const ROLE_LABELS: Record<UserRole, string> = {
-  SITE_ENGINEER: 'Site Engineer',
-  PROJECT_MANAGER: 'Project Manager',
-  QUANTITY_SURVEYOR: 'Quantity Surveyor',
-  STORE_KEEPER: 'Store Keeper',
-  ADMIN: 'Administrator',
-};
 
 interface NavItem {
   key: string;
