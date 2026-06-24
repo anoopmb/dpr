@@ -14,9 +14,17 @@ import { useTodayDprHeader } from '@/hooks/useTodayDprHeader';
 import { RequireAttendance } from '@/components/field/RequireAttendance';
 import { useDateFormat } from '@/utils/format';
 
+interface AddMaterialValues {
+  material_id: string;
+  qty_consumed: number;
+  uom_id: string;
+  rate: number | null;
+}
+
 interface EditMaterialValues {
   qty_consumed: number;
   uom_id: string;
+  rate: number | null;
 }
 
 export function MaterialsUsedPage() {
@@ -30,7 +38,7 @@ export function MaterialsUsedPage() {
   const addMaterial = useAddDprMaterial();
   const updateMaterial = useUpdateDprMaterial();
   const deleteMaterial = useDeleteDprMaterial();
-  const [form] = Form.useForm();
+  const [form] = Form.useForm<AddMaterialValues>();
   const [editForm] = Form.useForm<EditMaterialValues>();
   const [editingItem, setEditingItem] = useState<DprMaterialRead | null>(null);
 
@@ -38,12 +46,26 @@ export function MaterialsUsedPage() {
   const uomById = new Map((uoms ?? []).map((u) => [u.id, u]));
   const isDraft = header?.status === 'DRAFT';
 
-  const handleAdd = async (values: { material_id: string; qty_consumed: number; uom_id: string }) => {
+  const handleMaterialSelect = (materialId: string) => {
+    const mat = materialById.get(materialId);
+    if (!mat) return;
+    form.setFieldsValue({
+      uom_id: mat.default_uom_id,
+      rate: mat.cost_rate != null ? parseFloat(mat.cost_rate) : null,
+    });
+  };
+
+  const handleAdd = async (values: AddMaterialValues) => {
     try {
       const id = headerId ?? (await ensureHeader());
       await addMaterial.mutateAsync({
         headerId: id,
-        data: { material_id: values.material_id, qty_consumed: String(values.qty_consumed), uom_id: values.uom_id },
+        data: {
+          material_id: values.material_id,
+          qty_consumed: String(values.qty_consumed),
+          uom_id: values.uom_id,
+          rate: values.rate != null ? String(values.rate) : undefined,
+        },
       });
       message.success('Material entry added');
       form.resetFields();
@@ -57,6 +79,7 @@ export function MaterialsUsedPage() {
     editForm.setFieldsValue({
       qty_consumed: parseFloat(item.qty_consumed),
       uom_id: item.uom_id,
+      rate: item.rate != null ? parseFloat(item.rate) : null,
     });
   };
 
@@ -65,7 +88,11 @@ export function MaterialsUsedPage() {
     try {
       await updateMaterial.mutateAsync({
         itemId: editingItem.id,
-        data: { qty_consumed: String(values.qty_consumed), uom_id: values.uom_id },
+        data: {
+          qty_consumed: String(values.qty_consumed),
+          uom_id: values.uom_id,
+          rate: values.rate != null ? String(values.rate) : undefined,
+        },
       });
       message.success('Entry updated');
       setEditingItem(null);
@@ -101,13 +128,20 @@ export function MaterialsUsedPage() {
         <RequireAttendance projectId={selectedProjectId}>
           <Form form={form} layout="vertical" onFinish={handleAdd}>
             <Form.Item name="material_id" label="Material" rules={[{ required: true }]}>
-              <Select size="large" options={(materials ?? []).map((m) => ({ value: m.id, label: m.name }))} />
+              <Select
+                size="large"
+                options={(materials ?? []).map((m) => ({ value: m.id, label: m.name }))}
+                onSelect={handleMaterialSelect}
+              />
             </Form.Item>
             <Form.Item name="qty_consumed" label="Quantity" rules={[{ required: true }]}>
               <InputNumber min={0} style={{ width: '100%' }} size="large" />
             </Form.Item>
             <Form.Item name="uom_id" label="Unit" rules={[{ required: true }]}>
               <Select size="large" options={(uoms ?? []).map((u) => ({ value: u.id, label: u.code }))} />
+            </Form.Item>
+            <Form.Item name="rate" label="Rate (per unit)" rules={[{ required: false }]}>
+              <InputNumber min={0} style={{ width: '100%' }} size="large" placeholder="Auto-filled from master, editable" />
             </Form.Item>
             <Button type="primary" htmlType="submit" block size="large" loading={addMaterial.isPending || creating} disabled={!isDraft && !!headerId}>
               Add Entry
@@ -117,31 +151,35 @@ export function MaterialsUsedPage() {
             style={{ marginTop: 24 }}
             header="Entries for this date"
             dataSource={header?.materials ?? []}
-            renderItem={(row) => (
-              <List.Item
-                actions={
-                  isDraft
-                    ? [
-                        <Button key="edit" size="small" onClick={() => openEdit(row)}>Edit</Button>,
-                        <Popconfirm
-                          key="delete"
-                          title="Delete this material entry?"
-                          onConfirm={() => handleDelete(row)}
-                          okText="Delete"
-                          okButtonProps={{ danger: true }}
-                        >
-                          <Button size="small" danger loading={deleteMaterial.isPending}>Delete</Button>
-                        </Popconfirm>,
-                      ]
-                    : []
-                }
-              >
-                <span>
-                  {materialById.get(row.material_id)?.name ?? row.material_id} — {row.qty_consumed}{' '}
-                  {uomById.get(row.uom_id)?.code ?? ''}
-                </span>
-              </List.Item>
-            )}
+            renderItem={(row) => {
+              const matName = materialById.get(row.material_id)?.name ?? row.material_id;
+              const uomCode = uomById.get(row.uom_id)?.code ?? '';
+              const rateStr = row.rate != null ? ` @ ₹${parseFloat(row.rate).toLocaleString('en-IN')}/${uomCode}` : '';
+              return (
+                <List.Item
+                  actions={
+                    isDraft
+                      ? [
+                          <Button key="edit" size="small" onClick={() => openEdit(row)}>Edit</Button>,
+                          <Popconfirm
+                            key="delete"
+                            title="Delete this material entry?"
+                            onConfirm={() => handleDelete(row)}
+                            okText="Delete"
+                            okButtonProps={{ danger: true }}
+                          >
+                            <Button size="small" danger loading={deleteMaterial.isPending}>Delete</Button>
+                          </Popconfirm>,
+                        ]
+                      : []
+                  }
+                >
+                  <span>
+                    {matName} — {row.qty_consumed} {uomCode}{rateStr}
+                  </span>
+                </List.Item>
+              );
+            }}
           />
         </RequireAttendance>
       )}
@@ -160,6 +198,9 @@ export function MaterialsUsedPage() {
           </Form.Item>
           <Form.Item name="uom_id" label="Unit" rules={[{ required: true }]}>
             <Select options={(uoms ?? []).map((u) => ({ value: u.id, label: u.code }))} />
+          </Form.Item>
+          <Form.Item name="rate" label="Rate (per unit)">
+            <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
         </Form>
       </Modal>

@@ -13,6 +13,7 @@ class DailyProfitabilityRead(BaseModel):
     date: date
     production_value: Decimal
     machinery_cost: Decimal
+    material_cost: Decimal
     expense_cost: Decimal
     total_cost: Decimal
     net_profit: Decimal
@@ -24,6 +25,7 @@ class ProfitabilityRead(BaseModel):
     to_date: date
     production_value: Decimal
     machinery_cost: Decimal
+    material_cost: Decimal
     expense_cost: Decimal
     total_cost: Decimal
     net_profit: Decimal

@@ -72,6 +72,7 @@ class DprMaterialCreate(BaseModel):
     material_id: uuid.UUID
     qty_consumed: Decimal = Field(gt=0)
     uom_id: uuid.UUID
+    rate: Decimal | None = Field(default=None, gt=0)
 
 
 class DprMaterialRead(BaseModel):
@@ -80,11 +81,13 @@ class DprMaterialRead(BaseModel):
     material_id: uuid.UUID
     qty_consumed: Decimal
     uom_id: uuid.UUID
+    rate: Decimal | None
 
 
 class DprMaterialUpdate(BaseModel):
     qty_consumed: Decimal = Field(gt=0)
     uom_id: uuid.UUID
+    rate: Decimal | None = Field(default=None, gt=0)
 
 
 class DprMachineryCreate(BaseModel):

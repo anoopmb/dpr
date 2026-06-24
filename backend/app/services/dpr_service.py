@@ -10,7 +10,7 @@ from app.core.exceptions import DomainError, NotFoundError, PermissionDeniedErro
 from app.domain.dpr.validators import validate_report_date
 from app.models.audit import AuditAction
 from app.models.dpr import DprHeader, DprIssue, DprMachinery, DprMaterial, DprProductionEntry, DprStatus, DprWorkItem
-from app.models.master_data import MachineryMaster, UomMaster
+from app.models.master_data import MachineryMaster, MaterialMaster, UomMaster
 from app.models.project import Project
 from app.models.user import UserRole
 from app.repositories.boq_repo import BoqRepository, BoqSectionRepository
@@ -175,7 +175,12 @@ class DprService:
 
     async def add_material(self, header_id: uuid.UUID, data: DprMaterialCreate, actor_id: uuid.UUID) -> DprHeader:
         await self._get_editable_work_header(header_id)
-        material = DprMaterial(dpr_header_id=header_id, **data.model_dump())
+        payload = data.model_dump()
+        if payload["rate"] is None:
+            mat = await self.session.get(MaterialMaster, data.material_id)
+            if mat is not None:
+                payload["rate"] = mat.cost_rate
+        material = DprMaterial(dpr_header_id=header_id, **payload)
         self.session.add(material)
         await self.session.flush()
         await self.audit.record(
@@ -220,6 +225,7 @@ class DprService:
         before = serialize_model(material)
         material.qty_consumed = data.qty_consumed
         material.uom_id = data.uom_id
+        material.rate = data.rate
         await self.session.flush()
         await self.audit.record(
             entity_type="DPR_MATERIAL",

@@ -44,6 +44,8 @@ export function ProfitabilityPage() {
     const segments: { label: string; amount: number }[] = [];
     const mach = parseFloat(profitability.machinery_cost);
     if (mach > 0) segments.push({ label: 'Machinery', amount: mach });
+    const mat = parseFloat(profitability.material_cost);
+    if (mat > 0) segments.push({ label: 'Materials', amount: mat });
     for (const cat of profitability.expense_by_category) {
       const amt = parseFloat(cat.amount);
       if (amt > 0) segments.push({ label: cat.category_name, amount: amt });
@@ -64,6 +66,12 @@ export function ProfitabilityPage() {
     {
       title: 'Machinery Cost',
       dataIndex: 'machinery_cost',
+      align: 'right' as const,
+      render: (v: string) => fmtAmt(v),
+    },
+    {
+      title: 'Material Cost',
+      dataIndex: 'material_cost',
       align: 'right' as const,
       render: (v: string) => fmtAmt(v),
     },

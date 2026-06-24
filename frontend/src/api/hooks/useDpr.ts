@@ -22,6 +22,7 @@ export interface DprMaterialRead {
   material_id: string;
   qty_consumed: string;
   uom_id: string;
+  rate: string | null;
 }
 export interface DprMachineryRead {
   id: string;
@@ -272,7 +273,7 @@ export function useAddDprMaterial() {
       data,
     }: {
       headerId: string;
-      data: { material_id: string; qty_consumed: string; uom_id: string };
+      data: { material_id: string; qty_consumed: string; uom_id: string; rate?: string };
     }) => (await apiClient.post<DprHeaderRead>(`/dpr/${headerId}/materials`, data)).data,
     onSuccess: (header) => invalidateHeader(queryClient, header),
   });
@@ -306,7 +307,7 @@ export function useUpdateDprMaterial() {
       data,
     }: {
       itemId: string;
-      data: { qty_consumed: string; uom_id: string };
+      data: { qty_consumed: string; uom_id: string; rate?: string };
     }) => (await apiClient.patch<DprHeaderRead>(`/dpr/materials/${itemId}`, data)).data,
     onSuccess: (header) => invalidateHeader(queryClient, header),
   });
