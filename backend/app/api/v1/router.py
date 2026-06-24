@@ -5,6 +5,7 @@ from app.api.v1 import (
     auth,
     billing,
     boq,
+    boq_template,
     dpr,
     expenses,
     masters,
@@ -24,8 +25,10 @@ api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth.router)
 api_router.include_router(users.router)
 api_router.include_router(projects.router)
+api_router.include_router(boq.boq_router)
 api_router.include_router(boq.sections_router)
 api_router.include_router(boq.items_router)
+api_router.include_router(boq_template.router)
 api_router.include_router(masters.router)
 api_router.include_router(measurements.router)
 api_router.include_router(material.router)

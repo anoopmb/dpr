@@ -55,3 +55,41 @@ class BoqItem(TimestampedBase):
     has_active_variation_order: Mapped[bool] = mapped_column(default=False)
 
     project: Mapped["Project"] = relationship(back_populates="boq_items")
+
+
+class BoqTemplate(TimestampedBase):
+    __tablename__ = "boq_templates"
+
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(500))
+    items: Mapped[list["BoqTemplateItem"]] = relationship(
+        back_populates="template",
+        cascade="all, delete-orphan",
+        order_by="BoqTemplateItem.item_no",
+    )
+
+
+class BoqTemplateItem(TimestampedBase):
+    __tablename__ = "boq_template_items"
+    __table_args__ = (
+        CheckConstraint("tendered_qty > 0", name="ck_boq_tmpl_qty_positive"),
+        CheckConstraint("rate >= 0", name="ck_boq_tmpl_rate_non_negative"),
+    )
+
+    template_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("boq_templates.id", ondelete="CASCADE"), nullable=False
+    )
+    section_no: Mapped[str | None] = mapped_column(String(10))
+    section_name: Mapped[str | None] = mapped_column(String(200))
+    item_no: Mapped[str] = mapped_column(String(50), nullable=False)
+    description: Mapped[str] = mapped_column(String(500), nullable=False)
+    work_type_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("work_type_master.id", ondelete="RESTRICT"), nullable=False
+    )
+    uom_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("uom_master.id", ondelete="RESTRICT"), nullable=False
+    )
+    tendered_qty: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
+    rate: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+
+    template: Mapped["BoqTemplate"] = relationship(back_populates="items")

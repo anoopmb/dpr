@@ -5,11 +5,12 @@ from fastapi import APIRouter, Depends, status
 from app.api.deps import CurrentUserDep, SessionDep, require_role
 from app.models.user import UserRole
 from app.schemas.boq import BoqItemCreate, BoqItemRead, BoqItemUpdate, BoqSectionCreate, BoqSectionRead, BoqSectionUpdate
+from app.schemas.boq_template import BoqBulkImportRequest, BoqBulkImportResult
 from app.services.boq_service import BoqService
 
 _WRITE_ROLES = (UserRole.ADMIN, UserRole.PROJECT_MANAGER, UserRole.QUANTITY_SURVEYOR)
 
-router = APIRouter(tags=["boq"])
+boq_router = APIRouter(prefix="/boq", tags=["boq"])
 sections_router = APIRouter(prefix="/boq-sections", tags=["boq"])
 items_router = APIRouter(prefix="/boq-items", tags=["boq"])
 
@@ -97,3 +98,20 @@ async def update_boq_item(
 )
 async def delete_boq_item(boq_item_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep) -> None:
     await BoqService(session).delete_item(boq_item_id, actor_id=uuid.UUID(current_user.id))
+
+
+@boq_router.post(
+    "/import/{project_id}",
+    response_model=BoqBulkImportResult,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_role(*_WRITE_ROLES))],
+)
+async def bulk_import_boq(
+    project_id: uuid.UUID,
+    data: BoqBulkImportRequest,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+) -> BoqBulkImportResult:
+    return await BoqService(session).bulk_import(
+        project_id, data.items, actor_id=uuid.UUID(current_user.id)
+    )

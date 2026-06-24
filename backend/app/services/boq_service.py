@@ -10,6 +10,7 @@ from app.models.audit import AuditAction
 from app.models.boq import BoqItem, BoqSection
 from app.repositories.boq_repo import BoqRepository, BoqSectionRepository
 from app.schemas.boq import BoqItemCreate, BoqItemRead, BoqItemUpdate, BoqSectionCreate, BoqSectionRead, BoqSectionUpdate
+from app.schemas.boq_template import BoqBulkImportResult, BoqTemplateItemCreate
 from app.services.audit_service import AuditService, serialize_model
 
 
@@ -160,6 +161,81 @@ class BoqService:
         if item is None:
             raise NotFoundError(f"BOQ item {boq_item_id} not found.")
         return item
+
+    async def bulk_import(
+        self,
+        project_id: uuid.UUID,
+        items: list[BoqTemplateItemCreate],
+        actor_id: uuid.UUID,
+    ) -> BoqBulkImportResult:
+        existing_sections = await self.section_repo.list_for_project(project_id)
+        section_map: dict[str, uuid.UUID] = {s.section_no: s.id for s in existing_sections}
+        max_sort = max((s.sort_order for s in existing_sections), default=-1)
+
+        seen_section_nos: dict[str, str] = {}
+        for item in items:
+            if item.section_no and item.section_no not in section_map and item.section_no not in seen_section_nos:
+                seen_section_nos[item.section_no] = item.section_name or item.section_no
+
+        added_sections = 0
+        for section_no, section_name in seen_section_nos.items():
+            max_sort += 1
+            section = BoqSection(
+                project_id=project_id,
+                section_no=section_no,
+                section_name=section_name,
+                sort_order=max_sort,
+            )
+            self.section_repo.add(section)
+            await self.session.flush()
+            await self.audit.record(
+                entity_type="BOQ_SECTION",
+                entity_id=section.id,
+                action=AuditAction.CREATE,
+                actor_id=actor_id,
+                after=serialize_model(section),
+            )
+            section_map[section_no] = section.id
+            added_sections += 1
+
+        existing_items = await self.repo.list_for_project(project_id)
+        existing_item_nos: set[str] = {i.item_no for i in existing_items}
+
+        added_items = 0
+        skipped_items = 0
+        for item_data in items:
+            if item_data.item_no in existing_item_nos:
+                skipped_items += 1
+                continue
+            section_id = section_map.get(item_data.section_no) if item_data.section_no else None
+            boq_item = BoqItem(
+                project_id=project_id,
+                section_id=section_id,
+                work_type_id=item_data.work_type_id,
+                uom_id=item_data.uom_id,
+                item_no=item_data.item_no,
+                description=item_data.description,
+                tendered_qty=item_data.tendered_qty,
+                rate=item_data.rate,
+            )
+            self.repo.add(boq_item)
+            await self.session.flush()
+            await self.audit.record(
+                entity_type="BOQ_ITEM",
+                entity_id=boq_item.id,
+                action=AuditAction.CREATE,
+                actor_id=actor_id,
+                after=serialize_model(boq_item),
+            )
+            existing_item_nos.add(item_data.item_no)
+            added_items += 1
+
+        await self.session.commit()
+        return BoqBulkImportResult(
+            added_sections=added_sections,
+            added_items=added_items,
+            skipped_items=skipped_items,
+        )
 
     async def record_consumption(self, boq_item_id: uuid.UUID, measurement_qty: Decimal) -> BoqItem:
         item = await self.get(boq_item_id)
