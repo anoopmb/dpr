@@ -13,7 +13,7 @@
   --sb-sider-bg:          #ffffff;
   --sb-border:            #e2e8f0;
   --sb-shadow:            2px 0 12px rgba(0, 0, 0, 0.06);
-  --sb-root-selected-bg:  rgba(22, 119, 255, 0.1);
+  --sb-root-selected-bg:  rgba(0, 0, 0, 0.05);
   --sb-root-selected-color: var(--menu-accent, #1677ff);
 }
 
@@ -24,7 +24,7 @@
   --sb-sider-bg:          #1c1c1e; /* matches screenshot dark */
   --sb-border:            #2c2c2e;
   --sb-shadow:            none;
-  --sb-root-selected-bg:  rgba(64, 150, 255, 0.15);
+  --sb-root-selected-bg:  rgba(255, 255, 255, 0.1);
   --sb-root-selected-color: var(--menu-accent, #4096ff);
 }
 

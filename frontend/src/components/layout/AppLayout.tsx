@@ -360,7 +360,6 @@ export function AppLayout({ children }: { children: ReactNode }) {
           )}
           <Menu
             className="sidebar-nav"
-            theme={resolvedMode === 'dark' ? 'dark' : 'light'}
             mode="inline"
             inlineCollapsed={desktopCollapsed}
             selectedKeys={selectedKey}
@@ -387,6 +386,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                 gap: 8,
                 padding: desktopCollapsed ? '12px 0' : '12px 16px',
                 borderTop: `1px solid ${palette.borderColor}`,
+                backgroundColor: palette.headerBackground,
                 cursor: 'pointer',
               }}
             >
