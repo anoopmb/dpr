@@ -27,6 +27,7 @@ export interface DprMachineryRead {
   id: string;
   machinery_id: string;
   hours_used: string;
+  hire_rate: string | null;
 }
 
 export interface DprHeaderRead {
@@ -280,7 +281,10 @@ export function useAddDprMaterial() {
 export function useAddDprMachinery() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ headerId, data }: { headerId: string; data: { machinery_id: string; hours_used: string } }) =>
+    mutationFn: async ({
+      headerId,
+      data,
+    }: { headerId: string; data: { machinery_id: string; hours_used: string; hire_rate?: string } }) =>
       (await apiClient.post<DprHeaderRead>(`/dpr/${headerId}/machinery`, data)).data,
     onSuccess: (header) => invalidateHeader(queryClient, header),
   });

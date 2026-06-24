@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   Button,
   Card,
+  DatePicker,
   Empty,
   Form,
   Input,
@@ -21,6 +22,7 @@ import type { TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { PhotoCapture } from '@/components/common/PhotoCapture';
+import { RequireAttendance } from '@/components/field/RequireAttendance';
 import { useProjectContextStore } from '@/store/project-context-store';
 import { useAuthStore } from '@/store/auth-store';
 import {
@@ -35,6 +37,7 @@ import {
   type IssueSeverity,
 } from '@/api/hooks/useDpr';
 import { useBoqSections, type BoqItemRead, type BoqSectionRead } from '@/api/hooks/useBoq';
+import { useProjects } from '@/api/hooks/useProjects';
 import { useUploadPhoto } from '@/api/hooks/useUpload';
 import { useThemeMode } from '@/theme/theme-context';
 import { useDateFormat, useNumberFormat } from '@/utils/format';
@@ -86,7 +89,7 @@ function ProductionTab({
   const { data: existingEntries } = useDprProduction(headerId);
   const bulkUpsert = useBulkUpsertProduction();
   const { resolvedMode } = useThemeMode();
-  const { fmtAmt } = useNumberFormat();
+  const { fmtAmt, fmtQty, symbol } = useNumberFormat();
 
   const HDR_BG = resolvedMode === 'dark' ? 'rgba(22, 119, 255, 0.10)' : '#f0f5ff';
 
@@ -147,7 +150,7 @@ function ProductionTab({
       width: 80,
       onCell: (row) =>
         row._type === 'header'
-          ? { colSpan: 5, style: { background: HDR_BG, fontWeight: 600, padding: '6px 12px' } }
+          ? { colSpan: 6, style: { background: HDR_BG, fontWeight: 600, padding: '6px 12px' } }
           : {},
       render: (_, row) => {
         if (row._type === 'header')
@@ -161,6 +164,14 @@ function ProductionTab({
       ellipsis: true,
       onCell: (row) => (row._type === 'header' ? { colSpan: 0 } : {}),
       render: (_, row) => (row._type === 'item' ? row.item.description : null),
+    },
+    {
+      title: `Rate (${symbol})`,
+      key: 'rate',
+      width: 90,
+      align: 'right' as const,
+      onCell: (row) => (row._type === 'header' ? { colSpan: 0 } : {}),
+      render: (_, row) => (row._type === 'item' ? fmtQty(row.item.rate, 2) : null),
     },
     {
       title: "Today's Qty",
@@ -271,8 +282,12 @@ export function DprTodayPage() {
   const setCurrentDprHeaderId = useProjectContextStore((s) => s.setCurrentDprHeaderId);
   const authUser = useAuthStore((s) => s.user);
 
-  const today = dayjs().format('YYYY-MM-DD');
-  const { fmtDate } = useDateFormat();
+  const [entryDate, setEntryDate] = useState(() => dayjs());
+  const entryDateStr = entryDate.format('YYYY-MM-DD');
+  const isToday = entryDateStr === dayjs().format('YYYY-MM-DD');
+  const { fmtDate, dateFormat } = useDateFormat();
+  const { data: projects } = useProjects();
+  const project = (projects ?? []).find((p) => p.id === selectedProjectId);
   const { data: dprList, isLoading: listLoading } = useDprList(selectedProjectId);
   const { data: header } = useDprHeader(currentDprHeaderId);
   const createHeader = useCreateDprHeader();
@@ -283,38 +298,53 @@ export function DprTodayPage() {
   const [issueForm] = Form.useForm<IssueFormValues>();
   const [issuePhoto, setIssuePhoto] = useState<File | null>(null);
   const [supervisorName, setSupervisorName] = useState('');
-  const supervisorInitialized = useRef(false);
+  const initializedForHeaderId = useRef<string | null>(null);
   const [noWork, setNoWork] = useState(false);
   const [noWorkReasonKind, setNoWorkReasonKind] = useState<string>('Rain');
   const [noWorkReasonCustom, setNoWorkReasonCustom] = useState('');
 
-  const todayHeader = dprList?.find((d) => d.report_date === today);
+  const selectedDateHeader = dprList?.find((d) => d.report_date === entryDateStr);
 
   useEffect(() => {
-    if (todayHeader && todayHeader.id !== currentDprHeaderId) {
-      setCurrentDprHeaderId(todayHeader.id);
+    if (listLoading) return;
+    if (selectedDateHeader) {
+      if (selectedDateHeader.id !== currentDprHeaderId) setCurrentDprHeaderId(selectedDateHeader.id);
+    } else if (currentDprHeaderId) {
+      setCurrentDprHeaderId(null);
     }
-  }, [todayHeader, currentDprHeaderId, setCurrentDprHeaderId]);
+  }, [selectedDateHeader, currentDprHeaderId, setCurrentDprHeaderId, listLoading]);
 
+  // Re-initializes the form fields exactly once per header (or once per
+  // transition to "no header yet") — not on every background refetch of
+  // the same header, which would otherwise clobber an in-progress edit.
   useEffect(() => {
-    if (!supervisorInitialized.current) {
-      if (header) {
-        supervisorInitialized.current = true;
-        setSupervisorName(header.supervisor_name ?? authUser?.fullName ?? '');
-        setNoWork(header.no_work);
-        if (header.no_work_reason) {
-          if ((NO_WORK_REASONS as readonly string[]).includes(header.no_work_reason)) {
-            setNoWorkReasonKind(header.no_work_reason);
-          } else {
-            setNoWorkReasonKind('Other');
-            setNoWorkReasonCustom(header.no_work_reason);
-          }
-        }
-      } else if (!currentDprHeaderId && authUser?.fullName) {
-        setSupervisorName(authUser.fullName);
+    if (currentDprHeaderId === null) {
+      if (initializedForHeaderId.current !== null) {
+        initializedForHeaderId.current = null;
+        setSupervisorName(authUser?.fullName ?? '');
+        setNoWork(false);
+        setNoWorkReasonKind('Rain');
+        setNoWorkReasonCustom('');
       }
+      return;
     }
-  }, [header, currentDprHeaderId, authUser]);
+    if (!header || header.id !== currentDprHeaderId) return;
+    if (initializedForHeaderId.current === currentDprHeaderId) return;
+    initializedForHeaderId.current = currentDprHeaderId;
+    setSupervisorName(header.supervisor_name ?? authUser?.fullName ?? '');
+    setNoWork(header.no_work);
+    if (header.no_work_reason) {
+      if ((NO_WORK_REASONS as readonly string[]).includes(header.no_work_reason)) {
+        setNoWorkReasonKind(header.no_work_reason);
+      } else {
+        setNoWorkReasonKind('Other');
+        setNoWorkReasonCustom(header.no_work_reason);
+      }
+    } else {
+      setNoWorkReasonKind('Rain');
+      setNoWorkReasonCustom('');
+    }
+  }, [currentDprHeaderId, header, authUser]);
 
   const computedNoWorkReason = noWorkReasonKind === 'Other' ? noWorkReasonCustom.trim() : noWorkReasonKind;
 
@@ -327,14 +357,14 @@ export function DprTodayPage() {
     try {
       const created = await createHeader.mutateAsync({
         project_id: selectedProjectId,
-        report_date: today,
+        report_date: entryDateStr,
         supervisor_name: supervisorName.trim() || undefined,
         no_work: noWork,
         no_work_reason: noWork ? computedNoWorkReason : null,
       });
       setCurrentDprHeaderId(created.id);
     } catch {
-      message.error("Could not start today's DPR");
+      message.error(`Could not start the DPR for ${fmtDate(entryDateStr)}`);
     }
   };
 
@@ -408,11 +438,28 @@ export function DprTodayPage() {
 
   if (listLoading) return <Typography.Text>Loading...</Typography.Text>;
 
-  if (!todayHeader && !header) {
+  const minDate = project ? dayjs(project.start_date) : undefined;
+  const disabledEntryDate = (d: dayjs.Dayjs) =>
+    d.isAfter(dayjs(), 'day') || (minDate ? d.isBefore(minDate, 'day') : false);
+  const entryDatePicker = (
+    <DatePicker
+      value={entryDate}
+      onChange={(d) => { if (d) setEntryDate(d); }}
+      disabledDate={disabledEntryDate}
+      format={dateFormat}
+      allowClear={false}
+    />
+  );
+
+  if (!selectedDateHeader && !header) {
     return (
       <div>
-        <Typography.Title level={4}>Today's DPR</Typography.Title>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+          <Typography.Title level={4} style={{ margin: 0 }}>{isToday ? "Today's DPR" : 'DPR Entry'}</Typography.Title>
+          {entryDatePicker}
+        </div>
         <ProjectSelector style={{ marginBottom: 16, width: '100%' }} />
+        <RequireAttendance projectId={selectedProjectId}>
         <Card>
           <Form.Item label="Supervisor Name" style={{ marginBottom: 16 }}>
             <Input
@@ -442,12 +489,13 @@ export function DprTodayPage() {
               )}
             </Space>
           )}
-          <Empty description={`No DPR started for ${fmtDate(today)} yet`}>
+          <Empty description={`No DPR started for ${fmtDate(entryDateStr)} yet`}>
             <Button type="primary" size="large" loading={createHeader.isPending} onClick={handleStart}>
-              Start Today's DPR
+              {isToday ? "Start Today's DPR" : `Start DPR for ${fmtDate(entryDateStr)}`}
             </Button>
           </Empty>
         </Card>
+        </RequireAttendance>
       </div>
     );
   }
@@ -536,14 +584,18 @@ export function DprTodayPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>
-          Today's DPR — {fmtDate(today)}
+          {isToday ? "Today's DPR" : 'DPR'} — {fmtDate(entryDateStr)}
         </Typography.Title>
-        <Tag color={isSubmitted ? 'green' : 'blue'}>{isSubmitted ? 'SUBMITTED' : 'DRAFT'}</Tag>
+        <Space>
+          {entryDatePicker}
+          <Tag color={isSubmitted ? 'green' : 'blue'}>{isSubmitted ? 'SUBMITTED' : 'DRAFT'}</Tag>
+        </Space>
       </div>
       <ProjectSelector style={{ marginBottom: 12, width: '100%' }} />
 
+      <RequireAttendance projectId={selectedProjectId}>
       <Form.Item label="Supervisor Name" style={{ marginBottom: 12 }}>
         <Input
           value={supervisorName}
@@ -609,6 +661,7 @@ export function DprTodayPage() {
           Submit Today's DPR
         </Button>
       )}
+      </RequireAttendance>
     </div>
   );
 }

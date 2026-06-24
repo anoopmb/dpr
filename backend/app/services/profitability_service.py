@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.dpr import DprHeader, DprMachinery, DprProductionEntry
 from app.models.expense import Expense
-from app.models.master_data import ExpenseCategoryMaster, MachineryMaster
+from app.models.master_data import ExpenseCategoryMaster
 from app.schemas.profitability import (
     DailyProfitabilityRead,
     ExpenseCategoryBreakdown,
@@ -94,14 +94,12 @@ class ProfitabilityService:
         rows = await self.session.execute(
             select(
                 DprHeader.report_date,
-                func.coalesce(func.sum(DprMachinery.hours_used * MachineryMaster.hire_rate), 0),
+                func.coalesce(func.sum(DprMachinery.hours_used * DprMachinery.hire_rate), 0),
             )
             .join(DprMachinery, DprHeader.id == DprMachinery.dpr_header_id)
-            .join(MachineryMaster, DprMachinery.machinery_id == MachineryMaster.id)
             .where(DprHeader.project_id == project_id)
             .where(DprHeader.report_date >= from_date)
             .where(DprHeader.report_date <= to_date)
-            .where(MachineryMaster.hire_rate.is_not(None))
             .group_by(DprHeader.report_date)
         )
         return {row[0]: Decimal(str(row[1])) for row in rows}

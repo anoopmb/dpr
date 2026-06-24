@@ -91,6 +91,7 @@ const desktopMenuGroups: NavGroup[] = [
       { key: '/profitability', label: 'Profitability', icon: <PercentageOutlined />, roles: ['PROJECT_MANAGER', 'ADMIN'] },
       { key: '/analytics', label: 'Analytics', icon: <BarChartOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
       { key: '/worker-earnings', label: 'Worker Earnings', icon: <TeamOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
+      { key: '/daily-labour-log', label: 'Daily Labour Log', icon: <TeamOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
     ],
   },
   {

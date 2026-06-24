@@ -1,5 +1,6 @@
 import uuid
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import DomainError, NotFoundError
@@ -83,3 +84,16 @@ class ProjectAssignmentService:
         user_ids.update(a.user_id for a in assignments)
 
         return list(user_ids)
+
+    async def list_project_ids_for_user(self, user_id: uuid.UUID, role: UserRole) -> set[uuid.UUID]:
+        """Inverse of resolve_users_for_role: every project_id this user should
+        see as 'their' project for this role — project_assignments rows plus,
+        for PM/Site Engineer, the legacy primary Project FK."""
+        project_ids: set[uuid.UUID] = set(await self.repo.list_project_ids_for_user(user_id, role))
+
+        legacy_field = _LEGACY_FIELD_BY_ROLE.get(role)
+        if legacy_field is not None:
+            result = await self.session.execute(select(Project.id).where(getattr(Project, legacy_field) == user_id))
+            project_ids.update(result.scalars().all())
+
+        return project_ids

@@ -27,6 +27,7 @@ import { DprHistoryPage } from '@/features/dpr/DprHistoryPage';
 import { UsersPage } from '@/features/users/UsersPage';
 import { ProfilePage } from '@/features/profile/ProfilePage';
 import { WorkerEarningsPage } from '@/features/reports/WorkerEarningsPage';
+import { DailyLabourLogPage } from '@/features/reports/DailyLabourLogPage';
 import { MyMeasurementsPage } from '@/features/field/MyMeasurementsPage';
 import { MyMaterialIndentsPage } from '@/features/field/MyMaterialIndentsPage';
 import { DprMonthlyReportPage } from '@/features/dpr/DprMonthlyReportPage';
@@ -225,6 +226,14 @@ export function AppRouter() {
                   element={
                     <RequireRole roles={['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN']}>
                       <WorkerEarningsPage />
+                    </RequireRole>
+                  }
+                />
+                <Route
+                  path="/daily-labour-log"
+                  element={
+                    <RequireRole roles={['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN']}>
+                      <DailyLabourLogPage />
                     </RequireRole>
                   }
                 />

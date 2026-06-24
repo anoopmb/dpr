@@ -118,6 +118,10 @@ class DprMachinery(TimestampedBase):
         UUID(as_uuid=True), ForeignKey("machinery_master.id", ondelete="RESTRICT"), nullable=False
     )
     hours_used: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    # Snapshotted at entry time (defaults from MachineryMaster.hire_rate if
+    # not supplied) so later edits to the master rate never rewrite the cost
+    # of hours already logged — rates fluctuate day to day in practice.
+    hire_rate: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
 
     dpr_header: Mapped["DprHeader"] = relationship(back_populates="machinery_entries")
 

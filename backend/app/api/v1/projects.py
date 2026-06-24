@@ -30,9 +30,11 @@ async def create_project(data: ProjectCreate, session: SessionDep) -> ProjectRea
 
 @router.get("", response_model=list[ProjectRead])
 async def list_projects(
-    session: SessionDep, _: CurrentUserDep, limit: int = 50, offset: int = 0
+    session: SessionDep, current_user: CurrentUserDep, limit: int = 50, offset: int = 0
 ) -> list[ProjectRead]:
-    projects = await ProjectService(session).list(limit=limit, offset=offset)
+    projects = await ProjectService(session).list(
+        uuid.UUID(current_user.id), current_user.role, limit=limit, offset=offset
+    )
     return [ProjectRead.model_validate(p) for p in projects]
 
 

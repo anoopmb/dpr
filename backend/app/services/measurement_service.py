@@ -15,6 +15,7 @@ from app.models.user import UserRole
 from app.repositories.boq_repo import BoqRepository
 from app.repositories.measurement_repo import MeasurementRepository
 from app.schemas.measurement import MeasurementActionRequest, MeasurementCreate
+from app.services.dpr_service import DprProductionService
 from app.services.notification_service import NotificationService
 from app.services.organization_settings_service import OrganizationSettingsService
 from app.services.project_assignment_service import ProjectAssignmentService
@@ -34,6 +35,7 @@ class MeasurementService:
         self.settings_service = OrganizationSettingsService(session)
         self.notification_service = NotificationService(session, background_tasks)
         self.assignment_service = ProjectAssignmentService(session)
+        self.production_service = DprProductionService(session)
 
     async def _get_work_type(self, work_type_id: uuid.UUID) -> WorkTypeMaster:
         work_type = await self.session.get(WorkTypeMaster, work_type_id)
@@ -80,6 +82,10 @@ class MeasurementService:
         self.repo.add(measurement)
         await self.session.commit()
         await self.session.refresh(measurement)
+
+        await self.production_service.sync_from_measurements(
+            measurement.project_id, measurement.boq_item_id, measurement.measurement_date, recorded_by
+        )
         return measurement
 
     async def list_for_project(self, project_id: uuid.UUID) -> list[Measurement]:
@@ -116,6 +122,9 @@ class MeasurementService:
         if measurement.recorded_by != actor_id and actor_role != UserRole.ADMIN:
             raise PermissionDeniedError("Only the recording engineer can submit this measurement.")
         result = await self._record_transition(measurement, MeasurementStatus.SUBMITTED, actor_id, None)
+        await self.production_service.sync_from_measurements(
+            measurement.project_id, measurement.boq_item_id, measurement.measurement_date, actor_id
+        )
 
         pm_ids = await self.assignment_service.resolve_users_for_role(
             measurement.project_id, UserRole.PROJECT_MANAGER
@@ -150,6 +159,9 @@ class MeasurementService:
             raise PermissionDeniedError(f"Measurement in status {current} is not awaiting approval.")
 
         result = await self._record_transition(measurement, target, actor_id, data.remarks)
+        await self.production_service.sync_from_measurements(
+            measurement.project_id, measurement.boq_item_id, measurement.measurement_date, actor_id
+        )
 
         if target == MeasurementStatus.PM_APPROVED:
             qs_ids = await self.assignment_service.resolve_users_for_role(
@@ -185,6 +197,9 @@ class MeasurementService:
         if actor_role not in (UserRole.PROJECT_MANAGER, UserRole.QUANTITY_SURVEYOR, UserRole.ADMIN):
             raise PermissionDeniedError("Only PM/QS/Admin can reject a measurement.")
         result = await self._record_transition(measurement, MeasurementStatus.REJECTED, actor_id, data.remarks)
+        await self.production_service.sync_from_measurements(
+            measurement.project_id, measurement.boq_item_id, measurement.measurement_date, actor_id
+        )
         await self.notification_service.notify(
             [measurement.recorded_by],
             type="MEASUREMENT_REJECTED",

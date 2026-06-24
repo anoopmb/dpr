@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Alert, Button, Card, Form, Input, List, Select, Space, Tag, Typography, message } from 'antd';
 import { AimOutlined, WarningOutlined } from '@ant-design/icons';
-import { Link } from 'react-router-dom';
 import { isAxiosError } from 'axios';
+import { Link } from 'react-router-dom';
+import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
 import { PhotoCapture } from '@/components/common/PhotoCapture';
 import {
@@ -83,12 +84,11 @@ export function AttendanceCheckInPage() {
 
   if (!selectedProjectId) {
     return (
-      <Alert
-        type="warning"
-        showIcon
-        message="No project selected"
-        description={<Link to="/field/dpr-today">Go to Today's DPR to select a project first</Link>}
-      />
+      <div>
+        <Typography.Title level={4}>Attendance</Typography.Title>
+        <ProjectSelector style={{ marginBottom: 16, width: '100%' }} />
+        <Alert type="warning" showIcon message="Select a project to continue" />
+      </div>
     );
   }
 
@@ -229,6 +229,7 @@ export function AttendanceCheckInPage() {
   return (
     <div>
       <Typography.Title level={4}>Attendance — {fmtDate(todayStr)}</Typography.Title>
+      <ProjectSelector style={{ marginBottom: 16, width: '100%' }} />
 
       {locationCard}
 

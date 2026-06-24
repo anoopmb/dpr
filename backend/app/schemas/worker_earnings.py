@@ -22,3 +22,21 @@ class WorkerEarningsReportRead(BaseModel):
     rows: list[WorkerEarningsRow]
     total_days_present: int
     total_earnings: Decimal
+
+
+class DailyLabourLogRow(BaseModel):
+    attendance_date: date
+    worker_id: uuid.UUID
+    worker_name: str
+    category_id: uuid.UUID
+    category_name: str
+    daily_rate: Decimal | None
+    cost: Decimal | None
+
+
+class DailyLabourLogReportRead(BaseModel):
+    project_id: uuid.UUID
+    from_date: date
+    to_date: date
+    rows: list[DailyLabourLogRow]
+    total_cost: Decimal

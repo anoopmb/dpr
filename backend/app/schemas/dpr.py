@@ -85,6 +85,7 @@ class DprMaterialRead(BaseModel):
 class DprMachineryCreate(BaseModel):
     machinery_id: uuid.UUID
     hours_used: Decimal = Field(gt=0, le=24)
+    hire_rate: Decimal | None = Field(default=None, gt=0)
 
 
 class DprMachineryRead(BaseModel):
@@ -92,6 +93,7 @@ class DprMachineryRead(BaseModel):
     id: uuid.UUID
     machinery_id: uuid.UUID
     hours_used: Decimal
+    hire_rate: Decimal | None
 
 
 class DprHeaderRead(BaseModel):

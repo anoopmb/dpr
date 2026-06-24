@@ -9,11 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import DomainError, NotFoundError, PermissionDeniedError
 from app.domain.dpr.validators import validate_report_date
 from app.models.dpr import DprHeader, DprIssue, DprMachinery, DprMaterial, DprProductionEntry, DprStatus, DprWorkItem
-from app.models.master_data import UomMaster
+from app.models.master_data import MachineryMaster, UomMaster
 from app.models.project import Project
 from app.models.user import UserRole
 from app.repositories.boq_repo import BoqRepository, BoqSectionRepository
 from app.repositories.dpr_repo import DprProductionRepository, DprRepository
+from app.repositories.measurement_repo import MeasurementRepository
 from app.schemas.dpr import (
     BoqItemProgressRead,
     DprHeaderCreate,
@@ -139,7 +140,12 @@ class DprService:
 
     async def add_machinery(self, header_id: uuid.UUID, data: DprMachineryCreate) -> DprHeader:
         await self._get_editable_work_header(header_id)
-        self.session.add(DprMachinery(dpr_header_id=header_id, **data.model_dump()))
+        payload = data.model_dump()
+        if payload["hire_rate"] is None:
+            machinery = await self.session.get(MachineryMaster, data.machinery_id)
+            if machinery is not None:
+                payload["hire_rate"] = machinery.hire_rate
+        self.session.add(DprMachinery(dpr_header_id=header_id, **payload))
         await self.session.commit()
         return await self.get(header_id)
 
@@ -170,6 +176,58 @@ class DprProductionService:
         self.production_repo = DprProductionRepository(session)
         self.boq_repo = BoqRepository(session)
         self.section_repo = BoqSectionRepository(session)
+        self.dpr_repo = DprRepository(session)
+        self.measurement_repo = MeasurementRepository(session)
+
+    async def sync_from_measurements(
+        self, project_id: uuid.UUID, boq_item_id: uuid.UUID, measurement_date: date, actor_id: uuid.UUID
+    ) -> None:
+        """Keeps the day's DPR production entry for this BOQ item in sync
+        with the live sum of all non-rejected measurements recorded against
+        it on this date, so DPR never needs separate manual re-entry of a
+        quantity already captured by a Measurement. Auto-creates a DRAFT
+        DPR header for the date if none exists yet. No-ops once the header
+        is no longer DRAFT (submitted/locked DPRs are immutable) or marked
+        as a no-work day."""
+        qty = await self.measurement_repo.sum_computed_qty_for_item_date(boq_item_id, measurement_date)
+
+        header = await self.dpr_repo.get_by_project_and_date(project_id, measurement_date)
+        if header is None:
+            if qty == 0:
+                return
+            header = DprHeader(
+                project_id=project_id,
+                report_date=measurement_date,
+                submitted_by=actor_id,
+                status=DprStatus.DRAFT,
+            )
+            self.session.add(header)
+            await self.session.flush()
+        elif header.status != DprStatus.DRAFT or header.no_work:
+            return
+
+        existing = await self.production_repo.get_by_header_and_boq(header.id, boq_item_id)
+        if qty == 0:
+            if existing is not None:
+                await self.session.delete(existing)
+                await self.session.commit()
+            return
+
+        boq_item = await self.boq_repo.get(boq_item_id)
+        if boq_item is None:
+            return
+        amount = (qty * boq_item.rate).quantize(Decimal("0.01"))
+
+        if existing is not None:
+            existing.qty_today = qty
+            existing.amount_today = amount
+        else:
+            self.session.add(
+                DprProductionEntry(
+                    dpr_header_id=header.id, boq_item_id=boq_item_id, qty_today=qty, amount_today=amount
+                )
+            )
+        await self.session.commit()
 
     async def bulk_upsert(
         self, header_id: uuid.UUID, data: DprProductionBulkUpsert

@@ -48,6 +48,10 @@ function useMeasurementAction(action: 'submit' | 'approve' | 'reject' | 'lock') 
     onSuccess: (measurement) => {
       queryClient.invalidateQueries({ queryKey: ['measurements', measurement.project_id] });
       queryClient.invalidateQueries({ queryKey: ['boq-items', measurement.project_id] });
+      // submit/approve/reject can change which day's DPR production qty the
+      // measurement sync lands in (e.g. rejecting removes it from the sum).
+      queryClient.invalidateQueries({ queryKey: ['dpr-production'] });
+      queryClient.invalidateQueries({ queryKey: ['dpr'] });
     },
   });
 }
@@ -57,7 +61,13 @@ export function useCreateMeasurement() {
   return useMutation({
     mutationFn: async (data: MeasurementCreateInput) =>
       (await apiClient.post<MeasurementRead>('/measurements', data)).data,
-    onSuccess: (measurement) => queryClient.invalidateQueries({ queryKey: ['measurements', measurement.project_id] }),
+    onSuccess: (measurement) => {
+      queryClient.invalidateQueries({ queryKey: ['measurements', measurement.project_id] });
+      // The backend auto-syncs (and may auto-create) today's DPR production
+      // entry for this BOQ item — refresh both so DPR-Today reflects it live.
+      queryClient.invalidateQueries({ queryKey: ['dpr-production'] });
+      queryClient.invalidateQueries({ queryKey: ['dpr'] });
+    },
   });
 }
 

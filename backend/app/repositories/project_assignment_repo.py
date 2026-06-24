@@ -34,3 +34,11 @@ class ProjectAssignmentRepository(BaseRepository[ProjectAssignment]):
             )
         )
         return result.scalar_one_or_none()
+
+    async def list_project_ids_for_user(self, user_id: uuid.UUID, role: str) -> list[uuid.UUID]:
+        result = await self.session.execute(
+            select(ProjectAssignment.project_id).where(
+                ProjectAssignment.user_id == user_id, ProjectAssignment.role == role
+            )
+        )
+        return list(result.scalars().all())

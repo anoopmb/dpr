@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Alert, Button, Card, Form, Input, InputNumber, List, Select, Space, Statistic, Typography, message } from 'antd';
 import { CheckCircleFilled } from '@ant-design/icons';
-import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { calculateQuantity } from '@/features/measurements/formulaEngine';
+import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
 import { useBoqItems } from '@/api/hooks/useBoq';
 import { useWorkTypes } from '@/api/hooks/useMasters';
@@ -12,6 +12,7 @@ import { useAttachPhoto } from '@/api/hooks/usePhotos';
 import { useUploadPhoto } from '@/api/hooks/useUpload';
 import { PhotoCapture } from '@/components/common/PhotoCapture';
 import { getCurrentPosition } from '@/utils/geolocation';
+import { RequireAttendance } from '@/components/field/RequireAttendance';
 
 const FIELD_LABELS: Record<string, string> = {
   length: 'Length (m)',
@@ -45,18 +46,11 @@ export function MeasurementEntryPage() {
     [workType, dimensionFields, dimensions],
   );
 
-  if (!selectedProjectId) {
-    return (
-      <Alert
-        type="warning"
-        showIcon
-        message="Select a project on Today's DPR first"
-        description={<Link to="/field/dpr-today">Go to Today's DPR</Link>}
-      />
-    );
-  }
-
   const handleSubmit = async () => {
+    if (!selectedProjectId) {
+      message.warning('Select a project first');
+      return;
+    }
     if (!boqItemId || dimensionFields.length === 0) {
       message.warning('Select a BOQ item first');
       return;
@@ -105,7 +99,11 @@ export function MeasurementEntryPage() {
     <div>
       <Typography.Title level={4}>{recordedToday.length > 0 ? 'Add Another Measurement for Today' : 'New Measurement'}</Typography.Title>
 
-      {recordedToday.length > 0 && (
+      <ProjectSelector style={{ marginBottom: 16, width: '100%' }} />
+
+      {!selectedProjectId && <Alert type="warning" showIcon message="Select a project to continue" />}
+
+      {selectedProjectId && recordedToday.length > 0 && (
         <Card size="small" style={{ marginBottom: 16, background: '#f6ffed' }}>
           <Typography.Text strong>Recorded today ({recordedToday.length})</Typography.Text>
           <List
@@ -124,6 +122,8 @@ export function MeasurementEntryPage() {
         </Card>
       )}
 
+      {selectedProjectId && (
+      <RequireAttendance projectId={selectedProjectId}>
       <Form layout="vertical">
         <Form.Item label="BOQ Item">
           <Select
@@ -182,6 +182,8 @@ export function MeasurementEntryPage() {
           {recordedToday.length > 0 ? 'Save & Add Another' : 'Submit Measurement'}
         </Button>
       </Form>
+      </RequireAttendance>
+      )}
     </div>
   );
 }
