@@ -1,4 +1,4 @@
-import { Badge, Button, Dropdown, Empty, List, Typography } from 'antd';
+import { Badge, Button, Dropdown, Empty, List, Typography, theme } from 'antd';
 import { BellOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -14,6 +14,7 @@ import { useProjectContextStore } from '@/store/project-context-store';
 dayjs.extend(relativeTime);
 
 export function NotificationBell({ color }: { color: string }) {
+  const { token } = theme.useToken();
   const navigate = useNavigate();
   const setSelectedProjectId = useProjectContextStore((s) => s.setSelectedProjectId);
   const { data } = useNotifications();
@@ -41,12 +42,12 @@ export function NotificationBell({ color }: { color: string }) {
         width: 360,
         maxHeight: 420,
         overflowY: 'auto',
-        background: '#fff',
-        borderRadius: 8,
-        boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+        background: token.colorBgElevated,
+        borderRadius: token.borderRadiusLG,
+        boxShadow: token.boxShadowSecondary,
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid #f0f0f0' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
         <Typography.Text strong>Notifications</Typography.Text>
         {unreadCount > 0 && (
           <Button type="link" size="small" onClick={() => markAllRead.mutate()}>
@@ -65,7 +66,7 @@ export function NotificationBell({ color }: { color: string }) {
               style={{
                 padding: '10px 14px',
                 cursor: 'pointer',
-                background: item.is_read ? undefined : '#f0f5ff',
+                background: item.is_read ? undefined : token.colorPrimaryBg,
               }}
             >
               <div style={{ width: '100%' }}>
