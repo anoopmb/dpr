@@ -114,6 +114,8 @@ function AssignmentsModal({ project, onClose }: { project: ProjectRead; onClose:
           <Typography.Text strong>Primary Project Manager</Typography.Text>
           <Select
             allowClear
+            showSearch
+            optionFilterProp="label"
             style={{ width: '100%', marginTop: 4 }}
             value={project.project_manager_id ?? undefined}
             onChange={(v) => handlePrimaryChange('project_manager_id', v ?? null)}
@@ -125,6 +127,8 @@ function AssignmentsModal({ project, onClose }: { project: ProjectRead; onClose:
           <Typography.Text strong>Primary Site Engineer</Typography.Text>
           <Select
             allowClear
+            showSearch
+            optionFilterProp="label"
             style={{ width: '100%', marginTop: 4 }}
             value={project.site_engineer_id ?? undefined}
             onChange={(v) => handlePrimaryChange('site_engineer_id', v ?? null)}
@@ -147,6 +151,8 @@ function AssignmentsModal({ project, onClose }: { project: ProjectRead; onClose:
               options={usersForRole(role).map((u) => ({ value: u.id, label: u.full_name }))}
               style={{ width: '100%' }}
               placeholder="Select user"
+              showSearch
+              optionFilterProp="label"
             />
             <Button type="primary" onClick={handleAdd} loading={createAssignment.isPending}>
               Add
@@ -391,6 +397,7 @@ export function ProjectsListPage() {
         loading={isLoading}
         dataSource={projects ?? []}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50'], showTotal: (total) => `${total} projects` }}
+        scroll={{ x: 900 }}
         columns={[
           { title: 'Tender No', dataIndex: 'tender_no', sorter: (a: ProjectRead, b: ProjectRead) => a.tender_no.localeCompare(b.tender_no) },
           { title: 'Name', dataIndex: 'name', sorter: (a: ProjectRead, b: ProjectRead) => a.name.localeCompare(b.name) },
@@ -441,7 +448,7 @@ export function ProjectsListPage() {
       >
         <Form form={form} layout="vertical" onFinish={handleCreate} initialValues={{ attendance_photo_required: true, attendance_gps_required: true }}>
           <Form.Item name="department_id" label="Department" rules={[{ required: true }]}>
-            <Select options={(departments ?? []).map((d) => ({ value: d.id, label: d.name }))} />
+            <Select showSearch optionFilterProp="label" options={(departments ?? []).map((d) => ({ value: d.id, label: d.name }))} />
           </Form.Item>
           <Form.Item name="name" label="Project Name" rules={[{ required: true }]}>
             <Input />

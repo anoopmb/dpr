@@ -130,6 +130,8 @@ export function MaterialsUsedPage() {
             <Form.Item name="material_id" label="Material" rules={[{ required: true }]}>
               <Select
                 size="large"
+                showSearch
+                optionFilterProp="label"
                 options={(materials ?? []).map((m) => ({ value: m.id, label: m.name }))}
                 onSelect={handleMaterialSelect}
               />
@@ -138,7 +140,7 @@ export function MaterialsUsedPage() {
               <InputNumber min={0} style={{ width: '100%' }} size="large" />
             </Form.Item>
             <Form.Item name="uom_id" label="Unit" rules={[{ required: true }]}>
-              <Select size="large" options={(uoms ?? []).map((u) => ({ value: u.id, label: u.code }))} />
+              <Select size="large" showSearch optionFilterProp="label" options={(uoms ?? []).map((u) => ({ value: u.id, label: u.code }))} />
             </Form.Item>
             <Form.Item name="rate" label="Rate (per unit)" rules={[{ required: false }]}>
               <InputNumber min={0} style={{ width: '100%' }} size="large" placeholder="Auto-filled from master, editable" />
@@ -197,7 +199,7 @@ export function MaterialsUsedPage() {
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="uom_id" label="Unit" rules={[{ required: true }]}>
-            <Select options={(uoms ?? []).map((u) => ({ value: u.id, label: u.code }))} />
+            <Select showSearch optionFilterProp="label" options={(uoms ?? []).map((u) => ({ value: u.id, label: u.code }))} />
           </Form.Item>
           <Form.Item name="rate" label="Rate (per unit)">
             <InputNumber min={0} style={{ width: '100%' }} />

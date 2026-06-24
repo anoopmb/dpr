@@ -85,6 +85,7 @@ export function DprHistoryPage() {
           loading={isLoading}
           size="small"
           bordered
+          scroll={{ x: 900 }}
           pagination={{ pageSize: 31 }}
           onRow={(header) => {
             const kind = rowKind(header);

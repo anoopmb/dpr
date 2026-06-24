@@ -724,6 +724,7 @@ export function BoqPage() {
         pagination={false}
         bordered
         size="small"
+        scroll={{ x: 1000 }}
         onRow={(row) => ({
           style: {
             background:
@@ -751,6 +752,7 @@ export function BoqPage() {
         pagination={false}
         bordered
         size="small"
+        scroll={{ x: 540 }}
         locale={{ emptyText: 'No templates yet. Save a project BOQ as a template to get started.' }}
       />
     </div>
@@ -802,7 +804,7 @@ export function BoqPage() {
       >
         <Form form={itemForm} layout="vertical" onFinish={handleCreateItem}>
           <Form.Item name="section_id" label="Section">
-            <Select allowClear placeholder="Select section (optional)" options={sectionOptions} />
+            <Select allowClear showSearch optionFilterProp="label" placeholder="Select section (optional)" options={sectionOptions} />
           </Form.Item>
           <Form.Item name="item_no" label="Item No" rules={[{ required: true }]}>
             <Input placeholder="e.g. 1.005" />
@@ -811,10 +813,10 @@ export function BoqPage() {
             <Input.TextArea rows={2} />
           </Form.Item>
           <Form.Item name="work_type_id" label="Work Type" rules={[{ required: true }]}>
-            <Select options={(workTypes ?? []).map((w) => ({ value: w.id, label: w.name }))} />
+            <Select showSearch optionFilterProp="label" options={(workTypes ?? []).map((w) => ({ value: w.id, label: w.name }))} />
           </Form.Item>
           <Form.Item name="uom_id" label="Unit of Measure" rules={[{ required: true }]}>
-            <Select options={(uoms ?? []).map((u) => ({ value: u.id, label: `${u.code} — ${u.name}` }))} />
+            <Select showSearch optionFilterProp="label" options={(uoms ?? []).map((u) => ({ value: u.id, label: `${u.code} — ${u.name}` }))} />
           </Form.Item>
           <Form.Item name="tendered_qty" label="Tendered Quantity" rules={[{ required: true }]}>
             <InputNumber min={0.001} step={0.001} style={{ width: '100%' }} />
@@ -836,7 +838,7 @@ export function BoqPage() {
       >
         <Form form={editItemForm} layout="vertical" onFinish={handleEditItem}>
           <Form.Item name="section_id" label="Section">
-            <Select allowClear placeholder="Select section (optional)" options={sectionOptions} />
+            <Select allowClear showSearch optionFilterProp="label" placeholder="Select section (optional)" options={sectionOptions} />
           </Form.Item>
           <Form.Item name="item_no" label="Item No" rules={[{ required: true }]}>
             <Input />
@@ -845,10 +847,10 @@ export function BoqPage() {
             <Input.TextArea rows={2} />
           </Form.Item>
           <Form.Item name="work_type_id" label="Work Type" rules={[{ required: true }]}>
-            <Select options={(workTypes ?? []).map((w) => ({ value: w.id, label: w.name }))} />
+            <Select showSearch optionFilterProp="label" options={(workTypes ?? []).map((w) => ({ value: w.id, label: w.name }))} />
           </Form.Item>
           <Form.Item name="uom_id" label="Unit of Measure" rules={[{ required: true }]}>
-            <Select options={(uoms ?? []).map((u) => ({ value: u.id, label: `${u.code} — ${u.name}` }))} />
+            <Select showSearch optionFilterProp="label" options={(uoms ?? []).map((u) => ({ value: u.id, label: `${u.code} — ${u.name}` }))} />
           </Form.Item>
           <Form.Item name="tendered_qty" label="Tendered Quantity" rules={[{ required: true }]}>
             <InputNumber min={0.001} step={0.001} style={{ width: '100%' }} />
@@ -946,6 +948,8 @@ export function BoqPage() {
             placeholder="Select a template"
             value={selectedTemplateId}
             onChange={setSelectedTemplateId}
+            showSearch
+            optionFilterProp="label"
             options={(templates ?? []).map((t) => ({
               value: t.id,
               label: `${t.name} (${t.item_count} items)`,

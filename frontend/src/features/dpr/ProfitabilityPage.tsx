@@ -217,6 +217,7 @@ export function ProfitabilityPage() {
                   columns={dailyColumns}
                   loading={isLoading}
                   size="small"
+                  scroll={{ x: 900 }}
                   pagination={{ pageSize: 31 }}
                 />
               </Card>

@@ -1363,6 +1363,7 @@ function ProjectDashboard({ projectId, role }: { projectId: string; role: UserRo
                   dataSource={(indents ?? []).filter((i) => i.status === 'SUBMITTED')}
                   size="small"
                   pagination={false}
+                  scroll={{ x: 400 }}
                   locale={{ emptyText: <Empty description="No pending indents" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
                   columns={[
                     { title: 'Source', dataIndex: 'source_type', width: 140, render: (v: string) => <Tag style={{ borderRadius: 6 }}>{v.replace('_', ' ')}</Tag> },

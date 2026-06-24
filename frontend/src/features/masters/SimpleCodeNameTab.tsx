@@ -95,6 +95,7 @@ export function SimpleCodeNameTab<TRow extends MasterRow = MasterRow>({
         loading={isLoading}
         dataSource={data ?? []}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} records` }}
+        scroll={{ x: 500 }}
         columns={[
           {
             title: 'Code',

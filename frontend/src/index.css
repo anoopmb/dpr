@@ -105,11 +105,15 @@ body {
 }
 
 /* Prevent iOS Safari from auto-zooming the viewport when an input is focused.
-   iOS zooms when the focused input's font-size is < 16px. Antd defaults to 14px. */
+   iOS zooms when the focused input's font-size is < 16px. Antd defaults to 14px.
+   Antd v6 rewrote Select on top of @rc-component/select: the focusable/search
+   input inside a Select trigger is rendered with class "ant-select-input"
+   (confirmed in node_modules/@rc-component/select SelectInput/Input.js — NOT
+   the old v4/v5 rc-select class "ant-select-selection-search-input"). */
 @media screen and (max-width: 767px) {
   .ant-input,
   .ant-input-number-input,
-  .ant-select-selection-search-input,
+  .ant-select-input,
   .ant-picker-input > input,
   textarea.ant-input,
   .ant-input-affix-wrapper .ant-input {

@@ -144,6 +144,8 @@ export function MeasurementEntryPage() {
               setBoqItemId(value);
               setDimensions({});
             }}
+            showSearch
+            optionFilterProp="label"
             options={(boqItems ?? []).map((b) => ({ value: b.id, label: `${b.item_no} — ${b.description}` }))}
           />
         </Form.Item>

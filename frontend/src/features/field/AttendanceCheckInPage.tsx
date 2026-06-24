@@ -261,7 +261,7 @@ export function AttendanceCheckInPage() {
               <Input />
             </Form.Item>
             <Form.Item name="worker_category_id" label="Category" rules={[{ required: true }]}>
-              <Select options={(categories ?? []).map((c) => ({ value: c.id, label: c.name }))} />
+              <Select showSearch optionFilterProp="label" options={(categories ?? []).map((c) => ({ value: c.id, label: c.name }))} />
             </Form.Item>
             <Form.Item name="phone" label="Phone">
               <Input />
@@ -285,6 +285,8 @@ export function AttendanceCheckInPage() {
                 value={selectedWorkerId ?? undefined}
                 placeholder="Select worker"
                 onChange={setSelectedWorkerId}
+                showSearch
+                optionFilterProp="label"
                 options={(workers ?? []).map((w) => ({
                   value: w.id,
                   label: todayCheckedInIds.has(w.id) ? `${w.full_name} ✓` : w.full_name,
@@ -319,6 +321,7 @@ export function AttendanceCheckInPage() {
             placeholder="Select workers present today"
             value={bulkWorkerIds}
             onChange={setBulkWorkerIds}
+            optionFilterProp="label"
             options={availableWorkers.map((w) => ({ value: w.id, label: w.full_name }))}
           />
           <Button type="primary" block size="large" loading={markPresent.isPending} onClick={handleBulkMarkPresent}>

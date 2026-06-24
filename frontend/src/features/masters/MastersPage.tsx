@@ -89,6 +89,7 @@ function WorkTypesTab() {
       <Table
         rowKey="id" loading={query.isLoading} dataSource={query.data ?? []}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} records` }}
+        scroll={{ x: 700 }}
         columns={[
           { title: 'Code', dataIndex: 'code', sorter: (a: WorkTypeRow, b: WorkTypeRow) => a.code.localeCompare(b.code) },
           { title: 'Name', dataIndex: 'name', sorter: (a: WorkTypeRow, b: WorkTypeRow) => a.name.localeCompare(b.name) },
@@ -116,7 +117,7 @@ function WorkTypesTab() {
             <Select options={[{ value: 'PRODUCT', label: 'PRODUCT (multiply all dimensions)' }, { value: 'AREA_LH', label: 'AREA_LH (length × height)' }, { value: 'LENGTH_ONLY', label: 'LENGTH_ONLY (billed by running length)' }]} />
           </Form.Item>
           <Form.Item name="output_uom_id" label="Output Unit" rules={[{ required: true }]}>
-            <Select options={(uoms ?? []).map((u) => ({ value: u.id, label: `${u.code} — ${u.name}` }))} />
+            <Select showSearch optionFilterProp="label" options={(uoms ?? []).map((u) => ({ value: u.id, label: `${u.code} — ${u.name}` }))} />
           </Form.Item>
         </Form>
       </Modal>
@@ -175,6 +176,7 @@ function MaterialsTab() {
       <Table
         rowKey="id" loading={query.isLoading} dataSource={query.data ?? []}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} records` }}
+        scroll={{ x: 700 }}
         columns={[
           { title: 'Code', dataIndex: 'code', sorter: (a: MaterialRow, b: MaterialRow) => a.code.localeCompare(b.code) },
           { title: 'Name', dataIndex: 'name', sorter: (a: MaterialRow, b: MaterialRow) => a.name.localeCompare(b.name) },
@@ -198,7 +200,7 @@ function MaterialsTab() {
           <Form.Item name="code" label="Code" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="name" label="Name" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="default_uom_id" label="Default Unit" rules={[{ required: true }]}>
-            <Select options={(uoms ?? []).map((u) => ({ value: u.id, label: `${u.code} — ${u.name}` }))} />
+            <Select showSearch optionFilterProp="label" options={(uoms ?? []).map((u) => ({ value: u.id, label: `${u.code} — ${u.name}` }))} />
           </Form.Item>
           <Form.Item name="category" label="Category"><Input /></Form.Item>
           <Form.Item name="cost_rate" label={`Cost Rate (${symbol}, optional)`}><InputNumber style={{ width: '100%' }} min={0} /></Form.Item>
@@ -257,6 +259,7 @@ function MachineryTab() {
       <Table
         rowKey="id" loading={query.isLoading} dataSource={query.data ?? []}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} records` }}
+        scroll={{ x: 600 }}
         columns={[
           { title: 'Code', dataIndex: 'code', sorter: (a: MachineryRow, b: MachineryRow) => a.code.localeCompare(b.code) },
           { title: 'Name', dataIndex: 'name', sorter: (a: MachineryRow, b: MachineryRow) => a.name.localeCompare(b.name) },
@@ -333,6 +336,7 @@ function WorkerCategoryTab() {
       <Table
         rowKey="id" loading={query.isLoading} dataSource={query.data ?? []}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} records` }}
+        scroll={{ x: 550 }}
         columns={[
           { title: 'Code', dataIndex: 'code', sorter: (a: WorkerCategoryRow, b: WorkerCategoryRow) => a.code.localeCompare(b.code) },
           { title: 'Name', dataIndex: 'name', sorter: (a: WorkerCategoryRow, b: WorkerCategoryRow) => a.name.localeCompare(b.name) },
@@ -415,6 +419,7 @@ function StockLocationsTab() {
       <Table
         rowKey="id" loading={query.isLoading} dataSource={query.data ?? []}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} records` }}
+        scroll={{ x: 450 }}
         columns={[
           { title: 'Name', dataIndex: 'name', sorter: (a: StockLocationRow, b: StockLocationRow) => a.name.localeCompare(b.name) },
           { title: 'Type', dataIndex: 'location_type', sorter: (a: StockLocationRow, b: StockLocationRow) => a.location_type.localeCompare(b.location_type), render: (v: string) => v === 'HEAD_OFFICE' ? 'Head Office' : 'Site' },
@@ -438,7 +443,7 @@ function StockLocationsTab() {
             <Select options={[{ value: 'HEAD_OFFICE', label: 'Head Office Store' }, { value: 'SITE', label: 'Site Store' }]} />
           </Form.Item>
           <Form.Item name="project_id" label="Project (required for Site)">
-            <Select options={(projects ?? []).map((p) => ({ value: p.id, label: p.name }))} allowClear />
+            <Select showSearch optionFilterProp="label" options={(projects ?? []).map((p) => ({ value: p.id, label: p.name }))} allowClear />
           </Form.Item>
         </Form>
       </Modal>

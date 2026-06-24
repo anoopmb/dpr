@@ -42,6 +42,8 @@ export function DailyLabourLogPage() {
         />
         <Select
           allowClear
+          showSearch
+          optionFilterProp="label"
           placeholder="All categories"
           style={{ width: 200 }}
           value={categoryId}
@@ -58,6 +60,7 @@ export function DailyLabourLogPage() {
           loading={isLoading}
           dataSource={report?.rows ?? []}
           pagination={{ pageSize: 31 }}
+          scroll={{ x: 700 }}
           columns={[
             { title: 'Date', dataIndex: 'attendance_date', render: fmtDate, sorter: (a, b) => a.attendance_date.localeCompare(b.attendance_date), defaultSortOrder: 'ascend' as const },
             { title: 'Worker', dataIndex: 'worker_name' },

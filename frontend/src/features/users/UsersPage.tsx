@@ -96,6 +96,7 @@ export function UsersPage() {
         rowKey="id"
         loading={isLoading}
         dataSource={users ?? []}
+        scroll={{ x: 850 }}
         columns={[
           { title: 'User ID', dataIndex: 'login_id' },
           { title: 'Name', dataIndex: 'full_name' },

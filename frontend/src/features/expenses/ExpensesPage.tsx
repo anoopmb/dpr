@@ -115,6 +115,7 @@ export function ExpensesPage() {
         loading={isLoading}
         dataSource={expenses ?? []}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} expenses` }}
+        scroll={{ x: 750 }}
         columns={[
           { title: 'Date', dataIndex: 'expense_date', sorter: (a: ExpenseRead, b: ExpenseRead) => a.expense_date.localeCompare(b.expense_date), render: fmtDate },
           { title: 'Category', dataIndex: 'expense_category_id', render: (id: string) => categoryById.get(id) ?? id },
@@ -153,7 +154,7 @@ export function ExpensesPage() {
       >
         <Form form={createForm} layout="vertical" onFinish={handleCreate} initialValues={{ expense_date: dayjs() }}>
           <Form.Item name="expense_category_id" label="Category" rules={[{ required: true }]}>
-            <Select options={(categories ?? []).map((c) => ({ value: c.id, label: c.name }))} />
+            <Select showSearch optionFilterProp="label" options={(categories ?? []).map((c) => ({ value: c.id, label: c.name }))} />
           </Form.Item>
           <Form.Item name="amount" label="Amount" rules={[{ required: true }]}>
             <InputNumber min={0} style={{ width: '100%' }} />
@@ -180,7 +181,7 @@ export function ExpensesPage() {
       >
         <Form form={editForm} layout="vertical" onFinish={handleEdit}>
           <Form.Item name="expense_category_id" label="Category" rules={[{ required: true }]}>
-            <Select options={(categories ?? []).map((c) => ({ value: c.id, label: c.name }))} />
+            <Select showSearch optionFilterProp="label" options={(categories ?? []).map((c) => ({ value: c.id, label: c.name }))} />
           </Form.Item>
           <Form.Item name="amount" label="Amount" rules={[{ required: true }]}>
             <InputNumber min={0} style={{ width: '100%' }} />

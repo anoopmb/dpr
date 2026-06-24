@@ -99,6 +99,7 @@ export function WorkersPage() {
                 loading={workersLoading}
                 dataSource={workers ?? []}
                 pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} workers` }}
+                scroll={{ x: 750 }}
                 columns={[
                   { title: 'Name', dataIndex: 'full_name', sorter: (a: WorkerRead, b: WorkerRead) => a.full_name.localeCompare(b.full_name) },
                   { title: 'Category', dataIndex: 'worker_category_id', render: (id: string) => categoryById.get(id) ?? id },
@@ -131,6 +132,7 @@ export function WorkersPage() {
                 loading={attendanceLoading}
                 dataSource={attendance ?? []}
                 pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} records` }}
+                scroll={{ x: 650 }}
                 columns={[
                   { title: 'Date', dataIndex: 'attendance_date', sorter: (a, b) => a.attendance_date.localeCompare(b.attendance_date), render: fmtDate },
                   { title: 'Worker', dataIndex: 'worker_id', render: (id: string) => workerById.get(id) ?? id },
@@ -160,7 +162,7 @@ export function WorkersPage() {
             <Input />
           </Form.Item>
           <Form.Item name="worker_category_id" label="Category" rules={[{ required: true }]}>
-            <Select options={(categories ?? []).map((c) => ({ value: c.id, label: c.name }))} />
+            <Select showSearch optionFilterProp="label" options={(categories ?? []).map((c) => ({ value: c.id, label: c.name }))} />
           </Form.Item>
           <Form.Item name="phone" label="Phone">
             <Input />
@@ -184,7 +186,7 @@ export function WorkersPage() {
             <Input />
           </Form.Item>
           <Form.Item name="worker_category_id" label="Category" rules={[{ required: true }]}>
-            <Select options={(categories ?? []).map((c) => ({ value: c.id, label: c.name }))} />
+            <Select showSearch optionFilterProp="label" options={(categories ?? []).map((c) => ({ value: c.id, label: c.name }))} />
           </Form.Item>
           <Form.Item name="phone" label="Phone">
             <Input />

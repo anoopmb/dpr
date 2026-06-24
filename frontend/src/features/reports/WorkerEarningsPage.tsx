@@ -42,6 +42,8 @@ export function WorkerEarningsPage() {
         />
         <Select
           allowClear
+          showSearch
+          optionFilterProp="label"
           placeholder="All categories"
           style={{ width: 200 }}
           value={categoryId}
@@ -57,6 +59,7 @@ export function WorkerEarningsPage() {
           rowKey="worker_id"
           loading={isLoading}
           dataSource={report?.rows ?? []}
+          scroll={{ x: 700 }}
           columns={[
             { title: 'Worker', dataIndex: 'worker_name' },
             { title: 'Category', dataIndex: 'category_name' },

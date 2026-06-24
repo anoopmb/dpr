@@ -222,6 +222,8 @@ export function MyMaterialIndentsPage() {
           </Form.Item>
           <Form.Item name="source_location_id" label="Source Location" rules={[{ required: true }]}>
             <Select
+              showSearch
+              optionFilterProp="label"
               options={(stockLocations ?? []).map((l) => ({ value: l.id, label: `${l.name} (${l.location_type})` }))}
             />
           </Form.Item>
@@ -233,12 +235,12 @@ export function MyMaterialIndentsPage() {
                   <Row key={field.key} gutter={[8, 0]} align="middle" style={{ marginBottom: 8 }}>
                     <Col xs={24} sm={10}>
                       <Form.Item name={[field.name, 'material_id']} rules={[{ required: true }]} style={{ marginBottom: 0 }}>
-                        <Select placeholder="Material" options={(materials ?? []).map((m) => ({ value: m.id, label: m.name }))} />
+                        <Select placeholder="Material" showSearch optionFilterProp="label" options={(materials ?? []).map((m) => ({ value: m.id, label: m.name }))} />
                       </Form.Item>
                     </Col>
                     <Col xs={12} sm={5}>
                       <Form.Item name={[field.name, 'uom_id']} rules={[{ required: true }]} style={{ marginBottom: 0 }}>
-                        <Select placeholder="Unit" options={(uoms ?? []).map((u) => ({ value: u.id, label: u.code }))} />
+                        <Select placeholder="Unit" showSearch optionFilterProp="label" options={(uoms ?? []).map((u) => ({ value: u.id, label: u.code }))} />
                       </Form.Item>
                     </Col>
                     <Col xs={12} sm={5}>

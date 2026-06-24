@@ -117,7 +117,7 @@ export function MachineryUsedPage() {
             }}
           >
             <Form.Item name="machinery_id" label="Machine" rules={[{ required: true }]}>
-              <Select size="large" options={(machinery ?? []).map((m) => ({ value: m.id, label: m.name }))} />
+              <Select size="large" showSearch optionFilterProp="label" options={(machinery ?? []).map((m) => ({ value: m.id, label: m.name }))} />
             </Form.Item>
             <Form.Item name="hours_used" label="Hours Used" rules={[{ required: true }]}>
               <InputNumber min={0} max={24} style={{ width: '100%' }} size="large" />

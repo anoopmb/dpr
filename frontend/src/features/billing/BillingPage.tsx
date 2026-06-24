@@ -113,6 +113,7 @@ export function BillingPage() {
         rowKey="id"
         loading={isLoading}
         dataSource={bills ?? []}
+        scroll={{ x: 700 }}
         columns={[
           { title: 'Bill No', dataIndex: 'bill_number' },
           { title: 'From', dataIndex: 'from_date', render: fmtDate },
