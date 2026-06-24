@@ -1,0 +1,136 @@
+import uuid
+from datetime import date
+from decimal import Decimal
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.dpr import DprHeader, DprMachinery, DprProductionEntry
+from app.models.expense import Expense
+from app.models.master_data import ExpenseCategoryMaster, MachineryMaster
+from app.schemas.profitability import (
+    DailyProfitabilityRead,
+    ExpenseCategoryBreakdown,
+    ProfitabilityRead,
+)
+
+
+class ProfitabilityService:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def get(self, project_id: uuid.UUID, from_date: date, to_date: date) -> ProfitabilityRead:
+        production_by_date = await self._production_by_date(project_id, from_date, to_date)
+        machinery_by_date = await self._machinery_cost_by_date(project_id, from_date, to_date)
+        expense_by_date = await self._expense_by_date(project_id, from_date, to_date)
+        expense_by_category = await self._expense_by_category(project_id, from_date, to_date)
+
+        all_dates = sorted(
+            set(production_by_date) | set(machinery_by_date) | set(expense_by_date)
+        )
+
+        daily: list[DailyProfitabilityRead] = []
+        total_prod = Decimal(0)
+        total_mach = Decimal(0)
+        total_exp = Decimal(0)
+
+        for d in all_dates:
+            prod = production_by_date.get(d, Decimal(0))
+            mach = machinery_by_date.get(d, Decimal(0))
+            exp = expense_by_date.get(d, Decimal(0))
+            cost = mach + exp
+            profit = prod - cost
+            pct = (profit / prod * 100).quantize(Decimal("0.01")) if prod > 0 else None
+            daily.append(
+                DailyProfitabilityRead(
+                    date=d,
+                    production_value=prod,
+                    machinery_cost=mach,
+                    expense_cost=exp,
+                    total_cost=cost,
+                    net_profit=profit,
+                    profit_percent=pct,
+                )
+            )
+            total_prod += prod
+            total_mach += mach
+            total_exp += exp
+
+        total_cost = total_mach + total_exp
+        net_profit = total_prod - total_cost
+        profit_pct = (
+            (net_profit / total_prod * 100).quantize(Decimal("0.01")) if total_prod > 0 else None
+        )
+
+        return ProfitabilityRead(
+            from_date=from_date,
+            to_date=to_date,
+            production_value=total_prod,
+            machinery_cost=total_mach,
+            expense_cost=total_exp,
+            total_cost=total_cost,
+            net_profit=net_profit,
+            profit_percent=profit_pct,
+            expense_by_category=expense_by_category,
+            daily=daily,
+        )
+
+    async def _production_by_date(
+        self, project_id: uuid.UUID, from_date: date, to_date: date
+    ) -> dict[date, Decimal]:
+        rows = await self.session.execute(
+            select(DprHeader.report_date, func.coalesce(func.sum(DprProductionEntry.amount_today), 0))
+            .outerjoin(DprProductionEntry, DprHeader.id == DprProductionEntry.dpr_header_id)
+            .where(DprHeader.project_id == project_id)
+            .where(DprHeader.report_date >= from_date)
+            .where(DprHeader.report_date <= to_date)
+            .group_by(DprHeader.report_date)
+        )
+        return {row[0]: Decimal(str(row[1])) for row in rows}
+
+    async def _machinery_cost_by_date(
+        self, project_id: uuid.UUID, from_date: date, to_date: date
+    ) -> dict[date, Decimal]:
+        rows = await self.session.execute(
+            select(
+                DprHeader.report_date,
+                func.coalesce(func.sum(DprMachinery.hours_used * MachineryMaster.hire_rate), 0),
+            )
+            .join(DprMachinery, DprHeader.id == DprMachinery.dpr_header_id)
+            .join(MachineryMaster, DprMachinery.machinery_id == MachineryMaster.id)
+            .where(DprHeader.project_id == project_id)
+            .where(DprHeader.report_date >= from_date)
+            .where(DprHeader.report_date <= to_date)
+            .where(MachineryMaster.hire_rate.is_not(None))
+            .group_by(DprHeader.report_date)
+        )
+        return {row[0]: Decimal(str(row[1])) for row in rows}
+
+    async def _expense_by_date(
+        self, project_id: uuid.UUID, from_date: date, to_date: date
+    ) -> dict[date, Decimal]:
+        rows = await self.session.execute(
+            select(Expense.expense_date, func.coalesce(func.sum(Expense.amount), 0))
+            .where(Expense.project_id == project_id)
+            .where(Expense.expense_date >= from_date)
+            .where(Expense.expense_date <= to_date)
+            .group_by(Expense.expense_date)
+        )
+        return {row[0]: Decimal(str(row[1])) for row in rows}
+
+    async def _expense_by_category(
+        self, project_id: uuid.UUID, from_date: date, to_date: date
+    ) -> list[ExpenseCategoryBreakdown]:
+        rows = await self.session.execute(
+            select(ExpenseCategoryMaster.name, func.coalesce(func.sum(Expense.amount), 0))
+            .join(Expense, Expense.expense_category_id == ExpenseCategoryMaster.id)
+            .where(Expense.project_id == project_id)
+            .where(Expense.expense_date >= from_date)
+            .where(Expense.expense_date <= to_date)
+            .group_by(ExpenseCategoryMaster.name)
+            .order_by(ExpenseCategoryMaster.name)
+        )
+        return [
+            ExpenseCategoryBreakdown(category_name=row[0], amount=Decimal(str(row[1])))
+            for row in rows
+        ]
