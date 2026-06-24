@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import InUseError, NotFoundError
+from app.core.exceptions import DuplicateError, InUseError, NotFoundError
 from app.models.base import TimestampedBase
 from app.repositories.base import BaseRepository
 
@@ -26,7 +26,11 @@ class MasterDataService(Generic[ModelType]):
     async def create(self, data: BaseModel) -> ModelType:
         instance = self.repo.model(**data.model_dump())
         self.repo.add(instance)
-        await self.session.commit()
+        try:
+            await self.session.commit()
+        except IntegrityError:
+            await self.session.rollback()
+            raise DuplicateError("A record with this name already exists.")
         await self.session.refresh(instance)
         return instance
 

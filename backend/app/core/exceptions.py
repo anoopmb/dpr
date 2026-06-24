@@ -34,6 +34,11 @@ class InUseError(DomainError):
     http_status = status.HTTP_409_CONFLICT
 
 
+class DuplicateError(DomainError):
+    error_code = "DUPLICATE_ENTRY"
+    http_status = status.HTTP_409_CONFLICT
+
+
 class CsrfValidationError(DomainError):
     error_code = "CSRF_VALIDATION_FAILED"
     http_status = status.HTTP_403_FORBIDDEN

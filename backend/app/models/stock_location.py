@@ -1,7 +1,7 @@
 import uuid
 from enum import StrEnum
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, String
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, String, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -24,6 +24,10 @@ class StockLocation(TimestampedBase):
             "(location_type = 'SITE' AND project_id IS NOT NULL)",
             name="ck_stock_location_project_matches_type",
         ),
+        # Prevent duplicate HEAD_OFFICE locations by name
+        Index("uq_stock_location_ho_name", "name", unique=True, postgresql_where=text("project_id IS NULL")),
+        # Prevent duplicate SITE locations with same name within the same project
+        Index("uq_stock_location_site_name", "name", "project_id", unique=True, postgresql_where=text("project_id IS NOT NULL")),
     )
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
