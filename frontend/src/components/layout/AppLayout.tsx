@@ -287,15 +287,28 @@ export function AppLayout({ children }: { children: ReactNode }) {
           }}
           style={{
             backgroundColor: palette.siderBackground,
+            borderRight: `1px solid ${palette.borderColor}`,
+            boxShadow: resolvedMode === 'dark' ? 'none' : '2px 0 8px rgba(0,0,0,0.03)',
             position: isMobile ? 'fixed' : 'relative',
             inset: isMobile ? '0 auto 0 0' : undefined,
             height: isMobile ? '100vh' : '100%',
             zIndex: isMobile ? 1200 : undefined,
             transform: isMobile && !mobileNavOpen ? 'translateX(-100%)' : 'translateX(0)',
             transition: 'transform 0.25s ease, width 0.25s ease',
-          }}
+            ['--menu-accent' as string]: palette.accent,
+          } as React.CSSProperties}
         >
-          <div style={{ height: 64, display: 'flex', alignItems: 'center', paddingInline: 16, overflow: 'hidden' }}>
+          <div
+            style={{
+              height: 64,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: desktopCollapsed ? 'center' : 'flex-start',
+              paddingInline: desktopCollapsed ? 0 : 16,
+              overflow: 'hidden',
+              borderBottom: `1px solid ${palette.borderColor}`,
+            }}
+          >
             {desktopCollapsed ? (
               smallLogoUrl ? (
                 <img src={smallLogoUrl} alt={companyName} style={{ height: 32, maxWidth: 32, objectFit: 'contain' }} />
@@ -314,11 +327,12 @@ export function AppLayout({ children }: { children: ReactNode }) {
             className="sidebar-nav"
             theme={resolvedMode === 'dark' ? 'dark' : 'light'}
             mode="inline"
+            inlineCollapsed={desktopCollapsed}
             selectedKeys={selectedKey}
             openKeys={desktopCollapsed ? [] : openKeys}
             onOpenChange={handleOpenChange}
             items={menuItems}
-            style={{ background: palette.siderBackground, borderInlineEnd: 'none' }}
+            style={{ background: palette.siderBackground, borderInlineEnd: 'none', paddingTop: 12, paddingInline: desktopCollapsed ? 0 : 4 }}
             onClick={({ key }) => {
               navigate(key);
               if (isMobile) setMobileNavOpenState(false);

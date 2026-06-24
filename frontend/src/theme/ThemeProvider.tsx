@@ -56,6 +56,20 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
             colorPrimary: palette.accent,
             borderRadius: 6,
           },
+          components: {
+            Menu: {
+              itemBorderRadius: 8,
+              itemMarginInline: 8,
+              itemMarginBlock: 2,
+              itemHeight: 40,
+              subMenuItemBorderRadius: 8,
+              iconSize: 16,
+              collapsedIconSize: 18,
+              itemColor: palette.headerMutedText,
+              itemHoverColor: palette.contentText,
+              subMenuItemSelectedColor: palette.accent,
+            },
+          },
         }}
       >
         {children}
