@@ -101,6 +101,17 @@ body {
   font-weight: 600 !important;
 }
 
+/* Belt-and-braces over the ConfigProvider Menu token (itemSelectedBg) —
+   forces the literal color regardless of how antd resolves/caches its
+   component-token CSS-in-JS for this selector, since that layer proved
+   unreliable to override cleanly here. */
+[data-theme="light"] .sidebar-nav .ant-menu-item-selected {
+  background-color: #c6cbd5 !important;
+}
+[data-theme="dark"] .sidebar-nav .ant-menu-item-selected {
+  background-color: #f3f4f6 !important;
+}
+
 /* Group headers (SubMenu titles) should never pick up the child's selected
    accent color just because one of its children is the active route —
    only the actual selected leaf item should be highlighted. */
