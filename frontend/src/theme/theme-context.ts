@@ -33,7 +33,7 @@ export const palettes: Record<ResolvedThemeMode, ThemePalette> = {
   light: {
     layoutBackground: '#eef0f2',
     headerBackground: '#eef0f2',
-    siderBackground: '#ffffff',
+    siderBackground: '#eef0f2',
     headerText: '#0f172a',
     headerMutedText: '#6b7280',
     contentBackground: '#ffffff',
