@@ -42,7 +42,7 @@ export const palettes: Record<ResolvedThemeMode, ThemePalette> = {
     contentMutedText: '#6b7280',
     borderColor: '#e2e5e9',
     accent: '#1677ff',
-    navItemSelectedBg: '#e4e7eb',
+    navItemSelectedBg: '#c6cbd5',
     navItemSelectedColor: '#0f172a',
   },
   dark: {
