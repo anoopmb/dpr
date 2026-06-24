@@ -2,6 +2,32 @@
   box-sizing: border-box;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   Sidebar theme tokens — override per [data-theme] attribute
+   ═══════════════════════════════════════════════════════════════ */
+:root {
+  /* light defaults */
+  --sb-hover-bg:          rgba(0, 0, 0, 0.04);
+  --sb-submenu-bg:        transparent;
+  --sb-group-hover-bg:    rgba(0, 0, 0, 0.04);
+  --sb-sider-bg:          #ffffff;
+  --sb-border:            #e2e8f0;
+  --sb-shadow:            2px 0 12px rgba(0, 0, 0, 0.06);
+  --sb-root-selected-bg:  rgba(22, 119, 255, 0.1);
+  --sb-root-selected-color: var(--menu-accent, #1677ff);
+}
+
+[data-theme="dark"] {
+  --sb-hover-bg:          rgba(255, 255, 255, 0.06);
+  --sb-submenu-bg:        transparent;
+  --sb-group-hover-bg:    rgba(255, 255, 255, 0.06);
+  --sb-sider-bg:          #1c1c1e; /* matches screenshot dark */
+  --sb-border:            #2c2c2e;
+  --sb-shadow:            none;
+  --sb-root-selected-bg:  rgba(64, 150, 255, 0.15);
+  --sb-root-selected-color: var(--menu-accent, #4096ff);
+}
+
 /* ── Suppress browser autofill / saved-credential colour injection ── */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
@@ -81,40 +107,72 @@ body {
   background: inherit !important;
 }
 
-/* ── Sidebar group headers — no permanent background; subtle on hover ── */
+/* ══════════════════════════════════════════════
+   Sidebar navigation — fully theme-aware
+   ══════════════════════════════════════════════ */
+
+/* Submenu headers should look like normal items, NOT uppercase groups */
 .sidebar-nav .ant-menu-submenu-title {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-.sidebar-nav .ant-menu-submenu-title:hover {
-  background-color: rgba(0, 0, 0, 0.045) !important;
-}
-
+/* Hover styles */
+.sidebar-nav .ant-menu-submenu-title:hover,
 .sidebar-nav.ant-menu-dark .ant-menu-submenu-title:hover {
-  background-color: rgba(255, 255, 255, 0.08) !important;
+  background-color: var(--sb-group-hover-bg) !important;
 }
 
-/* Accent-colored icon + label once a group's child route is active */
-.sidebar-nav .ant-menu-submenu-selected > .ant-menu-submenu-title {
-  color: var(--menu-accent, #1677ff);
-}
-.sidebar-nav .ant-menu-submenu-selected > .ant-menu-submenu-title .ant-menu-item-icon {
-  color: var(--menu-accent, #1677ff);
+/* DO NOT color parent submenus when child is active in expanded mode */
+.sidebar-nav:not(.ant-menu-inline-collapsed) .ant-menu-submenu-selected > .ant-menu-submenu-title,
+.sidebar-nav:not(.ant-menu-inline-collapsed) .ant-menu-submenu-selected > .ant-menu-submenu-title .ant-menu-item-icon {
+  color: inherit !important; 
 }
 
-/* Smooth hover for leaf items too */
+/* Leaf items */
 .sidebar-nav .ant-menu-item {
-  transition: background-color 0.15s ease, color 0.15s ease;
+  font-weight: 500;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
-/* Collapsed rail: center icons, keep the popout submenu's own title readable */
-.sidebar-nav.ant-menu-inline-collapsed .ant-menu-submenu-title {
+/* Expanded rail: flat list, no filled pill — a thin accent line + bold text
+   marks the active item instead, matching the reference design. */
+.sidebar-nav:not(.ant-menu-inline-collapsed) .ant-menu-item-selected {
+  background-color: transparent !important;
+  border-inline-start: 3px solid var(--menu-accent, #1677ff);
+  font-weight: 600 !important;
+  color: var(--menu-accent, #1677ff) !important;
+}
+.sidebar-nav:not(.ant-menu-inline-collapsed) .ant-menu-item-selected .ant-menu-item-icon {
+  color: var(--menu-accent, #1677ff) !important;
+}
+
+/* Subtle tree-guide line down the side of an expanded group's children */
+.sidebar-nav .ant-menu-sub.ant-menu-inline {
+  background: transparent !important;
+}
+
+/* Collapsed rail styling */
+.sidebar-nav.ant-menu-inline-collapsed .ant-menu-submenu-title,
+.sidebar-nav.ant-menu-inline-collapsed .ant-menu-item {
   padding-inline: 0 !important;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Collapsed rail: active item/group gets a tinted rounded square instead
+   of a line, since there's no room for one at 64px wide. */
+.sidebar-nav.ant-menu-inline-collapsed .ant-menu-item-selected,
+.sidebar-nav.ant-menu-inline-collapsed .ant-menu-submenu-selected > .ant-menu-submenu-title {
+  background-color: var(--sb-root-selected-bg) !important;
+  color: var(--sb-root-selected-color) !important;
+  border-radius: 8px !important;
+}
+.sidebar-nav.ant-menu-inline-collapsed .ant-menu-item-selected .ant-menu-item-icon,
+.sidebar-nav.ant-menu-inline-collapsed .ant-menu-submenu-selected > .ant-menu-submenu-title .ant-menu-item-icon {
+  color: var(--sb-root-selected-color) !important;
 }
 
 /* Prevent iOS Safari from auto-zooming the viewport when an input is focused.

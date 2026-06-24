@@ -59,15 +59,19 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           components: {
             Menu: {
               itemBorderRadius: 8,
-              itemMarginInline: 8,
+              itemMarginInline: 6,
               itemMarginBlock: 2,
               itemHeight: 40,
               subMenuItemBorderRadius: 8,
               iconSize: 16,
-              collapsedIconSize: 18,
+              collapsedIconSize: 20,
               itemColor: palette.headerMutedText,
               itemHoverColor: palette.contentText,
-              subMenuItemSelectedColor: palette.accent,
+              itemHoverBg: resolvedMode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+              itemSelectedColor: palette.contentText,
+              itemSelectedBg: 'transparent',
+              subMenuItemSelectedColor: palette.contentText,
+              subMenuItemBg: 'transparent',
             },
           },
         }}

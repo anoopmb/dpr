@@ -3,6 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Button, Dropdown, Grid, Layout, Menu, Space, Typography, type MenuProps } from 'antd';
 import {
   ApartmentOutlined,
+  ArrowLeftOutlined,
+  ArrowRightOutlined,
   BarChartOutlined,
   CameraOutlined,
   CarOutlined,
@@ -10,12 +12,12 @@ import {
   DashboardOutlined,
   DesktopOutlined,
   DollarOutlined,
+  DownOutlined,
   FileTextOutlined,
   GlobalOutlined,
   IdcardOutlined,
   InboxOutlined,
   LogoutOutlined,
-  MenuFoldOutlined,
   MenuUnfoldOutlined,
   MobileOutlined,
   MoonFilled,
@@ -213,15 +215,6 @@ export function AppLayout({ children }: { children: ReactNode }) {
     });
   };
 
-  const themeStatusIcon =
-    themeMode === 'system' ? (
-      <DesktopOutlined style={{ color: palette.headerText, fontSize: 18 }} />
-    ) : resolvedMode === 'dark' ? (
-      <MoonFilled style={{ color: palette.headerText, fontSize: 18 }} />
-    ) : (
-      <SunFilled style={{ color: palette.headerText, fontSize: 18 }} />
-    );
-
   const buildThemeLabel = (label: string, target: ThemeMode) => {
     const isActive = target === 'system' ? themeMode === 'system' : themeMode === target;
     return (
@@ -288,22 +281,25 @@ export function AppLayout({ children }: { children: ReactNode }) {
           style={{
             backgroundColor: palette.siderBackground,
             borderRight: `1px solid ${palette.borderColor}`,
-            boxShadow: resolvedMode === 'dark' ? 'none' : '2px 0 8px rgba(0,0,0,0.03)',
+            boxShadow: 'var(--sb-shadow)',
             position: isMobile ? 'fixed' : 'relative',
             inset: isMobile ? '0 auto 0 0' : undefined,
             height: isMobile ? '100vh' : '100%',
             zIndex: isMobile ? 1200 : undefined,
             transform: isMobile && !mobileNavOpen ? 'translateX(-100%)' : 'translateX(0)',
             transition: 'transform 0.25s ease, width 0.25s ease',
+            display: 'flex',
+            flexDirection: 'column',
             ['--menu-accent' as string]: palette.accent,
           } as React.CSSProperties}
         >
           <div
             style={{
               height: 64,
+              flexShrink: 0,
               display: 'flex',
               alignItems: 'center',
-              justifyContent: desktopCollapsed ? 'center' : 'flex-start',
+              justifyContent: desktopCollapsed ? 'center' : 'space-between',
               paddingInline: desktopCollapsed ? 0 : 16,
               overflow: 'hidden',
               borderBottom: `1px solid ${palette.borderColor}`,
@@ -316,13 +312,35 @@ export function AppLayout({ children }: { children: ReactNode }) {
                 <Typography.Title level={5} style={{ margin: 0, color: palette.headerText }}>DPR</Typography.Title>
               )
             ) : mainLogoUrl ? (
-              <img src={mainLogoUrl} alt={companyName} style={{ height: 32, maxWidth: SIDER_WIDTH - 32, objectFit: 'contain' }} />
+              <img src={mainLogoUrl} alt={companyName} style={{ height: 32, maxWidth: SIDER_WIDTH - 80, objectFit: 'contain' }} />
             ) : (
               <Typography.Title level={4} style={{ margin: 0, color: palette.headerText, whiteSpace: 'nowrap' }}>
                 {companyName}
               </Typography.Title>
             )}
+            {!isMobile && !desktopCollapsed && (
+              <Button
+                type="text"
+                shape="circle"
+                size="small"
+                icon={<ArrowLeftOutlined style={{ fontSize: 13 }} />}
+                onClick={() => setDesktopCollapsedState(true)}
+                style={{ color: palette.headerMutedText, flexShrink: 0 }}
+              />
+            )}
           </div>
+          {!isMobile && desktopCollapsed && (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0', borderBottom: `1px solid ${palette.borderColor}` }}>
+              <Button
+                type="text"
+                shape="circle"
+                size="small"
+                icon={<ArrowRightOutlined style={{ fontSize: 13 }} />}
+                onClick={() => setDesktopCollapsedState(false)}
+                style={{ color: palette.headerMutedText }}
+              />
+            </div>
+          )}
           <Menu
             className="sidebar-nav"
             theme={resolvedMode === 'dark' ? 'dark' : 'light'}
@@ -332,12 +350,45 @@ export function AppLayout({ children }: { children: ReactNode }) {
             openKeys={desktopCollapsed ? [] : openKeys}
             onOpenChange={handleOpenChange}
             items={menuItems}
-            style={{ background: palette.siderBackground, borderInlineEnd: 'none', paddingTop: 12, paddingInline: desktopCollapsed ? 0 : 4 }}
+            style={{ background: 'transparent', borderInlineEnd: 'none', paddingTop: 8, flex: 1, overflowY: 'auto', overflowX: 'hidden' }}
             onClick={({ key }) => {
               navigate(key);
               if (isMobile) setMobileNavOpenState(false);
             }}
           />
+          <Dropdown
+            menu={{ items: profileMenuItems, onClick: handleProfileMenuClick }}
+            trigger={['click']}
+            placement={desktopCollapsed ? 'right' : 'topRight'}
+          >
+            <div
+              style={{
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: desktopCollapsed ? 'center' : 'space-between',
+                gap: 8,
+                padding: desktopCollapsed ? '12px 0' : '12px 16px',
+                borderTop: `1px solid ${palette.borderColor}`,
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                <Avatar size={32} icon={<UserOutlined />} style={{ backgroundColor: palette.accent, flexShrink: 0 }} />
+                {!desktopCollapsed && (
+                  <div style={{ minWidth: 0, lineHeight: 1.3 }}>
+                    <div style={{ color: palette.headerText, fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {user?.fullName ?? 'Guest'}
+                    </div>
+                    <div style={{ color: palette.headerMutedText, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {user?.email ?? ''}
+                    </div>
+                  </div>
+                )}
+              </div>
+              {!desktopCollapsed && <DownOutlined style={{ fontSize: 11, color: palette.headerMutedText, flexShrink: 0 }} />}
+            </div>
+          </Dropdown>
         </Sider>
         <Layout style={{ minWidth: 0 }}>
           <InstallBanner />
@@ -352,40 +403,20 @@ export function AppLayout({ children }: { children: ReactNode }) {
               borderBottom: `1px solid ${palette.borderColor}`,
             }}
           >
-            <Button
-              type="text"
-              icon={isMobile
-                ? <MenuUnfoldOutlined style={{ fontSize: 18 }} />
-                : desktopCollapsed
-                  ? <MenuUnfoldOutlined style={{ fontSize: 16 }} />
-                  : <MenuFoldOutlined style={{ fontSize: 16 }} />
-              }
-              onClick={() =>
-                isMobile ? setMobileNavOpenState((prev) => !prev) : setDesktopCollapsedState((prev) => !prev)
-              }
-              style={{ color: palette.headerText, minWidth: 44, minHeight: 44 }}
-            >
-              {!isMobile && (isField ? 'Field Entry' : isAdmin ? 'Admin' : 'Menu')}
-            </Button>
+            {isMobile ? (
+              <Button
+                type="text"
+                icon={<MenuUnfoldOutlined style={{ fontSize: 18 }} />}
+                onClick={() => setMobileNavOpenState((prev) => !prev)}
+                style={{ color: palette.headerText, minWidth: 44, minHeight: 44 }}
+              >
+                {isField ? 'Field Entry' : isAdmin ? 'Admin' : 'Menu'}
+              </Button>
+            ) : (
+              <span />
+            )}
             <Space>
               <NotificationBell color={palette.headerText} />
-              <Dropdown
-                menu={{ items: profileMenuItems, onClick: handleProfileMenuClick }}
-                trigger={['click']}
-                placement="bottomRight"
-              >
-                <Button type="text" style={{ color: palette.headerText, height: 44 }}>
-                  <Space>
-                    {!isMobile && themeStatusIcon}
-                    <Avatar icon={<UserOutlined />} style={{ backgroundColor: palette.accent }} />
-                    {!isMobile && (
-                      <Typography.Text style={{ color: palette.headerText }}>
-                        {user?.fullName ?? 'Guest'}
-                      </Typography.Text>
-                    )}
-                  </Space>
-                </Button>
-              </Dropdown>
             </Space>
           </Header>
           <Content style={{ padding: isMobile ? 8 : 16, background: palette.layoutBackground, display: 'flex', flexDirection: 'column' }}>

@@ -39,14 +39,14 @@ export const palettes: Record<ResolvedThemeMode, ThemePalette> = {
   },
   dark: {
     layoutBackground: '#0f172a',
-    headerBackground: '#1a202c',
-    siderBackground: '#1a202c',
+    headerBackground: '#151f32',
+    siderBackground: '#1c1c1e',
     headerText: '#e2e8f0',
     headerMutedText: '#94a3b8',
     contentBackground: '#1a202c',
     contentText: '#e2e8f0',
     contentMutedText: '#94a3b8',
-    borderColor: '#2d3748',
+    borderColor: '#2c2c2e',
     accent: '#4096ff',
   },
 };
