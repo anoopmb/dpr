@@ -3,6 +3,7 @@ import {
   Button,
   Card,
   Col,
+  Progress,
   Row,
   Select,
   Skeleton,
@@ -13,43 +14,160 @@ import {
   theme as antTheme,
 } from 'antd';
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Legend,
   ResponsiveContainer,
   Tooltip as RTooltip,
   XAxis,
   YAxis,
-  LineChart,
-  Line,
 } from 'recharts';
 import { useQueries } from '@tanstack/react-query';
-import { FundOutlined } from '@ant-design/icons';
+import {
+  AppstoreOutlined,
+  AuditOutlined,
+  ExclamationCircleOutlined,
+  FundOutlined,
+  ProjectOutlined,
+} from '@ant-design/icons';
 import { useProjects, type ProjectSummaryRead } from '@/api/hooks/useProjects';
 import { useProjectContextStore } from '@/store/project-context-store';
 import { apiClient } from '@/api/client';
 import { useNumberFormat } from '@/utils/format';
 import { useThemeMode } from '@/theme/theme-context';
 
-const C = ['#1677ff', '#52c41a', '#faad14', '#ff4d4f', '#722ed1', '#13c2c2', '#fa8c16', '#eb2f96'];
-const STATUS_COLOR: Record<string, string> = { ACTIVE: 'blue', COMPLETED: 'green', SUSPENDED: 'red' };
+// ─── Palette ──────────────────────────────────────────────────────────────────
+const P = {
+  blue:   '#1677ff',
+  green:  '#52c41a',
+  amber:  '#faad14',
+  red:    '#ff4d4f',
+  purple: '#722ed1',
+  cyan:   '#13c2c2',
+};
+const CHART_COLORS = Object.values(P);
 
+const STATUS_TAG: Record<string, string> = { ACTIVE: 'blue', COMPLETED: 'green', SUSPENDED: 'red' };
+
+const CARD_STYLE: React.CSSProperties = {
+  borderRadius: 14,
+  boxShadow: '0 2px 12px rgba(0,0,0,0.07)',
+  height: '100%',
+};
+
+// ─── Chart theme ──────────────────────────────────────────────────────────────
 function useChartTheme() {
   const { token } = antTheme.useToken();
   const { resolvedMode } = useThemeMode();
+  const dark = resolvedMode === 'dark';
   return {
-    grid: resolvedMode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)',
-    tick: resolvedMode === 'dark' ? '#94a3b8' : '#64748b',
-    tooltipStyle: {
-      backgroundColor: token.colorBgElevated,
-      border: `1px solid ${token.colorBorderSecondary}`,
-      borderRadius: token.borderRadius,
-      color: token.colorText,
-    } as React.CSSProperties,
+    grid: dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+    tick: dark ? '#94a3b8' : '#8c8c8c',
+    token,
   };
 }
 
+// ─── Custom tooltip ───────────────────────────────────────────────────────────
+interface RPayload { name: string; value: number; color: string }
+
+function ChartTooltip({
+  active, payload, label, fmt,
+}: {
+  active?: boolean;
+  payload?: RPayload[];
+  label?: string;
+  fmt?: (v: number, name: string) => string;
+}) {
+  const { token } = antTheme.useToken();
+  if (!active || !payload?.length) return null;
+  return (
+    <div style={{
+      background: token.colorBgElevated,
+      border: `1px solid ${token.colorBorderSecondary}`,
+      borderRadius: 10,
+      padding: '10px 14px',
+      boxShadow: '0 6px 20px rgba(0,0,0,0.14)',
+      minWidth: 150,
+    }}>
+      {label && (
+        <div style={{ color: token.colorTextSecondary, fontSize: 12, marginBottom: 8, fontWeight: 500 }}>
+          {label}
+        </div>
+      )}
+      {payload.map((entry, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: i < payload.length - 1 ? 5 : 0 }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: entry.color, flexShrink: 0 }} />
+          <span style={{ color: token.colorTextSecondary, fontSize: 12 }}>{entry.name}</span>
+          <span style={{ color: token.colorText, fontWeight: 600, fontSize: 12, marginLeft: 'auto', paddingLeft: 8 }}>
+            {fmt ? fmt(entry.value, entry.name) : entry.value}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Section heading ──────────────────────────────────────────────────────────
+function SectionHeading({ label }: { label: string }) {
+  const { token } = antTheme.useToken();
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '28px 0 14px' }}>
+      <div style={{ width: 3, height: 14, background: P.blue, borderRadius: 2 }} />
+      <Typography.Text style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, color: token.colorTextSecondary, fontWeight: 600 }}>
+        {label}
+      </Typography.Text>
+    </div>
+  );
+}
+
+// ─── KPI card ─────────────────────────────────────────────────────────────────
+function KpiCard({
+  title, value, icon, color = P.blue, subtitle, loading,
+}: {
+  title: string; value: string; icon: React.ReactNode;
+  color?: string; subtitle?: string; loading?: boolean;
+}) {
+  const { token } = antTheme.useToken();
+  return (
+    <Card
+      bordered={false}
+      style={{ ...CARD_STYLE, borderLeft: `4px solid ${color}` }}
+      styles={{ body: { padding: '18px 20px' } }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8, color: token.colorTextSecondary, fontWeight: 600, marginBottom: 8 }}>
+            {title}
+          </div>
+          {loading ? (
+            <Skeleton.Input active size="small" style={{ height: 28, width: 100 }} />
+          ) : (
+            <div style={{ fontSize: 22, fontWeight: 700, color: token.colorText, lineHeight: 1.15 }}>
+              {value}
+            </div>
+          )}
+          {subtitle && !loading && (
+            <div style={{ fontSize: 11, color: token.colorTextSecondary, marginTop: 5 }}>{subtitle}</div>
+          )}
+        </div>
+        <div style={{
+          width: 44, height: 44, borderRadius: 12,
+          background: `${color}18`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 19, color, flexShrink: 0,
+        }}>
+          {icon}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// ─── Analytics page ───────────────────────────────────────────────────────────
 export function AnalyticsPage() {
   const { data: projects, isLoading: projLoading } = useProjects();
   const setSelectedProjectId = useProjectContextStore((s) => s.setSelectedProjectId);
@@ -70,13 +188,14 @@ export function AnalyticsPage() {
 
   const rows = useMemo(() => {
     return (projects ?? []).map((p, i) => {
-      const sum = summaryQueries[i]?.data;
+      const sum         = summaryQueries[i]?.data;
       const contract    = parseFloat(p.contract_value);
       const billed      = parseFloat(sum?.total_billed ?? '0');
       const received    = parseFloat(sum?.total_received ?? '0');
       const outstanding = parseFloat(sum?.outstanding ?? '0');
       const billedPct   = contract > 0 ? (billed / contract) * 100 : 0;
-      return { id: p.id, name: p.name, status: p.status, contract, billed, received, outstanding, billedPct };
+      const collectedPct = billed > 0 ? (received / billed) * 100 : 0;
+      return { id: p.id, name: p.name, status: p.status, contract, billed, received, outstanding, billedPct, collectedPct };
     });
   }, [projects, summaryQueries]);
 
@@ -95,22 +214,18 @@ export function AnalyticsPage() {
     outstanding: rows.reduce((s, r) => s + r.outstanding, 0),
   }), [rows]);
 
-  // Billed % trend per project (sorted top 10 by contract)
-  const top10 = sorted.slice(0, 10).map((r) => ({
-    name: r.name.length > 16 ? r.name.substring(0, 14) + '…' : r.name,
-    id: r.id,
-    Contract:    r.contract,
-    Billed:      r.billed,
-    Received:    r.received,
-    Outstanding: r.outstanding,
+  const top10Bar = sorted.slice(0, 10).map((r) => ({
+    name:     r.name.length > 13 ? r.name.substring(0, 11) + '…' : r.name,
+    id:       r.id,
+    Contract: r.contract,
+    Billed:   r.billed,
+    Received: r.received,
   }));
 
-  // Accumulate billed over projects by date (not available without extra API) →
-  // Instead show a "billed vs received" ladder chart across projects
-  const ladderData = sorted.map((r) => ({
-    name: r.name.length > 12 ? r.name.substring(0, 10) + '…' : r.name,
-    'Billed %': parseFloat(r.billedPct.toFixed(1)),
-    'Collected %': r.billed > 0 ? parseFloat(((r.received / r.billed) * 100).toFixed(1)) : 0,
+  const efficiencyData = sorted.map((r) => ({
+    name:           r.name.length > 12 ? r.name.substring(0, 10) + '…' : r.name,
+    'Billed %':     +r.billedPct.toFixed(1),
+    'Collected %':  +r.collectedPct.toFixed(1),
   }));
 
   const columns = [
@@ -119,7 +234,7 @@ export function AnalyticsPage() {
       dataIndex: 'name',
       ellipsis: true,
       render: (name: string, row: typeof rows[0]) => (
-        <Button type="link" style={{ padding: 0, height: 'auto' }} onClick={() => setSelectedProjectId(row.id)}>
+        <Button type="link" style={{ padding: 0, height: 'auto', fontWeight: 500 }} onClick={() => setSelectedProjectId(row.id)}>
           {name}
         </Button>
       ),
@@ -128,7 +243,7 @@ export function AnalyticsPage() {
       title: 'Status',
       dataIndex: 'status',
       width: 110,
-      render: (s: string) => <Tag color={STATUS_COLOR[s] ?? 'default'}>{s}</Tag>,
+      render: (s: string) => <Tag color={STATUS_TAG[s] ?? 'default'} style={{ borderRadius: 6 }}>{s}</Tag>,
     },
     {
       title: 'Contract Value',
@@ -140,17 +255,17 @@ export function AnalyticsPage() {
     },
     {
       title: 'Billed',
-      dataIndex: 'billed',
-      width: 150,
-      align: 'right' as const,
+      dataIndex: 'billedPct',
+      width: 190,
       sorter: (a: typeof rows[0], b: typeof rows[0]) => a.billed - b.billed,
-      render: (v: number, row: typeof rows[0]) => (
-        <Space direction="vertical" size={0}>
-          <span>{fmtAmt(v)}</span>
-          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-            {row.billedPct.toFixed(1)}% of contract
-          </Typography.Text>
-        </Space>
+      render: (pct: number, row: typeof rows[0]) => (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+            <Typography.Text style={{ fontSize: 12 }}>{fmtAmt(row.billed)}</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}>{pct.toFixed(0)}%</Typography.Text>
+          </div>
+          <Progress percent={+pct.toFixed(0)} size="small" showInfo={false} strokeColor={P.blue} trailColor="rgba(0,0,0,0.06)" />
+        </div>
       ),
     },
     {
@@ -159,7 +274,7 @@ export function AnalyticsPage() {
       width: 140,
       align: 'right' as const,
       sorter: (a: typeof rows[0], b: typeof rows[0]) => a.received - b.received,
-      render: (v: number) => <span style={{ color: '#52c41a' }}>{fmtAmt(v)}</span>,
+      render: (v: number) => <span style={{ color: P.green, fontWeight: 600 }}>{fmtAmt(v)}</span>,
     },
     {
       title: 'Outstanding',
@@ -169,35 +284,32 @@ export function AnalyticsPage() {
       sorter: (a: typeof rows[0], b: typeof rows[0]) => a.outstanding - b.outstanding,
       defaultSortOrder: 'descend' as const,
       render: (v: number) => (
-        <span style={{ color: v > 0 ? '#cf1322' : undefined }}>{fmtAmt(v)}</span>
+        <span style={{ color: v > 0 ? P.red : P.green, fontWeight: 600 }}>{fmtAmt(v)}</span>
       ),
     },
     {
       title: '',
-      key: 'action',
-      width: 56,
+      key: 'drill',
+      width: 52,
       render: (_: unknown, row: typeof rows[0]) => (
-        <Button
-          size="small"
-          icon={<FundOutlined />}
-          onClick={() => setSelectedProjectId(row.id)}
-          title="View dashboard"
-        />
+        <Button size="small" type="text" icon={<FundOutlined />} onClick={() => setSelectedProjectId(row.id)} title="View dashboard" style={{ borderRadius: 6 }} />
       ),
     },
   ];
 
+  const activeCount    = (projects ?? []).filter((p) => p.status === 'ACTIVE').length;
+  const completedCount = (projects ?? []).filter((p) => p.status === 'COMPLETED').length;
+  const overallBilledPct = totals.contract > 0 ? (totals.billed / totals.contract) * 100 : 0;
+
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 8 }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          Analytics — All Projects
-        </Typography.Title>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 10 }}>
+        <Typography.Title level={3} style={{ margin: 0 }}>Analytics — All Projects</Typography.Title>
         <Select
           size="small"
           value={metric}
           onChange={(v: 'contract' | 'outstanding' | 'billed') => setMetric(v)}
-          style={{ width: 180 }}
+          style={{ width: 200, borderRadius: 8 }}
           options={[
             { value: 'contract',    label: 'Sort by contract value' },
             { value: 'billed',      label: 'Sort by billed' },
@@ -206,70 +318,147 @@ export function AnalyticsPage() {
         />
       </div>
 
-      {/* Portfolio KPI row */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+      <SectionHeading label="Portfolio Overview" />
+      <Row gutter={[16, 16]}>
         {[
-          { label: 'Total Projects',         value: String(rows.length) },
-          { label: 'Portfolio Contract',      value: fmtAmt(totals.contract) },
-          { label: 'Total Billed',            value: fmtAmt(totals.billed) },
-          { label: 'Total Outstanding',       value: fmtAmt(totals.outstanding), danger: totals.outstanding > 0 },
+          { title: 'Total Projects',       value: String(rows.length),       icon: <ProjectOutlined />,          color: P.blue   },
+          { title: 'Active Projects',      value: String(activeCount),        icon: <AppstoreOutlined />,         color: P.green,
+            subtitle: completedCount > 0 ? `${completedCount} completed` : undefined },
+          { title: 'Portfolio Contract',   value: fmtAmt(totals.contract),   icon: <AuditOutlined />,             color: P.purple,
+            subtitle: `Billed ${overallBilledPct.toFixed(1)}%` },
+          { title: 'Total Outstanding',    value: fmtAmt(totals.outstanding), icon: <ExclamationCircleOutlined />, color: totals.outstanding > 0 ? P.red : P.green },
         ].map((k) => (
-          <Col key={k.label} xs={12} md={6}>
-            <Card size="small">
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>{k.label}</Typography.Text>
-              <div style={{ fontSize: 20, fontWeight: 600, marginTop: 4, color: k.danger ? '#cf1322' : undefined }}>
-                {loading ? <Skeleton.Input active size="small" /> : k.value}
-              </div>
-            </Card>
+          <Col key={k.title} xs={12} md={6}>
+            <KpiCard {...k} loading={loading} />
           </Col>
         ))}
       </Row>
 
-      {/* Charts row */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={24} md={14}>
-          <Card title="Contract vs Billed vs Received (Top 10)">
+      <SectionHeading label="Contract vs Billing" />
+      <Row gutter={[16, 16]}>
+        <Col xs={24} md={15}>
+          <Card
+            title={<span style={{ fontWeight: 600 }}>Contract vs Billed vs Received (Top 10)</span>}
+            bordered={false}
+            style={CARD_STYLE}
+            styles={{ body: { padding: '8px 16px 16px' } }}
+          >
             {loading ? (
-              <Skeleton active paragraph={{ rows: 5 }} />
+              <Skeleton active paragraph={{ rows: 6 }} />
             ) : (
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={top10}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} />
-                  <XAxis dataKey="name" tick={{ fill: ct.tick, fontSize: 10 }} angle={-18} textAnchor="end" height={48} />
-                  <YAxis tick={{ fill: ct.tick, fontSize: 11 }} tickFormatter={(v) => `${(v / 100000).toFixed(0)}L`} />
-                  <RTooltip contentStyle={ct.tooltipStyle} formatter={(v: number) => fmtAmt(v)} />
-                  <Legend iconType="circle" iconSize={8} />
-                  <Bar dataKey="Contract"    fill={C[5]} radius={[4, 4, 0, 0]} onClick={(d) => setSelectedProjectId((d as { id: string }).id)} style={{ cursor: 'pointer' }} />
-                  <Bar dataKey="Billed"      fill={C[0]} radius={[4, 4, 0, 0]} onClick={(d) => setSelectedProjectId((d as { id: string }).id)} style={{ cursor: 'pointer' }} />
-                  <Bar dataKey="Received"    fill={C[1]} radius={[4, 4, 0, 0]} onClick={(d) => setSelectedProjectId((d as { id: string }).id)} style={{ cursor: 'pointer' }} />
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={top10Bar}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} vertical={false} />
+                  <XAxis dataKey="name" tick={{ fill: ct.tick, fontSize: 10 }} angle={-16} textAnchor="end" height={48} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: ct.tick, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v / 100000).toFixed(0)}L`} />
+                  <RTooltip content={<ChartTooltip fmt={(v) => fmtAmt(v)} />} />
+                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="Contract" fill={P.cyan}   radius={[4, 4, 0, 0]} maxBarSize={22}
+                    onClick={(d) => setSelectedProjectId((d as { id: string }).id)} style={{ cursor: 'pointer' }} />
+                  <Bar dataKey="Billed"   fill={P.blue}   radius={[4, 4, 0, 0]} maxBarSize={22}
+                    onClick={(d) => setSelectedProjectId((d as { id: string }).id)} style={{ cursor: 'pointer' }} />
+                  <Bar dataKey="Received" fill={P.green}  radius={[4, 4, 0, 0]} maxBarSize={22}
+                    onClick={(d) => setSelectedProjectId((d as { id: string }).id)} style={{ cursor: 'pointer' }} />
                 </BarChart>
               </ResponsiveContainer>
             )}
           </Card>
         </Col>
-        <Col xs={24} md={10}>
-          <Card title="Billing & Collection Efficiency (%)">
+        <Col xs={24} md={9}>
+          <Card
+            title={<span style={{ fontWeight: 600 }}>Billing &amp; Collection Efficiency</span>}
+            bordered={false}
+            style={CARD_STYLE}
+            styles={{ body: { padding: '8px 16px 16px' } }}
+          >
             {loading ? (
-              <Skeleton active paragraph={{ rows: 5 }} />
+              <Skeleton active paragraph={{ rows: 6 }} />
             ) : (
-              <ResponsiveContainer width="100%" height={260}>
-                <LineChart data={ladderData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} />
-                  <XAxis dataKey="name" tick={{ fill: ct.tick, fontSize: 10 }} angle={-18} textAnchor="end" height={48} />
-                  <YAxis tick={{ fill: ct.tick, fontSize: 11 }} domain={[0, 100]} unit="%" />
-                  <RTooltip contentStyle={ct.tooltipStyle} formatter={(v: number) => `${v}%`} />
-                  <Legend iconType="circle" iconSize={8} />
-                  <Line type="monotone" dataKey="Billed %" stroke={C[0]} strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="Collected %" stroke={C[1]} strokeWidth={2} dot={{ r: 3 }} />
-                </LineChart>
+              <ResponsiveContainer width="100%" height={280}>
+                <AreaChart data={efficiencyData}>
+                  <defs>
+                    <linearGradient id="gBilled" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor={P.blue} stopOpacity={0.2} />
+                      <stop offset="95%" stopColor={P.blue} stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="gCollected" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor={P.green} stopOpacity={0.2} />
+                      <stop offset="95%" stopColor={P.green} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} vertical={false} />
+                  <XAxis dataKey="name" tick={{ fill: ct.tick, fontSize: 10 }} angle={-16} textAnchor="end" height={48} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: ct.tick, fontSize: 11 }} domain={[0, 100]} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
+                  <RTooltip content={<ChartTooltip fmt={(v) => `${v}%`} />} />
+                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
+                  <Area type="monotone" dataKey="Billed %" stroke={P.blue}  fill="url(#gBilled)"     strokeWidth={2} dot={{ r: 3 }} />
+                  <Area type="monotone" dataKey="Collected %" stroke={P.green} fill="url(#gCollected)" strokeWidth={2} dot={{ r: 3 }} />
+                </AreaChart>
               </ResponsiveContainer>
             )}
           </Card>
         </Col>
       </Row>
 
-      {/* Detail table */}
-      <Card title="Project-wise Breakdown">
+      <SectionHeading label="Project-wise Breakdown" />
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        {sorted.slice(0, 3).map((r) => {
+          const pct = r.contract > 0 ? (r.billed / r.contract) * 100 : 0;
+          return (
+            <Col key={r.id} xs={24} md={8}>
+              <Card
+                bordered={false}
+                style={{ ...CARD_STYLE, cursor: 'pointer' }}
+                styles={{ body: { padding: '16px 20px' } }}
+                onClick={() => setSelectedProjectId(r.id)}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 3 }}>{r.name}</div>
+                    <Tag color={STATUS_TAG[r.status] ?? 'default'} style={{ borderRadius: 6, fontSize: 11 }}>{r.status}</Tag>
+                  </div>
+                  <div style={{
+                    width: 38, height: 38, borderRadius: 10, background: `${CHART_COLORS[sorted.indexOf(r) % CHART_COLORS.length]}18`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16,
+                    color: CHART_COLORS[sorted.indexOf(r) % CHART_COLORS.length],
+                  }}>
+                    <FundOutlined />
+                  </div>
+                </div>
+                <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>Contract</Typography.Text>
+                    <Typography.Text style={{ fontSize: 12, fontWeight: 600 }}>{fmtAmt(r.contract)}</Typography.Text>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>Billed</Typography.Text>
+                    <Typography.Text style={{ fontSize: 12 }}>{fmtAmt(r.billed)}</Typography.Text>
+                  </div>
+                  <div style={{ marginTop: 4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                      <Typography.Text type="secondary" style={{ fontSize: 11 }}>Progress</Typography.Text>
+                      <Typography.Text style={{ fontSize: 11, fontWeight: 600 }}>{pct.toFixed(0)}%</Typography.Text>
+                    </div>
+                    <Progress percent={+pct.toFixed(0)} showInfo={false} size="small" strokeColor={CHART_COLORS[sorted.indexOf(r) % CHART_COLORS.length]} trailColor="rgba(0,0,0,0.06)" />
+                  </div>
+                  {r.outstanding > 0 && (
+                    <Typography.Text type="danger" style={{ fontSize: 11 }}>
+                      Outstanding: {fmtAmt(r.outstanding)}
+                    </Typography.Text>
+                  )}
+                </Space>
+              </Card>
+            </Col>
+          );
+        })}
+      </Row>
+
+      <Card
+        title={<span style={{ fontWeight: 600 }}>All Projects</span>}
+        bordered={false}
+        style={CARD_STYLE}
+        styles={{ body: { padding: '0 0 8px' } }}
+      >
         <Table
           rowKey="id"
           dataSource={rows}
@@ -277,7 +466,7 @@ export function AnalyticsPage() {
           loading={loading}
           pagination={{ pageSize: 20, showSizeChanger: false }}
           size="small"
-          scroll={{ x: 800 }}
+          scroll={{ x: 820 }}
           onRow={(row) => ({
             onClick: () => setSelectedProjectId(row.id),
             style: { cursor: 'pointer' },
@@ -286,10 +475,10 @@ export function AnalyticsPage() {
             <Table.Summary.Row>
               <Table.Summary.Cell index={0} colSpan={2}><b>Total ({rows.length} projects)</b></Table.Summary.Cell>
               <Table.Summary.Cell index={2} align="right"><b>{fmtAmt(totals.contract)}</b></Table.Summary.Cell>
-              <Table.Summary.Cell index={3} align="right"><b>{fmtAmt(totals.billed)}</b></Table.Summary.Cell>
-              <Table.Summary.Cell index={4} align="right"><b style={{ color: '#52c41a' }}>{fmtAmt(totals.received)}</b></Table.Summary.Cell>
+              <Table.Summary.Cell index={3}><b>{fmtAmt(totals.billed)}</b></Table.Summary.Cell>
+              <Table.Summary.Cell index={4} align="right"><b style={{ color: P.green }}>{fmtAmt(totals.received)}</b></Table.Summary.Cell>
               <Table.Summary.Cell index={5} align="right">
-                <b style={{ color: totals.outstanding > 0 ? '#cf1322' : undefined }}>{fmtAmt(totals.outstanding)}</b>
+                <b style={{ color: totals.outstanding > 0 ? P.red : P.green }}>{fmtAmt(totals.outstanding)}</b>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={6} />
             </Table.Summary.Row>

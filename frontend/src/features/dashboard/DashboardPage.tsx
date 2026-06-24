@@ -11,7 +11,6 @@ import {
   Select,
   Skeleton,
   Space,
-  Statistic,
   Table,
   Tag,
   Tooltip,
@@ -19,20 +18,31 @@ import {
   theme as antTheme,
 } from 'antd';
 import {
+  AlertOutlined,
+  AppstoreOutlined,
   ArrowDownOutlined,
   ArrowUpOutlined,
+  AuditOutlined,
+  CalendarOutlined,
+  CheckCircleOutlined,
+  DollarCircleOutlined,
+  ExclamationCircleOutlined,
   FilterOutlined,
   FundOutlined,
+  ProjectOutlined,
   RollbackOutlined,
+  SafetyOutlined,
+  ToolOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
   Legend,
-  Line,
-  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -61,8 +71,19 @@ import type { UserRole } from '@/store/auth-store';
 
 const { RangePicker } = DatePicker;
 
-// ─── Colour palette used across all charts ───────────────────────────────────
-const C = ['#1677ff', '#52c41a', '#faad14', '#ff4d4f', '#722ed1', '#13c2c2', '#fa8c16', '#eb2f96'];
+// ─── Palette ─────────────────────────────────────────────────────────────────
+const P = {
+  blue:   '#1677ff',
+  green:  '#52c41a',
+  amber:  '#faad14',
+  red:    '#ff4d4f',
+  purple: '#722ed1',
+  cyan:   '#13c2c2',
+  orange: '#fa8c16',
+  pink:   '#eb2f96',
+};
+const CHART_COLORS = Object.values(P);
+
 const STATUS_TAG: Record<string, string> = {
   ACTIVE: 'blue', COMPLETED: 'green', SUSPENDED: 'red',
   DRAFT: 'default', SUBMITTED: 'processing', PM_APPROVED: 'blue',
@@ -73,30 +94,129 @@ const STATUS_TAG: Record<string, string> = {
   OPEN: 'error', RESOLVED: 'success',
 };
 
-// ─── Recharts theme helpers ───────────────────────────────────────────────────
+const M_STATUS_COLOR: Record<string, string> = {
+  DRAFT: '#94a3b8', SUBMITTED: P.blue, PM_APPROVED: P.cyan,
+  QS_APPROVED: P.purple, LOCKED: P.green, REJECTED: P.red,
+};
+
+// ─── Shared card style ────────────────────────────────────────────────────────
+const CARD_STYLE: React.CSSProperties = {
+  borderRadius: 14,
+  boxShadow: '0 2px 12px rgba(0,0,0,0.07)',
+  height: '100%',
+};
+
+// ─── Recharts theme ───────────────────────────────────────────────────────────
 function useChartTheme() {
   const { token } = antTheme.useToken();
   const { resolvedMode } = useThemeMode();
   const dark = resolvedMode === 'dark';
   return {
-    grid: dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)',
-    tick: dark ? '#94a3b8' : '#64748b',
-    tooltipStyle: {
-      backgroundColor: token.colorBgElevated,
-      border: `1px solid ${token.colorBorderSecondary}`,
-      borderRadius: token.borderRadius,
-      color: token.colorText,
-    } as React.CSSProperties,
-    labelStyle: { color: token.colorTextSecondary, fontSize: 11 },
+    grid: dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+    tick: dark ? '#94a3b8' : '#8c8c8c',
+    token,
   };
 }
 
-// ─── Reusable filter-popover button ──────────────────────────────────────────
+// ─── Custom recharts tooltip ──────────────────────────────────────────────────
+interface RPayload { name: string; value: number; color: string }
+
+function ChartTooltip({
+  active, payload, label, fmt,
+}: {
+  active?: boolean;
+  payload?: RPayload[];
+  label?: string;
+  fmt?: (v: number, name: string) => string;
+}) {
+  const { token } = antTheme.useToken();
+  if (!active || !payload?.length) return null;
+  return (
+    <div style={{
+      background: token.colorBgElevated,
+      border: `1px solid ${token.colorBorderSecondary}`,
+      borderRadius: 10,
+      padding: '10px 14px',
+      boxShadow: '0 6px 20px rgba(0,0,0,0.14)',
+      minWidth: 140,
+    }}>
+      {label && (
+        <div style={{ color: token.colorTextSecondary, fontSize: 12, marginBottom: 8, fontWeight: 500 }}>
+          {label}
+        </div>
+      )}
+      {payload.map((entry, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: i < payload.length - 1 ? 5 : 0 }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: entry.color, flexShrink: 0 }} />
+          <span style={{ color: token.colorTextSecondary, fontSize: 12 }}>{entry.name}</span>
+          <span style={{ color: token.colorText, fontWeight: 600, fontSize: 12, marginLeft: 'auto', paddingLeft: 8 }}>
+            {fmt ? fmt(entry.value, entry.name) : entry.value}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Section heading ──────────────────────────────────────────────────────────
+function SectionHeading({ label }: { label: string }) {
+  const { token } = antTheme.useToken();
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '28px 0 14px' }}>
+      <div style={{ width: 3, height: 14, background: P.blue, borderRadius: 2 }} />
+      <Typography.Text style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, color: token.colorTextSecondary, fontWeight: 600 }}>
+        {label}
+      </Typography.Text>
+    </div>
+  );
+}
+
+// ─── KPI card ─────────────────────────────────────────────────────────────────
+function KpiCard({
+  title, value, icon, color = P.blue, subtitle,
+}: {
+  title: string; value: string; icon: React.ReactNode;
+  color?: string; subtitle?: string;
+}) {
+  const { token } = antTheme.useToken();
+  return (
+    <Card
+      bordered={false}
+      style={{ ...CARD_STYLE, borderLeft: `4px solid ${color}` }}
+      styles={{ body: { padding: '18px 20px' } }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8, color: token.colorTextSecondary, fontWeight: 600, marginBottom: 8 }}>
+            {title}
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: token.colorText, lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {value}
+          </div>
+          {subtitle && (
+            <div style={{ fontSize: 11, color: token.colorTextSecondary, marginTop: 5 }}>{subtitle}</div>
+          )}
+        </div>
+        <div style={{
+          width: 44, height: 44, borderRadius: 12,
+          background: `${color}18`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 19, color, flexShrink: 0,
+        }}>
+          {icon}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// ─── Filter popover button ────────────────────────────────────────────────────
 function FilterBtn({ content }: { content: React.ReactNode }) {
   const [open, setOpen] = useState(false);
+  const { token } = antTheme.useToken();
   return (
     <Popover
-      content={<div style={{ minWidth: 200 }}>{content}</div>}
+      content={<div style={{ minWidth: 210, padding: 4 }}>{content}</div>}
       trigger="click"
       open={open}
       onOpenChange={setOpen}
@@ -104,94 +224,54 @@ function FilterBtn({ content }: { content: React.ReactNode }) {
     >
       <Tooltip title="Filters">
         <Button
-          type="text"
+          type={open ? 'primary' : 'text'}
           size="small"
           icon={<FilterOutlined />}
-          style={{ color: open ? '#1677ff' : undefined }}
+          style={{
+            borderRadius: 8,
+            fontSize: 12,
+            color: open ? undefined : token.colorTextSecondary,
+          }}
         />
       </Tooltip>
     </Popover>
   );
 }
 
-// ─── Quick date-range presets ─────────────────────────────────────────────────
+// ─── Date range filter content ────────────────────────────────────────────────
 function DateRangeFilter({
-  value,
-  onChange,
-  projectStart,
-}: {
-  value: [Dayjs, Dayjs];
-  onChange: (r: [Dayjs, Dayjs]) => void;
-  projectStart?: string;
-}) {
+  value, onChange, projectStart,
+}: { value: [Dayjs, Dayjs]; onChange: (r: [Dayjs, Dayjs]) => void; projectStart?: string }) {
+  const presets: [string, () => [Dayjs, Dayjs]][] = [
+    ['7 days',    () => [dayjs().subtract(6, 'day'), dayjs()]],
+    ['30 days',   () => [dayjs().subtract(29, 'day'), dayjs()]],
+    ['This month',() => [dayjs().startOf('month'), dayjs()]],
+    ['YTD',       () => [dayjs().startOf('year'), dayjs()]],
+    ...(projectStart ? [['Project to date', () => [dayjs(projectStart), dayjs()]] as [string, () => [Dayjs, Dayjs]]] : []),
+  ];
   return (
-    <Space direction="vertical" size={6} style={{ width: 230 }}>
+    <Space direction="vertical" size={8} style={{ width: '100%' }}>
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>Date range</Typography.Text>
-      <Space wrap size="small">
-        {(['7d', '30d', 'month', 'ytd'] as const).map((p) => (
-          <Button
-            key={p}
-            size="small"
-            onClick={() => {
-              if (p === '7d')   onChange([dayjs().subtract(6, 'day'), dayjs()]);
-              if (p === '30d')  onChange([dayjs().subtract(29, 'day'), dayjs()]);
-              if (p === 'month') onChange([dayjs().startOf('month'), dayjs()]);
-              if (p === 'ytd')  onChange([dayjs().startOf('year'), dayjs()]);
-            }}
-          >
-            {p === '7d' ? 'Last 7d' : p === '30d' ? 'Last 30d' : p === 'month' ? 'This month' : 'YTD'}
+      <Space wrap size={4}>
+        {presets.map(([label, fn]) => (
+          <Button key={label} size="small" style={{ fontSize: 11, borderRadius: 6 }} onClick={() => onChange(fn())}>
+            {label}
           </Button>
         ))}
-        {projectStart && (
-          <Button size="small" onClick={() => onChange([dayjs(projectStart), dayjs()])}>
-            Project to date
-          </Button>
-        )}
       </Space>
       <RangePicker
         size="small"
         value={value}
         allowClear={false}
-        style={{ width: '100%' }}
+        style={{ width: '100%', borderRadius: 8 }}
         onChange={(v) => { if (v?.[0] && v[1]) onChange([v[0], v[1]]); }}
       />
     </Space>
   );
 }
 
-// ─── KPI card with optional trend ────────────────────────────────────────────
-function KpiCard({
-  title, value, prev, suffix, color,
-}: {
-  title: string; value: string; prev?: number; suffix?: string; color?: string;
-}) {
-  const delta = prev !== undefined ? parseFloat(value.replace(/[^0-9.-]/g, '')) - prev : undefined;
-  return (
-    <Card size="small" style={{ height: '100%' }}>
-      <Statistic
-        title={title}
-        value={value}
-        suffix={suffix}
-        valueStyle={{ fontSize: 18, color }}
-      />
-      {delta !== undefined && !isNaN(delta) && (
-        <Typography.Text
-          type={delta >= 0 ? 'success' : 'danger'}
-          style={{ fontSize: 12 }}
-        >
-          {delta >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
-          {Math.abs(delta).toLocaleString('en-IN', { maximumFractionDigits: 1 })}
-          {suffix}
-        </Typography.Text>
-      )}
-    </Card>
-  );
-}
-
-// ─── 1. Daily P&L Trend ───────────────────────────────────────────────────────
-function DailyTrendChart({
-  projectId, projectStart,
-}: { projectId: string; projectStart?: string }) {
+// ─── Chart 1: Daily P&L Trend (AreaChart + gradients) ────────────────────────
+function DailyTrendChart({ projectId, projectStart }: { projectId: string; projectStart?: string }) {
   const [range, setRange] = useState<[Dayjs, Dayjs]>([dayjs().subtract(29, 'day'), dayjs()]);
   const { data, isLoading } = useProfitability(
     projectId, range[0].format('YYYY-MM-DD'), range[1].format('YYYY-MM-DD'),
@@ -202,50 +282,62 @@ function DailyTrendChart({
   const chartData = (data?.daily ?? []).map((d) => ({
     date: dayjs(d.date).format('DD MMM'),
     Production: parseFloat(d.production_value),
-    Cost: parseFloat(d.total_cost),
-    'Net P&L': parseFloat(d.net_profit),
+    Cost:        parseFloat(d.total_cost),
+    'Net P&L':  parseFloat(d.net_profit),
   }));
 
   return (
     <Card
-      title="Daily P&L Trend"
-      extra={
-        <FilterBtn
-          content={
-            <DateRangeFilter value={range} onChange={setRange} projectStart={projectStart} />
-          }
-        />
-      }
+      title={<span style={{ fontWeight: 600 }}>Daily P&amp;L Trend</span>}
+      extra={<FilterBtn content={<DateRangeFilter value={range} onChange={setRange} projectStart={projectStart} />} />}
+      bordered={false}
+      style={CARD_STYLE}
+      styles={{ body: { padding: '8px 16px 16px' } }}
     >
       {isLoading ? (
-        <Skeleton active paragraph={{ rows: 5 }} />
+        <Skeleton active paragraph={{ rows: 6 }} />
       ) : chartData.length === 0 ? (
-        <Empty description="No DPR data in range" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        <Empty description="No DPR data in selected range" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ padding: '32px 0' }} />
       ) : (
-        <ResponsiveContainer width="100%" height={240}>
-          <LineChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} />
-            <XAxis dataKey="date" tick={{ fill: ct.tick, fontSize: 11 }} />
+        <ResponsiveContainer width="100%" height={260}>
+          <AreaChart data={chartData}>
+            <defs>
+              <linearGradient id="gProd" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%"  stopColor={P.blue}  stopOpacity={0.2} />
+                <stop offset="95%" stopColor={P.blue}  stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="gCost" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%"  stopColor={P.red}   stopOpacity={0.15} />
+                <stop offset="95%" stopColor={P.red}   stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="gProfit" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%"  stopColor={P.green} stopOpacity={0.2} />
+                <stop offset="95%" stopColor={P.green} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} vertical={false} />
+            <XAxis dataKey="date" tick={{ fill: ct.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
             <YAxis
               tick={{ fill: ct.tick, fontSize: 11 }}
+              axisLine={false} tickLine={false}
               tickFormatter={(v) => `${symbol}${(v / 1000).toFixed(0)}k`}
             />
-            <RTooltip contentStyle={ct.tooltipStyle} />
-            <Legend iconType="circle" iconSize={8} />
-            <Line type="monotone" dataKey="Production" stroke={C[0]} dot={false} strokeWidth={2} />
-            <Line type="monotone" dataKey="Cost" stroke={C[3]} dot={false} strokeWidth={2} />
-            <Line type="monotone" dataKey="Net P&L" stroke={C[1]} dot={false} strokeWidth={2} />
-          </LineChart>
+            <RTooltip
+              content={<ChartTooltip fmt={(v) => `${symbol} ${v.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />}
+            />
+            <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+            <Area type="monotone" dataKey="Production" stroke={P.blue}  fill="url(#gProd)"   strokeWidth={2} dot={false} />
+            <Area type="monotone" dataKey="Cost"        stroke={P.red}   fill="url(#gCost)"   strokeWidth={2} dot={false} />
+            <Area type="monotone" dataKey="Net P&L"    stroke={P.green} fill="url(#gProfit)" strokeWidth={2} dot={false} />
+          </AreaChart>
         </ResponsiveContainer>
       )}
     </Card>
   );
 }
 
-// ─── 2. Cost Breakdown Donut ──────────────────────────────────────────────────
-function CostDonutChart({
-  projectId, projectStart,
-}: { projectId: string; projectStart?: string }) {
+// ─── Chart 2: Cost Breakdown Donut ───────────────────────────────────────────
+function CostDonutChart({ projectId, projectStart }: { projectId: string; projectStart?: string }) {
   const [range, setRange] = useState<[Dayjs, Dayjs]>([dayjs().startOf('month'), dayjs()]);
   const { data, isLoading } = useProfitability(
     projectId, range[0].format('YYYY-MM-DD'), range[1].format('YYYY-MM-DD'),
@@ -255,64 +347,61 @@ function CostDonutChart({
 
   const slices = useMemo(() => {
     if (!data) return [];
-    const items: { name: string; value: number }[] = [];
-    const mach = parseFloat(data.machinery_cost);
-    const mat  = parseFloat(data.material_cost);
-    const exp  = parseFloat(data.expense_cost);
-    const prof = parseFloat(data.net_profit);
-    if (mach > 0) items.push({ name: 'Machinery', value: mach });
-    if (mat  > 0) items.push({ name: 'Materials', value: mat });
-    if (exp  > 0) items.push({ name: 'Expenses',  value: exp });
-    if (prof > 0) items.push({ name: 'Net Profit', value: prof });
-    return items;
+    return [
+      { name: 'Machinery',   value: parseFloat(data.machinery_cost), color: P.orange },
+      { name: 'Materials',   value: parseFloat(data.material_cost),  color: P.blue },
+      { name: 'Expenses',    value: parseFloat(data.expense_cost),   color: P.purple },
+      { name: 'Net Profit',  value: parseFloat(data.net_profit),     color: P.green },
+    ].filter((s) => s.value > 0);
   }, [data]);
+
+  const total = slices.reduce((a, s) => a + s.value, 0);
 
   return (
     <Card
-      title="Cost Breakdown"
-      extra={
-        <FilterBtn
-          content={
-            <DateRangeFilter value={range} onChange={setRange} projectStart={projectStart} />
-          }
-        />
-      }
+      title={<span style={{ fontWeight: 600 }}>Cost Breakdown</span>}
+      extra={<FilterBtn content={<DateRangeFilter value={range} onChange={setRange} projectStart={projectStart} />} />}
+      bordered={false}
+      style={CARD_STYLE}
+      styles={{ body: { padding: '8px 16px 16px' } }}
     >
       {isLoading ? (
-        <Skeleton active paragraph={{ rows: 4 }} />
+        <Skeleton active paragraph={{ rows: 5 }} />
       ) : slices.length === 0 ? (
-        <Empty description="No data" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        <Empty description="No data" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ padding: '32px 0' }} />
       ) : (
-        <ResponsiveContainer width="100%" height={220}>
-          <PieChart>
-            <Pie
-              data={slices}
-              cx="50%"
-              cy="50%"
-              innerRadius={55}
-              outerRadius={85}
-              paddingAngle={2}
-              dataKey="value"
-              label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-              labelLine={false}
-            >
-              {slices.map((_, i) => <Cell key={i} fill={C[i % C.length]} />)}
-            </Pie>
-            <RTooltip
-              contentStyle={ct.tooltipStyle}
-              formatter={(v: number) => fmtAmt(v)}
-            />
-          </PieChart>
-        </ResponsiveContainer>
+        <>
+          <ResponsiveContainer width="100%" height={200}>
+            <PieChart>
+              <Pie data={slices} cx="50%" cy="50%" innerRadius={60} outerRadius={85} paddingAngle={3} dataKey="value" startAngle={90} endAngle={-270}>
+                {slices.map((s, i) => <Cell key={i} fill={s.color} strokeWidth={0} />)}
+              </Pie>
+              <text x="50%" y="46%" textAnchor="middle" dominantBaseline="middle">
+                <tspan fill={ct.token.colorText} fontSize={16} fontWeight={700}>{fmtAmt(total)}</tspan>
+              </text>
+              <text x="50%" y="58%" textAnchor="middle" dominantBaseline="middle">
+                <tspan fill={ct.token.colorTextSecondary} fontSize={11}>Production</tspan>
+              </text>
+              <RTooltip content={<ChartTooltip fmt={(v) => fmtAmt(v)} />} />
+            </PieChart>
+          </ResponsiveContainer>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px', marginTop: 8 }}>
+            {slices.map((s) => (
+              <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: s.color }} />
+                <Typography.Text style={{ fontSize: 12 }}>{s.name}</Typography.Text>
+                <Typography.Text strong style={{ fontSize: 12 }}>{fmtAmt(s.value)}</Typography.Text>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </Card>
   );
 }
 
-// ─── 3. Expense by Category ───────────────────────────────────────────────────
-function ExpenseCategoryChart({
-  projectId, projectStart,
-}: { projectId: string; projectStart?: string }) {
+// ─── Chart 3: Expense by Category ────────────────────────────────────────────
+function ExpenseCategoryChart({ projectId, projectStart }: { projectId: string; projectStart?: string }) {
   const [range, setRange] = useState<[Dayjs, Dayjs]>([dayjs().startOf('month'), dayjs()]);
   const { data, isLoading } = useProfitability(
     projectId, range[0].format('YYYY-MM-DD'), range[1].format('YYYY-MM-DD'),
@@ -327,32 +416,25 @@ function ExpenseCategoryChart({
 
   return (
     <Card
-      title="Expenses by Category"
-      extra={
-        <FilterBtn
-          content={
-            <DateRangeFilter value={range} onChange={setRange} projectStart={projectStart} />
-          }
-        />
-      }
+      title={<span style={{ fontWeight: 600 }}>Expenses by Category</span>}
+      extra={<FilterBtn content={<DateRangeFilter value={range} onChange={setRange} projectStart={projectStart} />} />}
+      bordered={false}
+      style={CARD_STYLE}
+      styles={{ body: { padding: '8px 16px 16px' } }}
     >
       {isLoading ? (
-        <Skeleton active paragraph={{ rows: 4 }} />
+        <Skeleton active paragraph={{ rows: 5 }} />
       ) : chartData.length === 0 ? (
-        <Empty description="No expenses in range" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        <Empty description="No expenses in range" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ padding: '32px 0' }} />
       ) : (
-        <ResponsiveContainer width="100%" height={220}>
+        <ResponsiveContainer width="100%" height={Math.max(220, chartData.length * 38)}>
           <BarChart data={chartData} layout="vertical">
             <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} horizontal={false} />
-            <XAxis
-              type="number"
-              tick={{ fill: ct.tick, fontSize: 11 }}
-              tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
-            />
-            <YAxis dataKey="name" type="category" tick={{ fill: ct.tick, fontSize: 11 }} width={90} />
-            <RTooltip contentStyle={ct.tooltipStyle} formatter={(v: number) => fmtAmt(v)} />
-            <Bar dataKey="Amount" radius={[0, 4, 4, 0]}>
-              {chartData.map((_, i) => <Cell key={i} fill={C[i % C.length]} />)}
+            <XAxis type="number" tick={{ fill: ct.tick, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+            <YAxis dataKey="name" type="category" tick={{ fill: ct.tick, fontSize: 11 }} width={88} axisLine={false} tickLine={false} />
+            <RTooltip content={<ChartTooltip fmt={(v) => fmtAmt(v)} />} />
+            <Bar dataKey="Amount" radius={[0, 6, 6, 0]} maxBarSize={28}>
+              {chartData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
@@ -361,12 +443,8 @@ function ExpenseCategoryChart({
   );
 }
 
-// ─── 4. Measurement Status Donut ──────────────────────────────────────────────
+// ─── Chart 4: Measurement Status Donut ───────────────────────────────────────
 const ALL_M_STATUSES = ['DRAFT', 'SUBMITTED', 'PM_APPROVED', 'QS_APPROVED', 'LOCKED', 'REJECTED'];
-const M_STATUS_COLOR: Record<string, string> = {
-  DRAFT: '#94a3b8', SUBMITTED: '#1677ff', PM_APPROVED: '#13c2c2',
-  QS_APPROVED: '#722ed1', LOCKED: '#52c41a', REJECTED: '#ff4d4f',
-};
 
 function MeasurementStatusChart({ projectId }: { projectId: string }) {
   const [visible, setVisible] = useState<string[]>(ALL_M_STATUSES);
@@ -379,70 +457,74 @@ function MeasurementStatusChart({ projectId }: { projectId: string }) {
     for (const m of data) counts[m.status] = (counts[m.status] ?? 0) + 1;
     return ALL_M_STATUSES
       .filter((s) => visible.includes(s) && (counts[s] ?? 0) > 0)
-      .map((s) => ({ name: s.replace('_', ' '), value: counts[s] ?? 0, status: s }));
+      .map((s) => ({ name: s.replace('_', ' '), value: counts[s] ?? 0, color: M_STATUS_COLOR[s] }));
   }, [data, visible]);
 
   const total = slices.reduce((a, b) => a + b.value, 0);
 
   return (
     <Card
-      title="Measurement Status"
+      title={<span style={{ fontWeight: 600 }}>Measurement Status</span>}
       extra={
         <FilterBtn
           content={
             <Space direction="vertical" size={4}>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>Show statuses</Typography.Text>
-              {ALL_M_STATUSES.map((s) => (
-                <Button
-                  key={s}
-                  size="small"
-                  type={visible.includes(s) ? 'primary' : 'default'}
-                  style={{ fontSize: 11 }}
-                  onClick={() =>
-                    setVisible((prev) =>
-                      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s],
-                    )
-                  }
-                >
-                  <Tag color={STATUS_TAG[s]} style={{ margin: 0, fontSize: 11 }}>{s}</Tag>
-                </Button>
-              ))}
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>Toggle statuses</Typography.Text>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {ALL_M_STATUSES.map((s) => (
+                  <Tag
+                    key={s}
+                    color={visible.includes(s) ? (STATUS_TAG[s] ?? 'default') : undefined}
+                    style={{ cursor: 'pointer', fontSize: 11, userSelect: 'none' }}
+                    onClick={() => setVisible((prev) => prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s])}
+                  >
+                    {s}
+                  </Tag>
+                ))}
+              </div>
             </Space>
           }
         />
       }
+      bordered={false}
+      style={CARD_STYLE}
+      styles={{ body: { padding: '8px 16px 16px' } }}
     >
       {isLoading ? (
-        <Skeleton active paragraph={{ rows: 4 }} />
+        <Skeleton active paragraph={{ rows: 5 }} />
       ) : total === 0 ? (
-        <Empty description="No measurements" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        <Empty description="No measurements" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ padding: '32px 0' }} />
       ) : (
-        <ResponsiveContainer width="100%" height={220}>
-          <PieChart>
-            <Pie
-              data={slices}
-              cx="50%"
-              cy="50%"
-              innerRadius={55}
-              outerRadius={85}
-              paddingAngle={2}
-              dataKey="value"
-              label={({ value }) => value}
-            >
-              {slices.map((s, i) => (
-                <Cell key={i} fill={M_STATUS_COLOR[s.status] ?? C[i % C.length]} />
-              ))}
-            </Pie>
-            <RTooltip contentStyle={ct.tooltipStyle} />
-            <Legend iconType="circle" iconSize={8} />
-          </PieChart>
-        </ResponsiveContainer>
+        <>
+          <ResponsiveContainer width="100%" height={200}>
+            <PieChart>
+              <Pie data={slices} cx="50%" cy="50%" innerRadius={60} outerRadius={85} paddingAngle={3} dataKey="value" startAngle={90} endAngle={-270}>
+                {slices.map((s, i) => <Cell key={i} fill={s.color} strokeWidth={0} />)}
+              </Pie>
+              <text x="50%" y="46%" textAnchor="middle" dominantBaseline="middle">
+                <tspan fill={ct.token.colorText} fontSize={22} fontWeight={700}>{total}</tspan>
+              </text>
+              <text x="50%" y="60%" textAnchor="middle" dominantBaseline="middle">
+                <tspan fill={ct.token.colorTextSecondary} fontSize={11}>measurements</tspan>
+              </text>
+              <RTooltip content={<ChartTooltip />} />
+            </PieChart>
+          </ResponsiveContainer>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
+            {slices.map((s) => (
+              <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: s.color }} />
+                <Typography.Text style={{ fontSize: 11 }}>{s.name}: <strong>{s.value}</strong></Typography.Text>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </Card>
   );
 }
 
-// ─── 5. BOQ Completion by Section ────────────────────────────────────────────
+// ─── Chart 5: BOQ Progress by Section ────────────────────────────────────────
 function BoqProgressChart({ projectId }: { projectId: string }) {
   const [mode, setMode] = useState<'pct' | 'value'>('pct');
   const { data: sections, isLoading } = useBoqSections(projectId);
@@ -455,70 +537,59 @@ function BoqProgressChart({ projectId }: { projectId: string }) {
       const tendered = s.items.reduce((a, i) => a + parseFloat(i.tendered_qty) * parseFloat(i.rate), 0);
       const consumed = s.items.reduce((a, i) => a + parseFloat(i.consumed_qty) * parseFloat(i.rate), 0);
       const pct = tendered > 0 ? Math.min(100, (consumed / tendered) * 100) : 0;
-      const name = s.section_name.length > 20 ? s.section_name.substring(0, 18) + '…' : s.section_name;
+      const label = s.section_name.length > 22 ? s.section_name.substring(0, 20) + '…' : s.section_name;
       return mode === 'pct'
-        ? { name, '% Complete': parseFloat(pct.toFixed(1)), Remaining: parseFloat((100 - pct).toFixed(1)) }
-        : { name, Consumed: parseFloat(consumed.toFixed(0)), Tendered: parseFloat(tendered.toFixed(0)) };
+        ? { name: label, '% Done': +pct.toFixed(1), Remaining: +(100 - pct).toFixed(1) }
+        : { name: label, Consumed: +consumed.toFixed(0), Tendered: +tendered.toFixed(0) };
     });
   }, [sections, mode]);
 
   return (
     <Card
-      title="BOQ Progress by Section"
+      title={<span style={{ fontWeight: 600 }}>BOQ Progress by Section</span>}
       extra={
         <FilterBtn
           content={
             <Select
               size="small"
               value={mode}
-              style={{ width: 140 }}
+              style={{ width: 150 }}
               onChange={(v: 'pct' | 'value') => setMode(v)}
               options={[
-                { value: 'pct', label: '% Complete' },
+                { value: 'pct',   label: '% Complete' },
                 { value: 'value', label: 'Value (₹)' },
               ]}
             />
           }
         />
       }
+      bordered={false}
+      style={CARD_STYLE}
+      styles={{ body: { padding: '8px 16px 16px' } }}
     >
       {isLoading ? (
         <Skeleton active paragraph={{ rows: 6 }} />
       ) : chartData.length === 0 ? (
-        <Empty description="No BOQ sections" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        <Empty description="No BOQ sections" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ padding: '32px 0' }} />
       ) : (
-        <ResponsiveContainer width="100%" height={Math.max(180, chartData.length * 36)}>
+        <ResponsiveContainer width="100%" height={Math.max(200, chartData.length * 38)}>
           <BarChart data={chartData} layout="vertical">
             <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} horizontal={false} />
-            <XAxis
-              type="number"
+            <XAxis type="number" tick={{ fill: ct.tick, fontSize: 11 }} axisLine={false} tickLine={false}
               domain={mode === 'pct' ? [0, 100] : undefined}
-              tick={{ fill: ct.tick, fontSize: 11 }}
-              tickFormatter={(v) =>
-                mode === 'pct' ? `${v}%` : `${(v / 1000).toFixed(0)}k`
-              }
+              tickFormatter={(v) => mode === 'pct' ? `${v}%` : `${(v / 1000).toFixed(0)}k`}
             />
-            <YAxis
-              dataKey="name"
-              type="category"
-              tick={{ fill: ct.tick, fontSize: 11 }}
-              width={110}
-            />
-            <RTooltip
-              contentStyle={ct.tooltipStyle}
-              formatter={(v: number) =>
-                mode === 'pct' ? `${v}%` : fmtAmt(v)
-              }
-            />
+            <YAxis dataKey="name" type="category" tick={{ fill: ct.tick, fontSize: 11 }} width={116} axisLine={false} tickLine={false} />
+            <RTooltip content={<ChartTooltip fmt={(v) => mode === 'pct' ? `${v}%` : fmtAmt(v)} />} />
             {mode === 'pct' ? (
               <>
-                <Bar dataKey="% Complete" stackId="a" fill={C[0]} radius={[0, 0, 0, 0]} />
-                <Bar dataKey="Remaining" stackId="a" fill="rgba(128,128,128,0.15)" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="% Done"    stackId="a" fill={P.blue}  radius={[0, 0, 0, 0]} maxBarSize={22} />
+                <Bar dataKey="Remaining" stackId="a" fill={ct.token.colorFillTertiary} radius={[0, 6, 6, 0]} maxBarSize={22} />
               </>
             ) : (
               <>
-                <Bar dataKey="Consumed" fill={C[0]} radius={[0, 0, 0, 0]} />
-                <Bar dataKey="Tendered" fill="rgba(128,128,128,0.3)" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="Consumed" fill={P.blue}  radius={[0, 6, 6, 0]} maxBarSize={22} />
+                <Bar dataKey="Tendered" fill={ct.token.colorFillSecondary} radius={[0, 6, 6, 0]} maxBarSize={22} />
               </>
             )}
           </BarChart>
@@ -528,7 +599,7 @@ function BoqProgressChart({ projectId }: { projectId: string }) {
   );
 }
 
-// ─── 6. Attendance Trend ──────────────────────────────────────────────────────
+// ─── Chart 6: Attendance Trend ────────────────────────────────────────────────
 function AttendanceTrendChart({ projectId }: { projectId: string }) {
   const [days, setDays] = useState(14);
   const { data, isLoading } = useAttendanceRecords(projectId);
@@ -537,36 +608,34 @@ function AttendanceTrendChart({ projectId }: { projectId: string }) {
   const chartData = useMemo(() => {
     if (!data) return [];
     const cutoff = dayjs().subtract(days - 1, 'day').startOf('day');
-    const counts: Record<string, { Present: number; 'In Geofence': number }> = {};
+    const counts: Record<string, { Present: number; Geofenced: number }> = {};
     for (const r of data) {
       if (dayjs(r.attendance_date).isBefore(cutoff)) continue;
       const d = dayjs(r.attendance_date).format('DD MMM');
-      if (!counts[d]) counts[d] = { Present: 0, 'In Geofence': 0 };
+      if (!counts[d]) counts[d] = { Present: 0, Geofenced: 0 };
       counts[d].Present += 1;
-      if (r.within_geofence) counts[d]['In Geofence'] += 1;
+      if (r.within_geofence) counts[d].Geofenced += 1;
     }
     const start = dayjs().subtract(days - 1, 'day');
     return Array.from({ length: days }, (_, i) => {
       const d = start.add(i, 'day').format('DD MMM');
-      return { date: d, ...(counts[d] ?? { Present: 0, 'In Geofence': 0 }) };
+      return { date: d, ...(counts[d] ?? { Present: 0, Geofenced: 0 }) };
     });
   }, [data, days]);
 
+  const peak = chartData.reduce((m, d) => Math.max(m, d.Present), 0);
+
   return (
     <Card
-      title="Attendance Trend"
+      title={<span style={{ fontWeight: 600 }}>Attendance Trend</span>}
       extra={
         <FilterBtn
           content={
             <Space direction="vertical" size={4}>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>Show last</Typography.Text>
-              <Select
-                size="small"
-                value={days}
-                onChange={setDays}
-                style={{ width: 120 }}
+              <Select size="small" value={days} onChange={setDays} style={{ width: 120 }}
                 options={[
-                  { value: 7, label: '7 days' },
+                  { value: 7,  label: '7 days' },
                   { value: 14, label: '14 days' },
                   { value: 30, label: '30 days' },
                 ]}
@@ -575,93 +644,100 @@ function AttendanceTrendChart({ projectId }: { projectId: string }) {
           }
         />
       }
+      bordered={false}
+      style={CARD_STYLE}
+      styles={{ body: { padding: '8px 16px 16px' } }}
     >
       {isLoading ? (
-        <Skeleton active paragraph={{ rows: 4 }} />
+        <Skeleton active paragraph={{ rows: 5 }} />
       ) : (
-        <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} />
-            <XAxis dataKey="date" tick={{ fill: ct.tick, fontSize: 10 }} interval={Math.floor(days / 7)} />
-            <YAxis tick={{ fill: ct.tick, fontSize: 11 }} allowDecimals={false} />
-            <RTooltip contentStyle={ct.tooltipStyle} />
-            <Legend iconType="circle" iconSize={8} />
-            <Bar dataKey="Present" fill={C[0]} radius={[4, 4, 0, 0]} />
-            <Bar dataKey="In Geofence" fill={C[1]} radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+        <>
+          {peak > 0 && (
+            <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 8 }}>
+              Peak: <strong>{peak}</strong> workers/day
+            </Typography.Text>
+          )}
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} vertical={false} />
+              <XAxis dataKey="date" tick={{ fill: ct.tick, fontSize: 10 }} axisLine={false} tickLine={false}
+                interval={Math.max(0, Math.floor(days / 7) - 1)}
+              />
+              <YAxis tick={{ fill: ct.tick, fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+              <RTooltip content={<ChartTooltip />} />
+              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
+              <Bar dataKey="Present"  fill={P.blue}  radius={[4, 4, 0, 0]} maxBarSize={28} />
+              <Bar dataKey="Geofenced" fill={P.green} radius={[4, 4, 0, 0]} maxBarSize={28} />
+            </BarChart>
+          </ResponsiveContainer>
+        </>
       )}
     </Card>
   );
 }
 
-// ─── 7. DPR Issues by Severity ───────────────────────────────────────────────
+// ─── Chart 7: DPR Issues by Severity ─────────────────────────────────────────
+const SEV_COLOR: Record<string, string> = { LOW: P.green, MEDIUM: P.amber, HIGH: P.orange, CRITICAL: P.red };
+
 function DprIssuesChart({ projectId }: { projectId: string }) {
-  const [statusFilter, setStatusFilter] = useState<'OPEN' | 'ALL'>('OPEN');
+  const [filter, setFilter] = useState<'OPEN' | 'ALL'>('OPEN');
   const { data: dprs, isLoading } = useDprList(projectId);
   const ct = useChartTheme();
 
   const chartData = useMemo(() => {
     if (!dprs) return [];
-    const issues = dprs.flatMap((d) => d.issues).filter(
-      (i) => statusFilter === 'ALL' || i.status === 'OPEN',
-    );
-    const severities = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
-    const counts = Object.fromEntries(severities.map((s) => [s, 0]));
+    const issues = dprs.flatMap((d) => d.issues).filter((i) => filter === 'ALL' || i.status === 'OPEN');
+    const counts = Object.fromEntries(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].map((s) => [s, 0]));
     for (const i of issues) counts[i.severity] = (counts[i.severity] ?? 0) + 1;
-    return severities.map((s) => ({ Severity: s, Count: counts[s] }));
-  }, [dprs, statusFilter]);
+    return ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].map((s) => ({ Severity: s, Count: counts[s] }));
+  }, [dprs, filter]);
 
-  const SEV_COLOR: Record<string, string> = {
-    LOW: C[1], MEDIUM: C[2], HIGH: C[6], CRITICAL: C[3],
-  };
+  const total = chartData.reduce((a, b) => a + b.Count, 0);
 
   return (
     <Card
-      title="DPR Issues by Severity"
+      title={<span style={{ fontWeight: 600 }}>Issues by Severity</span>}
       extra={
         <FilterBtn
           content={
-            <Space direction="vertical" size={4}>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>Status</Typography.Text>
-              <Select
-                size="small"
-                value={statusFilter}
-                onChange={(v: 'OPEN' | 'ALL') => setStatusFilter(v)}
-                style={{ width: 120 }}
-                options={[
-                  { value: 'OPEN', label: 'Open only' },
-                  { value: 'ALL', label: 'All issues' },
-                ]}
-              />
-            </Space>
+            <Select size="small" value={filter} onChange={(v: 'OPEN' | 'ALL') => setFilter(v)} style={{ width: 130 }}
+              options={[{ value: 'OPEN', label: 'Open only' }, { value: 'ALL', label: 'All issues' }]}
+            />
           }
         />
       }
+      bordered={false}
+      style={CARD_STYLE}
+      styles={{ body: { padding: '8px 16px 16px' } }}
     >
       {isLoading ? (
         <Skeleton active paragraph={{ rows: 4 }} />
       ) : (
-        <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} />
-            <XAxis dataKey="Severity" tick={{ fill: ct.tick, fontSize: 12 }} />
-            <YAxis tick={{ fill: ct.tick, fontSize: 11 }} allowDecimals={false} />
-            <RTooltip contentStyle={ct.tooltipStyle} />
-            <Bar dataKey="Count" radius={[4, 4, 0, 0]}>
-              {chartData.map((d) => (
-                <Cell key={d.Severity} fill={SEV_COLOR[d.Severity] ?? C[0]} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+        <>
+          {total === 0 && (
+            <Typography.Text type="success" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+              <CheckCircleOutlined /> No {filter === 'OPEN' ? 'open ' : ''}issues
+            </Typography.Text>
+          )}
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} vertical={false} />
+              <XAxis dataKey="Severity" tick={{ fill: ct.tick, fontSize: 12 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: ct.tick, fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+              <RTooltip content={<ChartTooltip />} />
+              <Bar dataKey="Count" radius={[6, 6, 0, 0]} maxBarSize={48}>
+                {chartData.map((d) => <Cell key={d.Severity} fill={SEV_COLOR[d.Severity] ?? P.blue} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </>
       )}
     </Card>
   );
 }
 
-// ─── 8. Material Indent Status ────────────────────────────────────────────────
-const INDENT_STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'ISSUED', 'PARTIALLY_RECEIVED', 'RECEIVED', 'REJECTED', 'CANCELLED'];
+// ─── Chart 8: Material Indent Status ─────────────────────────────────────────
+const INDENT_STATUSES = ['SUBMITTED', 'APPROVED', 'ISSUED', 'PARTIALLY_RECEIVED', 'RECEIVED', 'DRAFT', 'REJECTED', 'CANCELLED'];
 
 function IndentStatusChart({ projectId }: { projectId: string }) {
   const [visible, setVisible] = useState<string[]>(['SUBMITTED', 'APPROVED', 'ISSUED', 'PARTIALLY_RECEIVED', 'RECEIVED']);
@@ -674,115 +750,125 @@ function IndentStatusChart({ projectId }: { projectId: string }) {
     for (const m of data) counts[m.status] = (counts[m.status] ?? 0) + 1;
     return INDENT_STATUSES
       .filter((s) => visible.includes(s) && (counts[s] ?? 0) > 0)
-      .map((s, i) => ({ name: s, value: counts[s] ?? 0, fill: C[i % C.length] }));
+      .map((s, i) => ({ name: s, value: counts[s] ?? 0, color: CHART_COLORS[i % CHART_COLORS.length] }));
   }, [data, visible]);
+
+  const total = slices.reduce((a, s) => a + s.value, 0);
 
   return (
     <Card
-      title="Material Indent Status"
+      title={<span style={{ fontWeight: 600 }}>Material Indents</span>}
       extra={
         <FilterBtn
           content={
             <Space direction="vertical" size={4}>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>Show statuses</Typography.Text>
-              {INDENT_STATUSES.map((s) => (
-                <Button
-                  key={s}
-                  size="small"
-                  type={visible.includes(s) ? 'primary' : 'default'}
-                  onClick={() =>
-                    setVisible((prev) =>
-                      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s],
-                    )
-                  }
-                >
-                  <Tag color={STATUS_TAG[s]} style={{ margin: 0, fontSize: 11 }}>{s}</Tag>
-                </Button>
-              ))}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {INDENT_STATUSES.map((s) => (
+                  <Tag key={s} color={visible.includes(s) ? (STATUS_TAG[s] ?? 'default') : undefined}
+                    style={{ cursor: 'pointer', fontSize: 11 }}
+                    onClick={() => setVisible((prev) => prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s])}
+                  >
+                    {s}
+                  </Tag>
+                ))}
+              </div>
             </Space>
           }
         />
       }
+      bordered={false}
+      style={CARD_STYLE}
+      styles={{ body: { padding: '8px 16px 16px' } }}
     >
       {isLoading ? (
         <Skeleton active paragraph={{ rows: 4 }} />
-      ) : slices.length === 0 ? (
-        <Empty description="No indents" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+      ) : total === 0 ? (
+        <Empty description="No indents" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ padding: '32px 0' }} />
       ) : (
-        <ResponsiveContainer width="100%" height={220}>
-          <PieChart>
-            <Pie data={slices} cx="50%" cy="50%" innerRadius={55} outerRadius={85} paddingAngle={2} dataKey="value" label={({ name }) => name}>
-              {slices.map((s, i) => <Cell key={i} fill={s.fill} />)}
-            </Pie>
-            <RTooltip contentStyle={ct.tooltipStyle} />
-          </PieChart>
-        </ResponsiveContainer>
+        <>
+          <ResponsiveContainer width="100%" height={190}>
+            <PieChart>
+              <Pie data={slices} cx="50%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={3} dataKey="value" startAngle={90} endAngle={-270}>
+                {slices.map((s, i) => <Cell key={i} fill={s.color} strokeWidth={0} />)}
+              </Pie>
+              <text x="50%" y="46%" textAnchor="middle" dominantBaseline="middle">
+                <tspan fill={ct.token.colorText} fontSize={20} fontWeight={700}>{total}</tspan>
+              </text>
+              <text x="50%" y="60%" textAnchor="middle" dominantBaseline="middle">
+                <tspan fill={ct.token.colorTextSecondary} fontSize={11}>indents</tspan>
+              </text>
+              <RTooltip content={<ChartTooltip />} />
+            </PieChart>
+          </ResponsiveContainer>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', marginTop: 4 }}>
+            {slices.map((s) => (
+              <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: s.color }} />
+                <Typography.Text style={{ fontSize: 11 }}>{s.name}: <strong>{s.value}</strong></Typography.Text>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </Card>
   );
 }
 
-// ─── 9. Running Bills Pipeline ────────────────────────────────────────────────
+// ─── Chart 9: Running Bills Pipeline ─────────────────────────────────────────
 function BillsPipelineChart({ projectId }: { projectId: string }) {
-  const [mode, setMode] = useState<'count' | 'amount'>('amount');
+  const [mode, setMode] = useState<'amount' | 'count'>('amount');
   const { data, isLoading } = useRunningBills(projectId);
   const ct = useChartTheme();
   const { fmtAmt } = useNumberFormat();
 
   const BILL_STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'PAID'];
+  const BILL_COLORS   = [P.amber, P.blue, P.green, P.purple];
+
   const chartData = useMemo(() => {
     if (!data) return [];
     const agg: Record<string, { count: number; amount: number }> = {};
     for (const b of data) {
       if (!agg[b.status]) agg[b.status] = { count: 0, amount: 0 };
-      agg[b.status].count += 1;
+      agg[b.status].count  += 1;
       agg[b.status].amount += parseFloat(b.total_amount);
     }
-    return BILL_STATUSES.map((s) => ({
+    return BILL_STATUSES.map((s, i) => ({
       Status: s,
-      Value: mode === 'count' ? (agg[s]?.count ?? 0) : (agg[s]?.amount ?? 0),
+      Value:  mode === 'count' ? (agg[s]?.count ?? 0) : (agg[s]?.amount ?? 0),
+      color:  BILL_COLORS[i],
     }));
   }, [data, mode]);
 
   return (
     <Card
-      title="Running Bills Pipeline"
+      title={<span style={{ fontWeight: 600 }}>Bills Pipeline</span>}
       extra={
         <FilterBtn
           content={
-            <Select
-              size="small"
-              value={mode}
-              onChange={(v: 'count' | 'amount') => setMode(v)}
-              style={{ width: 120 }}
-              options={[
-                { value: 'amount', label: 'By amount' },
-                { value: 'count', label: 'By count' },
-              ]}
+            <Select size="small" value={mode} onChange={(v: 'amount' | 'count') => setMode(v)} style={{ width: 130 }}
+              options={[{ value: 'amount', label: 'By amount' }, { value: 'count', label: 'By count' }]}
             />
           }
         />
       }
+      bordered={false}
+      style={CARD_STYLE}
+      styles={{ body: { padding: '8px 16px 16px' } }}
     >
       {isLoading ? (
         <Skeleton active paragraph={{ rows: 4 }} />
       ) : (
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} />
-            <XAxis dataKey="Status" tick={{ fill: ct.tick, fontSize: 11 }} />
-            <YAxis
-              tick={{ fill: ct.tick, fontSize: 11 }}
-              tickFormatter={(v) =>
-                mode === 'amount' ? `${(v / 1000).toFixed(0)}k` : `${v}`
-              }
+            <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} vertical={false} />
+            <XAxis dataKey="Status" tick={{ fill: ct.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: ct.tick, fontSize: 11 }} axisLine={false} tickLine={false}
+              tickFormatter={(v) => mode === 'amount' ? `${(v / 1000).toFixed(0)}k` : `${v}`}
             />
-            <RTooltip
-              contentStyle={ct.tooltipStyle}
-              formatter={(v: number) => mode === 'amount' ? fmtAmt(v) : `${v} bills`}
-            />
-            <Bar dataKey="Value" radius={[4, 4, 0, 0]}>
-              {chartData.map((_, i) => <Cell key={i} fill={C[i % C.length]} />)}
+            <RTooltip content={<ChartTooltip fmt={(v) => mode === 'amount' ? fmtAmt(v) : `${v} bills`} />} />
+            <Bar dataKey="Value" radius={[6, 6, 0, 0]} maxBarSize={52}>
+              {chartData.map((d, i) => <Cell key={i} fill={d.color} />)}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
@@ -791,50 +877,66 @@ function BillsPipelineChart({ projectId }: { projectId: string }) {
   );
 }
 
-// ─── 10. Production Progress Overview (SE/simplified) ─────────────────────────
-function ProductionProgressOverview({ projectId }: { projectId: string }) {
+// ─── Production Progress (SE view) ────────────────────────────────────────────
+function ProductionProgressCard({ projectId }: { projectId: string }) {
   const { data: progress, isLoading } = useProductionProgress(projectId);
   const { fmtAmt } = useNumberFormat();
 
-  if (isLoading) return <Skeleton active />;
-  if (!progress) return <Empty description="No production data" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+  if (isLoading) return <Card bordered={false} style={CARD_STYLE}><Skeleton active /></Card>;
 
-  const overall = progress.total_agreed_amount
-    ? Math.min(100, (parseFloat(progress.total_executed_amount) / parseFloat(progress.total_agreed_amount)) * 100)
+  const overall = progress
+    ? Math.min(100, parseFloat(progress.total_executed_amount) / Math.max(1, parseFloat(progress.total_agreed_amount)) * 100)
     : 0;
 
   return (
-    <Card title="Production Progress">
-      <Space direction="vertical" style={{ width: '100%' }} size={12}>
-        <div>
-          <Typography.Text strong>Overall: {overall.toFixed(1)}%</Typography.Text>
-          <Progress percent={parseFloat(overall.toFixed(1))} strokeColor={C[0]} />
-        </div>
-        {progress.sections.map((s) => {
-          const pct =
-            parseFloat(s.section_agreed_amount) > 0
-              ? Math.min(100, (parseFloat(s.section_executed_amount) / parseFloat(s.section_agreed_amount)) * 100)
-              : 0;
-          return (
-            <div key={s.section_id ?? s.section_name}>
-              <Space style={{ justifyContent: 'space-between', width: '100%' }}>
-                <Typography.Text style={{ fontSize: 12 }}>
-                  {s.section_no ? `${s.section_no}. ` : ''}{s.section_name}
-                </Typography.Text>
-                <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                  {fmtAmt(s.section_executed_amount)} / {fmtAmt(s.section_agreed_amount)}
-                </Typography.Text>
-              </Space>
-              <Progress percent={parseFloat(pct.toFixed(1))} size="small" strokeColor={C[0]} />
+    <Card
+      title={<span style={{ fontWeight: 600 }}>Production Progress</span>}
+      bordered={false}
+      style={CARD_STYLE}
+      styles={{ body: { padding: '12px 20px 20px' } }}
+    >
+      {!progress ? (
+        <Empty description="No production data" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+      ) : (
+        <Space direction="vertical" style={{ width: '100%' }} size={14}>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+              <Typography.Text strong>Overall</Typography.Text>
+              <Typography.Text strong style={{ color: P.blue }}>{overall.toFixed(1)}%</Typography.Text>
             </div>
-          );
-        })}
-      </Space>
+            <Progress percent={+overall.toFixed(1)} strokeColor={P.blue} trailColor="rgba(0,0,0,0.06)" showInfo={false} />
+          </div>
+          {progress.sections.map((s) => {
+            const pct = parseFloat(s.section_agreed_amount) > 0
+              ? Math.min(100, parseFloat(s.section_executed_amount) / parseFloat(s.section_agreed_amount) * 100)
+              : 0;
+            return (
+              <div key={s.section_id ?? s.section_name}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                  <Typography.Text style={{ fontSize: 12 }}>
+                    {s.section_no ? `${s.section_no}. ` : ''}{s.section_name}
+                  </Typography.Text>
+                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                    {fmtAmt(s.section_executed_amount)} / {fmtAmt(s.section_agreed_amount)}
+                  </Typography.Text>
+                </div>
+                <Progress
+                  percent={+pct.toFixed(1)}
+                  size="small"
+                  strokeColor={pct >= 100 ? P.green : P.blue}
+                  trailColor="rgba(0,0,0,0.06)"
+                  showInfo={false}
+                />
+              </div>
+            );
+          })}
+        </Space>
+      )}
     </Card>
   );
 }
 
-// ─── Admin Portfolio — All Projects Overview ──────────────────────────────────
+// ─── Admin Portfolio View ─────────────────────────────────────────────────────
 function AdminPortfolioView({ onSelectProject }: { onSelectProject: (id: string) => void }) {
   const { data: projects, isLoading: projLoading } = useProjects();
   const [sortBy, setSortBy] = useState<'contract' | 'outstanding' | 'name'>('contract');
@@ -853,49 +955,53 @@ function AdminPortfolioView({ onSelectProject }: { onSelectProject: (id: string)
   const loading = projLoading || summaryQueries.some((q) => q.isLoading);
 
   const rows = useMemo(() => {
-    const raw = (projects ?? []).map((p, i) => ({
-      id: p.id,
-      name: p.name,
-      status: p.status,
-      contract: parseFloat(p.contract_value),
-      billed: parseFloat(summaryQueries[i]?.data?.total_billed ?? '0'),
-      received: parseFloat(summaryQueries[i]?.data?.total_received ?? '0'),
-      outstanding: parseFloat(summaryQueries[i]?.data?.outstanding ?? '0'),
-      billedPct:
-        parseFloat(p.contract_value) > 0
-          ? (parseFloat(summaryQueries[i]?.data?.total_billed ?? '0') /
-              parseFloat(p.contract_value)) *
-            100
-          : 0,
-    }));
-    if (sortBy === 'contract') raw.sort((a, b) => b.contract - a.contract);
+    const raw = (projects ?? []).map((p, i) => {
+      const sum = summaryQueries[i]?.data;
+      const contract    = parseFloat(p.contract_value);
+      const billed      = parseFloat(sum?.total_billed ?? '0');
+      const received    = parseFloat(sum?.total_received ?? '0');
+      const outstanding = parseFloat(sum?.outstanding ?? '0');
+      const billedPct   = contract > 0 ? (billed / contract) * 100 : 0;
+      return { id: p.id, name: p.name, status: p.status, contract, billed, received, outstanding, billedPct };
+    });
+    if (sortBy === 'contract')    raw.sort((a, b) => b.contract    - a.contract);
     if (sortBy === 'outstanding') raw.sort((a, b) => b.outstanding - a.outstanding);
-    if (sortBy === 'name') raw.sort((a, b) => a.name.localeCompare(b.name));
+    if (sortBy === 'name')        raw.sort((a, b) => a.name.localeCompare(b.name));
     return raw;
   }, [projects, summaryQueries, sortBy]);
 
   const totals = useMemo(() => ({
-    contract: rows.reduce((s, r) => s + r.contract, 0),
-    billed: rows.reduce((s, r) => s + r.billed, 0),
-    received: rows.reduce((s, r) => s + r.received, 0),
+    contract:    rows.reduce((s, r) => s + r.contract, 0),
+    billed:      rows.reduce((s, r) => s + r.billed, 0),
+    received:    rows.reduce((s, r) => s + r.received, 0),
     outstanding: rows.reduce((s, r) => s + r.outstanding, 0),
   }), [rows]);
 
   const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = { ACTIVE: 0, COMPLETED: 0, SUSPENDED: 0 };
-    for (const p of projects ?? []) counts[p.status] = (counts[p.status] ?? 0) + 1;
-    return Object.entries(counts).filter(([, v]) => v > 0).map(([name, value]) => ({ name, value }));
+    const m: Record<string, number> = { ACTIVE: 0, COMPLETED: 0, SUSPENDED: 0 };
+    for (const p of projects ?? []) m[p.status] = (m[p.status] ?? 0) + 1;
+    return [
+      { name: 'Active',    value: m.ACTIVE,    color: P.blue },
+      { name: 'Completed', value: m.COMPLETED, color: P.green },
+      { name: 'Suspended', value: m.SUSPENDED, color: P.red },
+    ].filter((x) => x.value > 0);
   }, [projects]);
 
-  const chartProjects = rows.slice(0, 10);
+  const top10Bar = rows.slice(0, 10).map((r) => ({
+    name:     r.name.length > 13 ? r.name.substring(0, 11) + '…' : r.name,
+    id:       r.id,
+    Contract: r.contract,
+    Billed:   r.billed,
+    Received: r.received,
+  }));
 
-  const columns = [
+  const tableColumns = [
     {
       title: 'Project',
       dataIndex: 'name',
       ellipsis: true,
       render: (name: string, row: typeof rows[0]) => (
-        <Button type="link" style={{ padding: 0, height: 'auto' }} onClick={() => onSelectProject(row.id)}>
+        <Button type="link" style={{ padding: 0, height: 'auto', fontWeight: 500 }} onClick={() => onSelectProject(row.id)}>
           {name}
         </Button>
       ),
@@ -904,24 +1010,27 @@ function AdminPortfolioView({ onSelectProject }: { onSelectProject: (id: string)
       title: 'Status',
       dataIndex: 'status',
       width: 110,
-      render: (s: string) => <Tag color={STATUS_TAG[s] ?? 'default'}>{s}</Tag>,
+      render: (s: string) => <Tag color={STATUS_TAG[s] ?? 'default'} style={{ borderRadius: 6 }}>{s}</Tag>,
     },
     {
       title: 'Contract Value',
       dataIndex: 'contract',
-      width: 140,
+      width: 150,
       align: 'right' as const,
       render: (v: number) => fmtAmt(v),
     },
     {
       title: 'Billed',
       dataIndex: 'billedPct',
-      width: 160,
+      width: 170,
       render: (pct: number, row: typeof rows[0]) => (
-        <Space direction="vertical" size={0} style={{ width: '100%' }}>
-          <Progress percent={parseFloat(pct.toFixed(1))} size="small" strokeColor={C[0]} />
-          <Typography.Text type="secondary" style={{ fontSize: 11 }}>{fmtAmt(row.billed)}</Typography.Text>
-        </Space>
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+            <Typography.Text style={{ fontSize: 11 }}>{fmtAmt(row.billed)}</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}>{pct.toFixed(0)}%</Typography.Text>
+          </div>
+          <Progress percent={+pct.toFixed(0)} size="small" showInfo={false} strokeColor={P.blue} trailColor="rgba(0,0,0,0.06)" />
+        </div>
       ),
     },
     {
@@ -930,15 +1039,15 @@ function AdminPortfolioView({ onSelectProject }: { onSelectProject: (id: string)
       width: 130,
       align: 'right' as const,
       render: (v: number) => (
-        <span style={{ color: v > 0 ? '#cf1322' : undefined }}>{fmtAmt(v)}</span>
+        <span style={{ color: v > 0 ? P.red : P.green, fontWeight: 600 }}>{fmtAmt(v)}</span>
       ),
     },
     {
       title: '',
-      key: 'action',
-      width: 60,
+      key: 'drill',
+      width: 50,
       render: (_: unknown, row: typeof rows[0]) => (
-        <Button size="small" icon={<FundOutlined />} onClick={() => onSelectProject(row.id)} />
+        <Button size="small" type="text" icon={<FundOutlined />} onClick={() => onSelectProject(row.id)} />
       ),
     },
   ];
@@ -947,102 +1056,71 @@ function AdminPortfolioView({ onSelectProject }: { onSelectProject: (id: string)
     <div>
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         {[
-          { title: 'Total Projects', value: String(rows.length), color: undefined },
-          { title: 'Active Projects', value: String(rows.filter((r) => r.status === 'ACTIVE').length), color: '#1677ff' },
-          { title: 'Portfolio Contract Value', value: fmtAmt(totals.contract), color: undefined },
-          { title: 'Total Outstanding', value: fmtAmt(totals.outstanding), color: totals.outstanding > 0 ? '#cf1322' : undefined },
+          { title: 'Total Projects',       value: String(rows.length),                       icon: <ProjectOutlined />,         color: P.blue   },
+          { title: 'Active Projects',      value: String(rows.filter((r) => r.status === 'ACTIVE').length), icon: <AppstoreOutlined />, color: P.green  },
+          { title: 'Portfolio Contract',   value: fmtAmt(totals.contract),                   icon: <AuditOutlined />,            color: P.purple },
+          { title: 'Total Outstanding',    value: fmtAmt(totals.outstanding),                icon: <ExclamationCircleOutlined />, color: totals.outstanding > 0 ? P.red : P.green },
         ].map((k) => (
-          <Col key={k.title} xs={12} sm={12} md={6}>
-            <KpiCard title={k.title} value={k.value} color={k.color} />
+          <Col key={k.title} xs={12} md={6}>
+            {loading ? <Card bordered={false} style={CARD_STYLE}><Skeleton active paragraph={{ rows: 1 }} /></Card>
+              : <KpiCard {...k} />}
           </Col>
         ))}
       </Row>
 
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={24} md={8}>
-          <Card title="Project Status Distribution">
-            {loading ? (
-              <Skeleton active />
-            ) : (
+        <Col xs={24} md={7}>
+          <Card title={<span style={{ fontWeight: 600 }}>Project Status</span>} bordered={false} style={CARD_STYLE} styles={{ body: { padding: '8px 16px 20px' } }}>
+            {loading ? <Skeleton active paragraph={{ rows: 4 }} /> : (
               <ResponsiveContainer width="100%" height={220}>
                 <PieChart>
-                  <Pie
-                    data={statusCounts}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={85}
-                    paddingAngle={2}
-                    dataKey="value"
-                    label={({ name, value }) => `${name} (${value})`}
-                  >
-                    {statusCounts.map((s) => (
-                      <Cell
-                        key={s.name}
-                        fill={s.name === 'ACTIVE' ? C[0] : s.name === 'COMPLETED' ? C[1] : C[3]}
-                      />
-                    ))}
+                  <Pie data={statusCounts} cx="50%" cy="50%" innerRadius={60} outerRadius={85} paddingAngle={3} dataKey="value" startAngle={90} endAngle={-270}>
+                    {statusCounts.map((s, i) => <Cell key={i} fill={s.color} strokeWidth={0} />)}
                   </Pie>
-                  <RTooltip contentStyle={ct.tooltipStyle} />
+                  <text x="50%" y="46%" textAnchor="middle" dominantBaseline="middle">
+                    <tspan fill={ct.token.colorText} fontSize={22} fontWeight={700}>{rows.length}</tspan>
+                  </text>
+                  <text x="50%" y="60%" textAnchor="middle" dominantBaseline="middle">
+                    <tspan fill={ct.token.colorTextSecondary} fontSize={11}>projects</tspan>
+                  </text>
+                  <RTooltip content={<ChartTooltip />} />
+                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
                 </PieChart>
               </ResponsiveContainer>
             )}
           </Card>
         </Col>
-        <Col xs={24} md={16}>
+        <Col xs={24} md={17}>
           <Card
-            title="Contract vs Billed vs Received (Top 10)"
+            title={<span style={{ fontWeight: 600 }}>Contract vs Billed vs Received (Top 10)</span>}
             extra={
               <FilterBtn
                 content={
-                  <Select
-                    size="small"
-                    value={sortBy}
-                    onChange={(v: 'contract' | 'outstanding' | 'name') => setSortBy(v)}
-                    style={{ width: 150 }}
+                  <Select size="small" value={sortBy} onChange={(v: typeof sortBy) => setSortBy(v)} style={{ width: 170 }}
                     options={[
-                      { value: 'contract', label: 'Sort by contract value' },
+                      { value: 'contract',    label: 'Sort by contract value' },
                       { value: 'outstanding', label: 'Sort by outstanding' },
-                      { value: 'name', label: 'Sort by name' },
+                      { value: 'name',        label: 'Sort by name' },
                     ]}
                   />
                 }
               />
             }
+            bordered={false}
+            style={CARD_STYLE}
+            styles={{ body: { padding: '8px 16px 16px' } }}
           >
-            {loading ? (
-              <Skeleton active paragraph={{ rows: 5 }} />
-            ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart
-                  data={chartProjects.map((r) => ({
-                    name: r.name.length > 14 ? r.name.substring(0, 12) + '…' : r.name,
-                    id: r.id,
-                    Contract: r.contract,
-                    Billed: r.billed,
-                    Received: r.received,
-                  }))}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} />
-                  <XAxis dataKey="name" tick={{ fill: ct.tick, fontSize: 10 }} angle={-20} textAnchor="end" height={45} />
-                  <YAxis tick={{ fill: ct.tick, fontSize: 11 }} tickFormatter={(v) => `${(v / 100000).toFixed(0)}L`} />
-                  <RTooltip
-                    contentStyle={ct.tooltipStyle}
-                    formatter={(v: number) => fmtAmt(v)}
-                  />
-                  <Legend iconType="circle" iconSize={8} />
-                  <Bar dataKey="Contract" fill={C[5]} radius={[4, 4, 0, 0]}
-                    onClick={(d) => onSelectProject((d as { id: string }).id)}
-                    style={{ cursor: 'pointer' }}
-                  />
-                  <Bar dataKey="Billed" fill={C[0]} radius={[4, 4, 0, 0]}
-                    onClick={(d) => onSelectProject((d as { id: string }).id)}
-                    style={{ cursor: 'pointer' }}
-                  />
-                  <Bar dataKey="Received" fill={C[1]} radius={[4, 4, 0, 0]}
-                    onClick={(d) => onSelectProject((d as { id: string }).id)}
-                    style={{ cursor: 'pointer' }}
-                  />
+            {loading ? <Skeleton active paragraph={{ rows: 5 }} /> : (
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={top10Bar}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} vertical={false} />
+                  <XAxis dataKey="name" tick={{ fill: ct.tick, fontSize: 10 }} angle={-16} textAnchor="end" height={44} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: ct.tick, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v / 100000).toFixed(0)}L`} />
+                  <RTooltip content={<ChartTooltip fmt={(v) => fmtAmt(v)} />} />
+                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="Contract" fill={P.cyan}   radius={[4, 4, 0, 0]} maxBarSize={20} onClick={(d) => onSelectProject((d as { id: string }).id)} style={{ cursor: 'pointer' }} />
+                  <Bar dataKey="Billed"   fill={P.blue}   radius={[4, 4, 0, 0]} maxBarSize={20} onClick={(d) => onSelectProject((d as { id: string }).id)} style={{ cursor: 'pointer' }} />
+                  <Bar dataKey="Received" fill={P.green}  radius={[4, 4, 0, 0]} maxBarSize={20} onClick={(d) => onSelectProject((d as { id: string }).id)} style={{ cursor: 'pointer' }} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -1051,44 +1129,40 @@ function AdminPortfolioView({ onSelectProject }: { onSelectProject: (id: string)
       </Row>
 
       <Card
-        title="All Projects"
+        title={<span style={{ fontWeight: 600 }}>All Projects</span>}
         extra={
           <FilterBtn
             content={
-              <Select
-                size="small"
-                value={sortBy}
-                onChange={(v: 'contract' | 'outstanding' | 'name') => setSortBy(v)}
-                style={{ width: 150 }}
+              <Select size="small" value={sortBy} onChange={(v: typeof sortBy) => setSortBy(v)} style={{ width: 170 }}
                 options={[
-                  { value: 'contract', label: 'By contract value' },
+                  { value: 'contract',    label: 'By contract value' },
                   { value: 'outstanding', label: 'By outstanding' },
-                  { value: 'name', label: 'By name' },
+                  { value: 'name',        label: 'By name' },
                 ]}
               />
             }
           />
         }
+        bordered={false}
+        style={CARD_STYLE}
+        styles={{ body: { padding: '0 0 8px' } }}
       >
         <Table
           rowKey="id"
           dataSource={rows}
-          columns={columns}
+          columns={tableColumns}
           loading={loading}
           pagination={false}
           size="small"
-          scroll={{ x: 700 }}
-          onRow={(row) => ({
-            onClick: () => onSelectProject(row.id),
-            style: { cursor: 'pointer' },
-          })}
+          scroll={{ x: 750 }}
+          onRow={(row) => ({ onClick: () => onSelectProject(row.id), style: { cursor: 'pointer' } })}
           summary={() => (
             <Table.Summary.Row>
-              <Table.Summary.Cell index={0} colSpan={2}><b>Portfolio Total</b></Table.Summary.Cell>
+              <Table.Summary.Cell index={0} colSpan={2}><b>Total ({rows.length} projects)</b></Table.Summary.Cell>
               <Table.Summary.Cell index={2} align="right"><b>{fmtAmt(totals.contract)}</b></Table.Summary.Cell>
               <Table.Summary.Cell index={3}><b>{fmtAmt(totals.billed)}</b></Table.Summary.Cell>
               <Table.Summary.Cell index={4} align="right">
-                <b style={{ color: totals.outstanding > 0 ? '#cf1322' : undefined }}>{fmtAmt(totals.outstanding)}</b>
+                <b style={{ color: totals.outstanding > 0 ? P.red : P.green }}>{fmtAmt(totals.outstanding)}</b>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={5} />
             </Table.Summary.Row>
@@ -1099,279 +1173,233 @@ function AdminPortfolioView({ onSelectProject }: { onSelectProject: (id: string)
   );
 }
 
-// ─── Project Dashboard (all roles, cards vary by role) ───────────────────────
-function ProjectDashboard({
-  projectId, role,
-}: { projectId: string; role: UserRole }) {
-  const { data: projects } = useProjects();
-  const { data: summary, isLoading: summaryLoading } = useProjectSummary(projectId);
-  const { fmtAmt } = useNumberFormat();
-
-  const project = projects?.find((p) => p.id === projectId);
+// ─── Project Dashboard ────────────────────────────────────────────────────────
+function ProjectDashboard({ projectId, role }: { projectId: string; role: UserRole }) {
+  const { data: projects }  = useProjects();
+  const { data: summary }   = useProjectSummary(projectId);
+  const { fmtAmt }          = useNumberFormat();
+  const project             = projects?.find((p) => p.id === projectId);
 
   const isAdminOrPm = role === 'ADMIN' || role === 'PROJECT_MANAGER';
   const isQs        = role === 'QUANTITY_SURVEYOR';
   const isSe        = role === 'SITE_ENGINEER';
   const isStore     = role === 'STORE_KEEPER';
 
-  // QS KPIs derived from BOQ sections
-  const { data: sections } = useBoqSections(isQs || isAdminOrPm ? projectId : null);
-  const { data: measurements } = useMeasurements(isQs || isAdminOrPm ? projectId : null);
+  const { data: sections }  = useBoqSections(isQs || isAdminOrPm ? projectId : null);
+  const { data: meas }      = useMeasurements(isQs || isAdminOrPm ? projectId : null);
+  const { data: dprs }      = useDprList(isSe || isAdminOrPm ? projectId : null);
+  const { data: indents }   = useMaterialIndents(isStore || isAdminOrPm ? projectId : null);
 
   const boqKpis = useMemo(() => {
-    if (!sections || !measurements) return null;
-    const tendered  = sections.flatMap((s) => s.items).reduce((a, i) => a + parseFloat(i.tendered_qty) * parseFloat(i.rate), 0);
-    const consumed  = sections.flatMap((s) => s.items).reduce((a, i) => a + parseFloat(i.consumed_qty) * parseFloat(i.rate), 0);
+    if (!sections || !meas) return null;
+    const allItems  = sections.flatMap((s) => s.items);
+    const tendered  = allItems.reduce((a, i) => a + parseFloat(i.tendered_qty) * parseFloat(i.rate), 0);
+    const consumed  = allItems.reduce((a, i) => a + parseFloat(i.consumed_qty) * parseFloat(i.rate), 0);
     const pct       = tendered > 0 ? (consumed / tendered) * 100 : 0;
-    const unbilled  = measurements.filter((m) => m.status === 'LOCKED' && !m.billed).length;
+    const unbilled  = meas.filter((m) => m.status === 'LOCKED' && !m.billed).length;
     return { tendered, consumed, pct, unbilled };
-  }, [sections, measurements]);
+  }, [sections, meas]);
 
-  // SE/DPR KPIs
-  const { data: dprs } = useDprList(isSe || isAdminOrPm ? projectId : null);
   const seKpis = useMemo(() => {
     if (!dprs) return null;
-    const submitted  = dprs.filter((d) => d.status === 'SUBMITTED').length;
-    const noWorkDays = dprs.filter((d) => d.no_work).length;
-    const workDays   = dprs.filter((d) => !d.no_work).length;
-    const openIssues = dprs.flatMap((d) => d.issues).filter((i) => i.status === 'OPEN').length;
-    return { total: dprs.length, submitted, noWorkDays, workDays, openIssues };
+    return {
+      total:     dprs.length,
+      submitted: dprs.filter((d) => d.status === 'SUBMITTED').length,
+      noWork:    dprs.filter((d) => d.no_work).length,
+      workDays:  dprs.filter((d) => !d.no_work).length,
+      openIssues:dprs.flatMap((d) => d.issues).filter((i) => i.status === 'OPEN').length,
+    };
   }, [dprs]);
 
-  // STORE KPIs
-  const { data: indents } = useMaterialIndents(isStore || isAdminOrPm ? projectId : null);
   const storeKpis = useMemo(() => {
     if (!indents) return null;
-    const pending  = indents.filter((i) => i.status === 'SUBMITTED').length;
-    const issued   = indents.filter((i) => ['ISSUED', 'PARTIALLY_RECEIVED'].includes(i.status)).length;
-    const received = indents.filter((i) => i.status === 'RECEIVED').length;
-    return { total: indents.length, pending, issued, received };
+    return {
+      total:   indents.length,
+      pending: indents.filter((i) => i.status === 'SUBMITTED').length,
+      issued:  indents.filter((i) => ['ISSUED', 'PARTIALLY_RECEIVED'].includes(i.status)).length,
+      received:indents.filter((i) => i.status === 'RECEIVED').length,
+    };
   }, [indents]);
-
-  if (summaryLoading) return <Skeleton active paragraph={{ rows: 10 }} />;
 
   return (
     <div>
-      {/* ── KPI Row ─────────────────────────────────────────────────────── */}
-      {(isAdminOrPm) && (
-        <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-          {[
-            {
-              title: 'Contract Value',
-              value: fmtAmt(summary?.contract_value),
-            },
-            {
-              title: 'Total Billed',
-              value: fmtAmt(summary?.total_billed),
-              suffix: summary ? ` (${((parseFloat(summary.total_billed) / parseFloat(summary.contract_value)) * 100).toFixed(1)}%)` : '',
-            },
-            {
-              title: 'Payment Received',
-              value: fmtAmt(summary?.total_received),
-              color: '#52c41a',
-            },
-            {
-              title: 'Outstanding',
-              value: fmtAmt(summary?.outstanding),
-              color: parseFloat(summary?.outstanding ?? '0') > 0 ? '#cf1322' : undefined,
-            },
-          ].map((k) => (
-            <Col key={k.title} xs={12} sm={12} md={6}>
-              <KpiCard title={k.title} value={k.value} suffix={k.suffix} color={k.color} />
-            </Col>
-          ))}
-        </Row>
-      )}
-
-      {isQs && boqKpis && (
-        <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-          {[
-            { title: 'Tendered Value', value: fmtAmt(boqKpis.tendered) },
-            { title: 'Consumed Value', value: fmtAmt(boqKpis.consumed) },
-            { title: 'BOQ Completion', value: `${boqKpis.pct.toFixed(1)}%` },
-            { title: 'Unbilled Measurements', value: String(boqKpis.unbilled), color: boqKpis.unbilled > 0 ? '#faad14' : undefined },
-          ].map((k) => (
-            <Col key={k.title} xs={12} sm={12} md={6}>
-              <KpiCard title={k.title} value={k.value} color={k.color} />
-            </Col>
-          ))}
-        </Row>
-      )}
-
-      {isSe && seKpis && (
-        <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-          {[
-            { title: 'DPR Entries', value: String(seKpis.total) },
-            { title: 'Work Days', value: String(seKpis.workDays), color: '#52c41a' },
-            { title: 'No-Work Days', value: String(seKpis.noWorkDays), color: seKpis.noWorkDays > 0 ? '#faad14' : undefined },
-            { title: 'Open Issues', value: String(seKpis.openIssues), color: seKpis.openIssues > 0 ? '#ff4d4f' : undefined },
-          ].map((k) => (
-            <Col key={k.title} xs={12} sm={12} md={6}>
-              <KpiCard title={k.title} value={k.value} color={k.color} />
-            </Col>
-          ))}
-        </Row>
-      )}
-
-      {isStore && storeKpis && (
-        <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-          {[
-            { title: 'Total Indents', value: String(storeKpis.total) },
-            { title: 'Pending Approval', value: String(storeKpis.pending), color: storeKpis.pending > 0 ? '#faad14' : undefined },
-            { title: 'Issued', value: String(storeKpis.issued) },
-            { title: 'Received', value: String(storeKpis.received), color: '#52c41a' },
-          ].map((k) => (
-            <Col key={k.title} xs={12} sm={12} md={6}>
-              <KpiCard title={k.title} value={k.value} color={k.color} />
-            </Col>
-          ))}
-        </Row>
-      )}
-
-      {/* ── Admin / PM charts ─────────────────────────────────────────── */}
+      {/* ── Admin/PM KPI row ─────────────────────────────── */}
       {isAdminOrPm && (
         <>
-          <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-            <Col xs={24}>
-              <DailyTrendChart projectId={projectId} projectStart={project?.start_date} />
-            </Col>
-          </Row>
-          <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-            <Col xs={24} md={8}>
-              <CostDonutChart projectId={projectId} projectStart={project?.start_date} />
-            </Col>
-            <Col xs={24} md={8}>
-              <ExpenseCategoryChart projectId={projectId} projectStart={project?.start_date} />
-            </Col>
-            <Col xs={24} md={8}>
-              <MeasurementStatusChart projectId={projectId} />
-            </Col>
-          </Row>
-          <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-            <Col xs={24} md={12}>
-              <BoqProgressChart projectId={projectId} />
-            </Col>
-            <Col xs={24} md={12}>
-              <AttendanceTrendChart projectId={projectId} />
-            </Col>
-          </Row>
-          <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-            <Col xs={24} md={8}>
-              <DprIssuesChart projectId={projectId} />
-            </Col>
-            <Col xs={24} md={8}>
-              <IndentStatusChart projectId={projectId} />
-            </Col>
-            <Col xs={24} md={8}>
-              <BillsPipelineChart projectId={projectId} />
-            </Col>
+          <SectionHeading label="Financial Overview" />
+          <Row gutter={[16, 16]}>
+            {[
+              { title: 'Contract Value',    value: fmtAmt(summary?.contract_value), icon: <AuditOutlined />,              color: P.blue   },
+              { title: 'Total Billed',      value: fmtAmt(summary?.total_billed),   icon: <DollarCircleOutlined />,        color: P.purple,
+                subtitle: summary ? `${((parseFloat(summary.total_billed) / Math.max(1, parseFloat(summary.contract_value))) * 100).toFixed(1)}% of contract` : undefined },
+              { title: 'Payment Received',  value: fmtAmt(summary?.total_received), icon: <CheckCircleOutlined />,         color: P.green  },
+              { title: 'Outstanding',       value: fmtAmt(summary?.outstanding),    icon: <ExclamationCircleOutlined />,   color: parseFloat(summary?.outstanding ?? '0') > 0 ? P.red : P.green },
+            ].map((k) => (
+              <Col key={k.title} xs={12} md={6}><KpiCard {...k} /></Col>
+            ))}
           </Row>
         </>
       )}
 
-      {/* ── QS charts ─────────────────────────────────────────────────── */}
+      {/* ── QS KPI row ────────────────────────────────────── */}
+      {isQs && boqKpis && (
+        <>
+          <SectionHeading label="BOQ & Billing Overview" />
+          <Row gutter={[16, 16]}>
+            {[
+              { title: 'Tendered Value',       value: fmtAmt(boqKpis.tendered), icon: <AuditOutlined />,        color: P.blue  },
+              { title: 'Consumed Value',        value: fmtAmt(boqKpis.consumed), icon: <SafetyOutlined />,       color: P.purple },
+              { title: 'BOQ Completion',        value: `${boqKpis.pct.toFixed(1)}%`, icon: <FundOutlined />,    color: P.green },
+              { title: 'Unbilled Measurements', value: String(boqKpis.unbilled), icon: <WarningOutlined />,      color: boqKpis.unbilled > 0 ? P.amber : P.green },
+            ].map((k) => (
+              <Col key={k.title} xs={12} md={6}><KpiCard {...k} /></Col>
+            ))}
+          </Row>
+        </>
+      )}
+
+      {/* ── Site Engineer KPI row ─────────────────────────── */}
+      {isSe && seKpis && (
+        <>
+          <SectionHeading label="Field Activity" />
+          <Row gutter={[16, 16]}>
+            {[
+              { title: 'DPR Entries',   value: String(seKpis.total),     icon: <CalendarOutlined />,           color: P.blue   },
+              { title: 'Work Days',     value: String(seKpis.workDays),  icon: <CheckCircleOutlined />,        color: P.green  },
+              { title: 'No-Work Days',  value: String(seKpis.noWork),    icon: <WarningOutlined />,            color: seKpis.noWork > 0 ? P.amber : P.green },
+              { title: 'Open Issues',   value: String(seKpis.openIssues),icon: <AlertOutlined />,              color: seKpis.openIssues > 0 ? P.red : P.green },
+            ].map((k) => (
+              <Col key={k.title} xs={12} md={6}><KpiCard {...k} /></Col>
+            ))}
+          </Row>
+        </>
+      )}
+
+      {/* ── Store Keeper KPI row ──────────────────────────── */}
+      {isStore && storeKpis && (
+        <>
+          <SectionHeading label="Material Indents" />
+          <Row gutter={[16, 16]}>
+            {[
+              { title: 'Total Indents',     value: String(storeKpis.total),    icon: <AppstoreOutlined />,       color: P.blue   },
+              { title: 'Pending Approval',  value: String(storeKpis.pending),  icon: <ExclamationCircleOutlined />, color: storeKpis.pending > 0 ? P.amber : P.green },
+              { title: 'Issued',            value: String(storeKpis.issued),   icon: <ToolOutlined />,           color: P.purple },
+              { title: 'Received',          value: String(storeKpis.received), icon: <CheckCircleOutlined />,    color: P.green  },
+            ].map((k) => (
+              <Col key={k.title} xs={12} md={6}><KpiCard {...k} /></Col>
+            ))}
+          </Row>
+        </>
+      )}
+
+      {/* ── Admin/PM charts ───────────────────────────────── */}
+      {isAdminOrPm && (
+        <>
+          <SectionHeading label="P&L Analysis" />
+          <Row gutter={[16, 16]}>
+            <Col xs={24}><DailyTrendChart projectId={projectId} projectStart={project?.start_date} /></Col>
+          </Row>
+
+          <SectionHeading label="Cost & Measurement Breakdown" />
+          <Row gutter={[16, 16]}>
+            <Col xs={24} md={8}><CostDonutChart       projectId={projectId} projectStart={project?.start_date} /></Col>
+            <Col xs={24} md={8}><ExpenseCategoryChart  projectId={projectId} projectStart={project?.start_date} /></Col>
+            <Col xs={24} md={8}><MeasurementStatusChart projectId={projectId} /></Col>
+          </Row>
+
+          <SectionHeading label="Progress & Attendance" />
+          <Row gutter={[16, 16]}>
+            <Col xs={24} md={12}><BoqProgressChart    projectId={projectId} /></Col>
+            <Col xs={24} md={12}><AttendanceTrendChart projectId={projectId} /></Col>
+          </Row>
+
+          <SectionHeading label="Issues, Indents & Billing" />
+          <Row gutter={[16, 16]}>
+            <Col xs={24} md={8}><DprIssuesChart    projectId={projectId} /></Col>
+            <Col xs={24} md={8}><IndentStatusChart  projectId={projectId} /></Col>
+            <Col xs={24} md={8}><BillsPipelineChart  projectId={projectId} /></Col>
+          </Row>
+        </>
+      )}
+
+      {/* ── QS charts ─────────────────────────────────────── */}
       {isQs && (
         <>
-          <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-            <Col xs={24}>
-              <BoqProgressChart projectId={projectId} />
-            </Col>
+          <SectionHeading label="BOQ Progress" />
+          <Row gutter={[16, 16]}>
+            <Col xs={24}><BoqProgressChart projectId={projectId} /></Col>
           </Row>
-          <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-            <Col xs={24} md={12}>
-              <MeasurementStatusChart projectId={projectId} />
-            </Col>
-            <Col xs={24} md={12}>
-              <BillsPipelineChart projectId={projectId} />
-            </Col>
+          <SectionHeading label="Measurements & Billing" />
+          <Row gutter={[16, 16]}>
+            <Col xs={24} md={12}><MeasurementStatusChart projectId={projectId} /></Col>
+            <Col xs={24} md={12}><BillsPipelineChart     projectId={projectId} /></Col>
           </Row>
         </>
       )}
 
-      {/* ── Site Engineer charts ───────────────────────────────────────── */}
+      {/* ── Site Engineer charts ───────────────────────────── */}
       {isSe && (
         <>
-          <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-            <Col xs={24} md={12}>
-              <DprIssuesChart projectId={projectId} />
-            </Col>
-            <Col xs={24} md={12}>
-              <AttendanceTrendChart projectId={projectId} />
-            </Col>
+          <SectionHeading label="Site Activity" />
+          <Row gutter={[16, 16]}>
+            <Col xs={24} md={12}><DprIssuesChart      projectId={projectId} /></Col>
+            <Col xs={24} md={12}><AttendanceTrendChart projectId={projectId} /></Col>
           </Row>
-          <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-            <Col xs={24}>
-              <ProductionProgressOverview projectId={projectId} />
-            </Col>
+          <SectionHeading label="Work Progress" />
+          <Row gutter={[16, 16]}>
+            <Col xs={24}><ProductionProgressCard projectId={projectId} /></Col>
           </Row>
         </>
       )}
 
-      {/* ── Store Keeper charts ────────────────────────────────────────── */}
+      {/* ── Store Keeper charts ────────────────────────────── */}
       {isStore && (
-        <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-          <Col xs={24} md={12}>
-            <IndentStatusChart projectId={projectId} />
-          </Col>
-          <Col xs={24} md={12}>
-            <Card title="Pending Indents">
-              {indents?.filter((i) => i.status === 'SUBMITTED').length === 0 ? (
-                <Empty description="No pending indents" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-              ) : (
+        <>
+          <SectionHeading label="Indent Status" />
+          <Row gutter={[16, 16]}>
+            <Col xs={24} md={10}><IndentStatusChart projectId={projectId} /></Col>
+            <Col xs={24} md={14}>
+              <Card title={<span style={{ fontWeight: 600 }}>Pending Approvals</span>} bordered={false} style={CARD_STYLE} styles={{ body: { padding: 0 } }}>
                 <Table
                   rowKey="id"
                   dataSource={(indents ?? []).filter((i) => i.status === 'SUBMITTED')}
                   size="small"
                   pagination={false}
+                  locale={{ emptyText: <Empty description="No pending indents" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
                   columns={[
-                    { title: 'Source', dataIndex: 'source_type', width: 140,
-                      render: (v: string) => <Tag>{v.replace('_', ' ')}</Tag> },
-                    { title: 'Items', dataIndex: 'items', width: 80,
-                      render: (items: unknown[]) => items.length },
-                    { title: 'Needed by', dataIndex: 'needed_by_date', width: 110,
-                      render: (v: string | null) => v ?? '—' },
+                    { title: 'Source', dataIndex: 'source_type', width: 140, render: (v: string) => <Tag style={{ borderRadius: 6 }}>{v.replace('_', ' ')}</Tag> },
+                    { title: 'Items',  dataIndex: 'items', width: 70, render: (items: unknown[]) => items.length },
+                    { title: 'Needed by', dataIndex: 'needed_by_date', render: (v: string | null) => v ?? '—' },
                   ]}
                 />
-              )}
-            </Card>
-          </Col>
-        </Row>
+              </Card>
+            </Col>
+          </Row>
+        </>
       )}
     </div>
   );
 }
 
-// ─── Main DashboardPage export ────────────────────────────────────────────────
+// ─── Main export ──────────────────────────────────────────────────────────────
 export function DashboardPage() {
-  const { data: session } = useSession();
-  const role = session?.role ?? 'SITE_ENGINEER';
-  const selectedProjectId = useProjectContextStore((s) => s.selectedProjectId);
-  const setSelectedProjectId = useProjectContextStore((s) => s.setSelectedProjectId);
-  const { data: projects } = useProjects();
-  const project = projects?.find((p) => p.id === selectedProjectId);
+  const { data: session }        = useSession();
+  const role                     = session?.role ?? 'SITE_ENGINEER';
+  const selectedProjectId        = useProjectContextStore((s) => s.selectedProjectId);
+  const setSelectedProjectId     = useProjectContextStore((s) => s.setSelectedProjectId);
+  const { data: projects }       = useProjects();
+  const project                  = projects?.find((p) => p.id === selectedProjectId);
+  const { token }                = antTheme.useToken();
 
   const isAdmin = role === 'ADMIN';
 
   return (
     <div>
-      {/* Header bar */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: 8,
-          marginBottom: 20,
-        }}
-      >
-        <Space align="center" wrap>
+      {/* ── Top bar ────────────────────────────────────────── */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 24 }}>
+        <Space align="center" wrap size={10}>
           {selectedProjectId && isAdmin && (
-            <Button
-              icon={<RollbackOutlined />}
-              size="small"
-              onClick={() => setSelectedProjectId(null)}
-            >
+            <Button icon={<RollbackOutlined />} size="small" style={{ borderRadius: 8 }} onClick={() => setSelectedProjectId(null)}>
               All Projects
             </Button>
           )}
@@ -1383,23 +1411,37 @@ export function DashboardPage() {
                 : 'Dashboard'}
           </Typography.Title>
           {selectedProjectId && project && (
-            <Tag color={STATUS_TAG[project.status] ?? 'default'}>{project.status}</Tag>
+            <Tag
+              color={STATUS_TAG[project.status] ?? 'default'}
+              style={{ borderRadius: 6, fontSize: 12 }}
+            >
+              {project.status}
+            </Tag>
           )}
         </Space>
         <ProjectSelector style={{ minWidth: 220 }} />
       </div>
 
-      {/* Admin no-project → portfolio view */}
+      {/* ── Admin no-project → portfolio ───────────────────── */}
       {isAdmin && !selectedProjectId && (
         <AdminPortfolioView onSelectProject={setSelectedProjectId} />
       )}
 
-      {/* Non-admin no-project → prompt */}
+      {/* ── Non-admin no-project ────────────────────────────── */}
       {!isAdmin && !selectedProjectId && (
-        <Empty description="Select a project to view analytics." style={{ marginTop: 60 }} />
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          justifyContent: 'center', minHeight: 320, gap: 12,
+        }}>
+          <div style={{ width: 64, height: 64, borderRadius: 16, background: `${token.colorPrimary}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, color: token.colorPrimary }}>
+            <FundOutlined />
+          </div>
+          <Typography.Title level={4} style={{ margin: 0 }}>Select a project</Typography.Title>
+          <Typography.Text type="secondary">Choose a project from the selector above to view analytics</Typography.Text>
+        </div>
       )}
 
-      {/* Project selected → role-based dashboard */}
+      {/* ── Project selected ────────────────────────────────── */}
       {selectedProjectId && (
         <ProjectDashboard projectId={selectedProjectId} role={role} />
       )}
