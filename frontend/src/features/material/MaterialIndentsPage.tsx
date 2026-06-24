@@ -3,6 +3,7 @@ import {
   Button,
   Col,
   Form,
+  Input,
   InputNumber,
   Modal,
   Row,
@@ -73,9 +74,16 @@ export function MaterialIndentsPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm<IndentFormValues>();
+  const [searchText, setSearchText] = useState('');
 
   const materialById = new Map((materials ?? []).map((m) => [m.id, m]));
   const uomById = new Map((uoms ?? []).map((u) => [u.id, u.code]));
+
+  const filteredIndents = (indents ?? []).filter((indent) => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return true;
+    return indent.items.some((item) => (materialById.get(item.material_id)?.name ?? '').toLowerCase().includes(q));
+  });
 
   const handleCreate = async (values: IndentFormValues) => {
     if (!selectedProjectId) return;
@@ -155,6 +163,13 @@ export function MaterialIndentsPage() {
         </Typography.Title>
         <Space>
           <ProjectSelector />
+          <Input.Search
+            placeholder="Search by material name"
+            allowClear
+            style={{ width: 240 }}
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+          />
           <Button type="primary" icon={<PlusOutlined />} disabled={!selectedProjectId} onClick={() => setModalOpen(true)}>
             New Indent
           </Button>
@@ -164,7 +179,7 @@ export function MaterialIndentsPage() {
       <Table
         rowKey="id"
         loading={isLoading}
-        dataSource={indents ?? []}
+        dataSource={filteredIndents}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50'], showTotal: (total) => `${total} indents` }}
         scroll={{ x: 600 }}
         expandable={{

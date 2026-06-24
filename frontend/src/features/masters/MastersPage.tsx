@@ -55,6 +55,13 @@ function WorkTypesTab() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<WorkTypeRow | null>(null);
   const [form] = Form.useForm<WorkTypeFormValues>();
+  const [searchText, setSearchText] = useState('');
+
+  const filteredData = (query.data ?? []).filter((row) => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return true;
+    return row.code.toLowerCase().includes(q) || row.name.toLowerCase().includes(q);
+  });
 
   const openAdd = () => { setEditing(null); form.resetFields(); setModalOpen(true); };
   const openEdit = (row: WorkTypeRow) => {
@@ -85,9 +92,12 @@ function WorkTypesTab() {
 
   return (
     <div>
-      <Button type="primary" icon={<PlusOutlined />} style={{ marginBottom: 16 }} onClick={openAdd}>Add Work Type</Button>
+      <Space style={{ marginBottom: 16 }}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>Add Work Type</Button>
+        <Input.Search placeholder="Search by code or name" allowClear style={{ width: 280 }} value={searchText} onChange={(e) => setSearchText(e.target.value)} />
+      </Space>
       <Table
-        rowKey="id" loading={query.isLoading} dataSource={query.data ?? []}
+        rowKey="id" loading={query.isLoading} dataSource={filteredData}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} records` }}
         scroll={{ x: 700 }}
         columns={[
@@ -144,6 +154,13 @@ function MaterialsTab() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<MaterialRow | null>(null);
   const [form] = Form.useForm<MaterialFormValues>();
+  const [searchText, setSearchText] = useState('');
+
+  const filteredData = (query.data ?? []).filter((row) => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return true;
+    return row.code.toLowerCase().includes(q) || row.name.toLowerCase().includes(q) || (row.category ?? '').toLowerCase().includes(q);
+  });
 
   const openAdd = () => { setEditing(null); form.resetFields(); setModalOpen(true); };
   const openEdit = (row: MaterialRow) => {
@@ -172,9 +189,12 @@ function MaterialsTab() {
 
   return (
     <div>
-      <Button type="primary" icon={<PlusOutlined />} style={{ marginBottom: 16 }} onClick={openAdd}>Add Material</Button>
+      <Space style={{ marginBottom: 16 }}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>Add Material</Button>
+        <Input.Search placeholder="Search by code, name, or category" allowClear style={{ width: 280 }} value={searchText} onChange={(e) => setSearchText(e.target.value)} />
+      </Space>
       <Table
-        rowKey="id" loading={query.isLoading} dataSource={query.data ?? []}
+        rowKey="id" loading={query.isLoading} dataSource={filteredData}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} records` }}
         scroll={{ x: 700 }}
         columns={[
@@ -227,6 +247,13 @@ function MachineryTab() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<MachineryRow | null>(null);
   const [form] = Form.useForm<MachineryFormValues>();
+  const [searchText, setSearchText] = useState('');
+
+  const filteredData = (query.data ?? []).filter((row) => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return true;
+    return row.code.toLowerCase().includes(q) || row.name.toLowerCase().includes(q);
+  });
 
   const openAdd = () => { setEditing(null); form.resetFields(); setModalOpen(true); };
   const openEdit = (row: MachineryRow) => {
@@ -255,9 +282,12 @@ function MachineryTab() {
 
   return (
     <div>
-      <Button type="primary" icon={<PlusOutlined />} style={{ marginBottom: 16 }} onClick={openAdd}>Add Machinery</Button>
+      <Space style={{ marginBottom: 16 }}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>Add Machinery</Button>
+        <Input.Search placeholder="Search by code or name" allowClear style={{ width: 280 }} value={searchText} onChange={(e) => setSearchText(e.target.value)} />
+      </Space>
       <Table
-        rowKey="id" loading={query.isLoading} dataSource={query.data ?? []}
+        rowKey="id" loading={query.isLoading} dataSource={filteredData}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} records` }}
         scroll={{ x: 600 }}
         columns={[
@@ -304,6 +334,13 @@ function WorkerCategoryTab() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<WorkerCategoryRow | null>(null);
   const [form] = Form.useForm<WorkerCategoryFormValues>();
+  const [searchText, setSearchText] = useState('');
+
+  const filteredData = (query.data ?? []).filter((row) => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return true;
+    return row.code.toLowerCase().includes(q) || row.name.toLowerCase().includes(q);
+  });
 
   const openAdd = () => { setEditing(null); form.resetFields(); setModalOpen(true); };
   const openEdit = (row: WorkerCategoryRow) => {
@@ -332,9 +369,12 @@ function WorkerCategoryTab() {
 
   return (
     <div>
-      <Button type="primary" icon={<PlusOutlined />} style={{ marginBottom: 16 }} onClick={openAdd}>Add Worker Category</Button>
+      <Space style={{ marginBottom: 16 }}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>Add Worker Category</Button>
+        <Input.Search placeholder="Search by code or name" allowClear style={{ width: 280 }} value={searchText} onChange={(e) => setSearchText(e.target.value)} />
+      </Space>
       <Table
-        rowKey="id" loading={query.isLoading} dataSource={query.data ?? []}
+        rowKey="id" loading={query.isLoading} dataSource={filteredData}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} records` }}
         scroll={{ x: 550 }}
         columns={[
@@ -386,6 +426,13 @@ function StockLocationsTab() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<StockLocationRow | null>(null);
   const [form] = Form.useForm<StockLocationFormValues>();
+  const [searchText, setSearchText] = useState('');
+
+  const filteredData = (query.data ?? []).filter((row) => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return true;
+    return row.name.toLowerCase().includes(q);
+  });
 
   const openAdd = () => { setEditing(null); form.resetFields(); setModalOpen(true); };
   const openEdit = (row: StockLocationRow) => {
@@ -415,9 +462,12 @@ function StockLocationsTab() {
 
   return (
     <div>
-      <Button type="primary" icon={<PlusOutlined />} style={{ marginBottom: 16 }} onClick={openAdd}>Add Stock Location</Button>
+      <Space style={{ marginBottom: 16 }}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>Add Stock Location</Button>
+        <Input.Search placeholder="Search by name" allowClear style={{ width: 280 }} value={searchText} onChange={(e) => setSearchText(e.target.value)} />
+      </Space>
       <Table
-        rowKey="id" loading={query.isLoading} dataSource={query.data ?? []}
+        rowKey="id" loading={query.isLoading} dataSource={filteredData}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} records` }}
         scroll={{ x: 450 }}
         columns={[

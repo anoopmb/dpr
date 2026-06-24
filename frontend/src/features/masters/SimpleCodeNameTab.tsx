@@ -35,6 +35,13 @@ export function SimpleCodeNameTab<TRow extends MasterRow = MasterRow>({
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<TRow | null>(null);
   const [form] = Form.useForm<FormValues>();
+  const [searchText, setSearchText] = useState('');
+
+  const filteredData = (data ?? []).filter((row) => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return true;
+    return row.code.toLowerCase().includes(q) || row.name.toLowerCase().includes(q);
+  });
 
   const openAdd = () => {
     setEditing(null);
@@ -87,13 +94,22 @@ export function SimpleCodeNameTab<TRow extends MasterRow = MasterRow>({
 
   return (
     <div>
-      <Button type="primary" icon={<PlusOutlined />} style={{ marginBottom: 16 }} onClick={openAdd}>
-        Add {label}
-      </Button>
+      <Space style={{ marginBottom: 16 }}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>
+          Add {label}
+        </Button>
+        <Input.Search
+          placeholder={`Search ${label.toLowerCase()}s by code or name`}
+          allowClear
+          style={{ width: 280 }}
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+        />
+      </Space>
       <Table
         rowKey="id"
         loading={isLoading}
-        dataSource={data ?? []}
+        dataSource={filteredData}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} records` }}
         scroll={{ x: 500 }}
         columns={[

@@ -241,6 +241,8 @@ export function BoqPage() {
   const [saveTemplateModal, setSaveTemplateModal] = useState(false);
   const [applyTemplateModal, setApplyTemplateModal] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [searchText, setSearchText] = useState('');
+  const [templateSearchText, setTemplateSearchText] = useState('');
 
   const [importParsed, setImportParsed] = useState<BoqBulkImportItemInput[]>([]);
   const [importErrors, setImportErrors] = useState<string[]>([]);
@@ -442,8 +444,21 @@ export function BoqPage() {
     }
   };
 
+  // Keep a section wholesale (all its original items, so the existing
+  // subtotal computation — which reads row.section.items directly — stays
+  // correct) if its name or any item's no/description matches the search.
+  const boqSearchQuery = searchText.trim().toLowerCase();
+  const filteredSections = !boqSearchQuery
+    ? sections ?? []
+    : (sections ?? []).filter((section) =>
+        section.section_name.toLowerCase().includes(boqSearchQuery) ||
+        section.items.some((item) =>
+          item.item_no.toLowerCase().includes(boqSearchQuery) || item.description.toLowerCase().includes(boqSearchQuery),
+        ),
+      );
+
   const tableRows: RowType[] = [];
-  for (const section of sections ?? []) {
+  for (const section of filteredSections) {
     tableRows.push({ _type: 'header', section, key: `hdr-${section.id}` });
     for (const item of section.items) {
       tableRows.push({ _type: 'item', item, key: item.id });
@@ -660,6 +675,13 @@ export function BoqPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <Space wrap>
           <ProjectSelector />
+          <Input.Search
+            placeholder="Search by item no, description, or section"
+            allowClear
+            style={{ width: 260 }}
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+          />
           <Button icon={<PlusOutlined />} disabled={!selectedProjectId} onClick={openAddSection}>
             Add Section
           </Button>
@@ -739,15 +761,28 @@ export function BoqPage() {
     </div>
   );
 
+  const filteredTemplates = (templates ?? []).filter((t) => {
+    const q = templateSearchText.trim().toLowerCase();
+    if (!q) return true;
+    return t.name.toLowerCase().includes(q) || (t.description ?? '').toLowerCase().includes(q);
+  });
+
   const templatesTab = (
     <div>
       <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
         Templates are shared across projects. Apply a template to add all its items to the current project in one click.
       </Typography.Text>
+      <Input.Search
+        placeholder="Search by template name or description"
+        allowClear
+        style={{ width: 280, marginBottom: 12 }}
+        value={templateSearchText}
+        onChange={(e) => setTemplateSearchText(e.target.value)}
+      />
       <Table
         rowKey="id"
         loading={templatesLoading}
-        dataSource={templates ?? []}
+        dataSource={filteredTemplates}
         columns={templateColumns}
         pagination={false}
         bordered

@@ -1,4 +1,5 @@
-import { Empty, Table, Tag, Tooltip, Typography } from 'antd';
+import { useState } from 'react';
+import { Empty, Input, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
@@ -23,7 +24,15 @@ export function DprHistoryPage() {
   const { data: headers, isLoading } = useDprList(selectedProjectId);
   const { fmtDate } = useDateFormat();
 
+  const [searchText, setSearchText] = useState('');
+
   const sorted = [...(headers ?? [])].sort((a, b) => (a.report_date < b.report_date ? 1 : -1));
+
+  const filtered = sorted.filter((h) => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return true;
+    return (h.supervisor_name ?? '').toLowerCase().includes(q) || (h.daily_work_summary ?? '').toLowerCase().includes(q);
+  });
 
   const columns: TableColumnsType<DprHeaderRead> = [
     { title: 'Date', dataIndex: 'report_date', width: 110, render: fmtDate },
@@ -73,14 +82,23 @@ export function DprHistoryPage() {
         DPR History
       </Typography.Title>
 
-      <ProjectSelector style={{ marginBottom: 16, width: 320 }} />
+      <Space style={{ marginBottom: 16 }} wrap>
+        <ProjectSelector style={{ width: 320 }} />
+        <Input.Search
+          placeholder="Search by supervisor or activity"
+          allowClear
+          style={{ width: 260 }}
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+        />
+      </Space>
 
       {!selectedProjectId && <Empty description="Select a project to view DPR history." />}
 
       {selectedProjectId && (
         <Table
           rowKey="id"
-          dataSource={sorted}
+          dataSource={filtered}
           columns={columns}
           loading={isLoading}
           size="small"

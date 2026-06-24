@@ -3,6 +3,7 @@ import {
   Button,
   Card,
   Col,
+  Input,
   Progress,
   Row,
   Select,
@@ -226,6 +227,13 @@ export function AnalyticsPage() {
     'Billed %':     +r.billedPct.toFixed(1),
     'Collected %':  +r.collectedPct.toFixed(1),
   }));
+
+  const [searchText, setSearchText] = useState('');
+  const searchedRows = rows.filter((r) => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return true;
+    return r.name.toLowerCase().includes(q);
+  });
 
   const columns = [
     {
@@ -461,13 +469,23 @@ export function AnalyticsPage() {
 
       <Card
         title={<span style={{ fontWeight: 600 }}>All Projects</span>}
+        extra={
+          <Input.Search
+            placeholder="Search by project name"
+            allowClear
+            size="small"
+            style={{ width: 220 }}
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+          />
+        }
         bordered={false}
         style={CARD_STYLE}
         styles={{ body: { padding: '0 0 8px' } }}
       >
         <Table
           rowKey="id"
-          dataSource={rows}
+          dataSource={searchedRows}
           columns={columns}
           loading={loading}
           pagination={{ pageSize: 20, showSizeChanger: false }}

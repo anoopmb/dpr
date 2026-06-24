@@ -53,6 +53,18 @@ export function UsersPage() {
   const [createForm] = Form.useForm<CreateFormValues>();
   const [editForm] = Form.useForm<EditFormValues>();
   const [resetPasswordForm] = Form.useForm<ResetPasswordFormValues>();
+  const [searchText, setSearchText] = useState('');
+
+  const filteredUsers = (users ?? []).filter((u) => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      u.login_id.toLowerCase().includes(q) ||
+      u.full_name.toLowerCase().includes(q) ||
+      u.email.toLowerCase().includes(q) ||
+      (u.phone ?? '').toLowerCase().includes(q)
+    );
+  });
 
   const handleCreate = async (values: CreateFormValues) => {
     try {
@@ -103,19 +115,28 @@ export function UsersPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <Typography.Title level={3} style={{ margin: 0 }}>
           Users
         </Typography.Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-          Add User
-        </Button>
+        <Space>
+          <Input.Search
+            placeholder="Search by ID, name, email, or phone"
+            allowClear
+            style={{ width: 280 }}
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+          />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+            Add User
+          </Button>
+        </Space>
       </div>
 
       <Table
         rowKey="id"
         loading={isLoading}
-        dataSource={users ?? []}
+        dataSource={filteredUsers}
         scroll={{ x: 850 }}
         columns={[
           { title: 'User ID', dataIndex: 'login_id' },

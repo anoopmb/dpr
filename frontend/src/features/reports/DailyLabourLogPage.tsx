@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { DatePicker, Empty, Select, Table, Typography } from 'antd';
+import { DatePicker, Empty, Input, Select, Table, Typography } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
@@ -21,6 +21,13 @@ export function DailyLabourLogPage() {
   const toDate = range[1].format('YYYY-MM-DD');
 
   const { data: report, isLoading } = useDailyLabourLog(selectedProjectId, fromDate, toDate, categoryId);
+  const [searchText, setSearchText] = useState('');
+
+  const filteredRows = (report?.rows ?? []).filter((r) => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return true;
+    return r.worker_name.toLowerCase().includes(q);
+  });
 
   return (
     <div>
@@ -50,6 +57,13 @@ export function DailyLabourLogPage() {
           onChange={setCategoryId}
           options={(categories ?? []).map((c) => ({ value: c.id, label: c.name }))}
         />
+        <Input.Search
+          placeholder="Search by worker name"
+          allowClear
+          style={{ width: 220 }}
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+        />
       </div>
 
       {!selectedProjectId && <Empty description="Select a project to view the daily labour log." />}
@@ -58,7 +72,7 @@ export function DailyLabourLogPage() {
         <Table
           rowKey={(row: DailyLabourLogRow) => `${row.attendance_date}-${row.worker_id}`}
           loading={isLoading}
-          dataSource={report?.rows ?? []}
+          dataSource={filteredRows}
           pagination={{ pageSize: 31 }}
           scroll={{ x: 700 }}
           columns={[

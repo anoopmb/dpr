@@ -78,6 +78,21 @@ export function MyMeasurementsPage() {
     [measurements, user?.id],
   );
 
+  const [searchText, setSearchText] = useState('');
+
+  const filteredMine = useMemo(() => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return mine;
+    return mine.filter((m) => {
+      const item = boqById.get(m.boq_item_id);
+      return (
+        (item?.item_no ?? '').toLowerCase().includes(q) ||
+        (item?.description ?? '').toLowerCase().includes(q) ||
+        (m.chainage ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [mine, boqById, searchText]);
+
   const handleSubmit = async (id: string) => {
     try {
       await submitMeasurement.mutateAsync({ id });
@@ -170,7 +185,16 @@ export function MyMeasurementsPage() {
       {!selectedProjectId && <Empty description="Select a project to view your measurements." />}
 
       {selectedProjectId && (
-        <Table rowKey="id" loading={isLoading} dataSource={mine} columns={columns} bordered size="small" scroll={{ x: 680 }} />
+        <>
+          <Input.Search
+            placeholder="Search by item no, description, or chainage"
+            allowClear
+            style={{ width: '100%', marginBottom: 12 }}
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+          />
+          <Table rowKey="id" loading={isLoading} dataSource={filteredMine} columns={columns} bordered size="small" scroll={{ x: 680 }} />
+        </>
       )}
 
       <Modal

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Col, Empty, Form, InputNumber, Modal, Row, Select, Space, Table, Tag, Typography, message } from 'antd';
+import { Button, Col, Empty, Form, Input, InputNumber, Modal, Row, Select, Space, Table, Tag, Typography, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
@@ -57,6 +57,13 @@ export function MyMaterialIndentsPage() {
 
   const materialById = new Map((materials ?? []).map((m) => [m.id, m]));
   const uomById = new Map((uoms ?? []).map((u) => [u.id, u.code]));
+  const [searchText, setSearchText] = useState('');
+
+  const filteredIndents = (indents ?? []).filter((indent) => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return true;
+    return indent.items.some((item) => (materialById.get(item.material_id)?.name ?? '').toLowerCase().includes(q));
+  });
 
   const handleCreate = async (values: IndentFormValues) => {
     if (!selectedProjectId) return;
@@ -133,10 +140,18 @@ export function MyMaterialIndentsPage() {
       {!selectedProjectId && <Empty description="Select a project to view material indents." />}
 
       {selectedProjectId && (
+        <>
+        <Input.Search
+          placeholder="Search by material name"
+          allowClear
+          style={{ width: '100%', marginBottom: 12 }}
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+        />
         <Table
           rowKey="id"
           loading={isLoading}
-          dataSource={indents ?? []}
+          dataSource={filteredIndents}
           size="small"
           scroll={{ x: 500 }}
           expandable={{
@@ -201,6 +216,7 @@ export function MyMaterialIndentsPage() {
             },
           ]}
         />
+        </>
       )}
 
       <Modal

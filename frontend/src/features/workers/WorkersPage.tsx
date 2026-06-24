@@ -35,9 +35,27 @@ export function WorkersPage() {
   const [editingWorker, setEditingWorker] = useState<WorkerRead | null>(null);
   const [createForm] = Form.useForm<WorkerCreateFormValues>();
   const [editForm] = Form.useForm<WorkerEditFormValues>();
+  const [workerSearch, setWorkerSearch] = useState('');
+  const [attendanceSearch, setAttendanceSearch] = useState('');
 
   const categoryById = new Map((categories ?? []).map((c) => [c.id, c.name]));
   const workerById = new Map((workers ?? []).map((w) => [w.id, w.full_name]));
+
+  const filteredWorkers = (workers ?? []).filter((w) => {
+    const q = workerSearch.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      w.full_name.toLowerCase().includes(q) ||
+      (w.phone ?? '').toLowerCase().includes(q) ||
+      (w.contractor_name ?? '').toLowerCase().includes(q)
+    );
+  });
+
+  const filteredAttendance = (attendance ?? []).filter((a) => {
+    const q = attendanceSearch.trim().toLowerCase();
+    if (!q) return true;
+    return (workerById.get(a.worker_id) ?? '').toLowerCase().includes(q);
+  });
 
   const handleCreate = async (values: WorkerCreateFormValues) => {
     if (!selectedProjectId) return;
@@ -94,10 +112,18 @@ export function WorkersPage() {
             key: 'workers',
             label: 'Worker Master',
             children: (
-              <Table
+              <>
+                <Input.Search
+                  placeholder="Search by name, phone, or contractor"
+                  allowClear
+                  style={{ width: 280, marginBottom: 12 }}
+                  value={workerSearch}
+                  onChange={(e) => setWorkerSearch(e.target.value)}
+                />
+                <Table
                 rowKey="id"
                 loading={workersLoading}
-                dataSource={workers ?? []}
+                dataSource={filteredWorkers}
                 pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} workers` }}
                 scroll={{ x: 750 }}
                 columns={[
@@ -120,17 +146,26 @@ export function WorkersPage() {
                     ),
                   },
                 ]}
-              />
+                />
+              </>
             ),
           },
           {
             key: 'attendance',
             label: 'Attendance Log',
             children: (
-              <Table
+              <>
+                <Input.Search
+                  placeholder="Search by worker name"
+                  allowClear
+                  style={{ width: 280, marginBottom: 12 }}
+                  value={attendanceSearch}
+                  onChange={(e) => setAttendanceSearch(e.target.value)}
+                />
+                <Table
                 rowKey="id"
                 loading={attendanceLoading}
-                dataSource={attendance ?? []}
+                dataSource={filteredAttendance}
                 pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} records` }}
                 scroll={{ x: 650 }}
                 columns={[
@@ -143,7 +178,8 @@ export function WorkersPage() {
                     render: (within: boolean) => <Tag color={within ? 'green' : 'red'}>{within ? 'Within' : 'Outside'}</Tag>,
                   },
                 ]}
-              />
+                />
+              </>
             ),
           },
         ]}

@@ -54,8 +54,15 @@ export function BillingPage() {
   const [form] = Form.useForm<BillFormValues>();
   const [paymentBill, setPaymentBill] = useState<RunningBillRead | null>(null);
   const [paymentForm] = Form.useForm<PaymentFormValues>();
+  const [searchText, setSearchText] = useState('');
 
   const billableMeasurements = (measurements ?? []).filter((m) => m.status === 'LOCKED' && !m.billed);
+
+  const filteredBills = (bills ?? []).filter((b) => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return true;
+    return b.bill_number.toLowerCase().includes(q);
+  });
 
   const handleCreate = async (values: BillFormValues) => {
     if (!selectedProjectId) return;
@@ -103,6 +110,13 @@ export function BillingPage() {
         </Typography.Title>
         <Space>
           <ProjectSelector />
+          <Input.Search
+            placeholder="Search by bill number"
+            allowClear
+            style={{ width: 240 }}
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+          />
           <Button type="primary" icon={<PlusOutlined />} disabled={!selectedProjectId} onClick={() => setModalOpen(true)}>
             New Bill
           </Button>
@@ -112,7 +126,7 @@ export function BillingPage() {
       <Table
         rowKey="id"
         loading={isLoading}
-        dataSource={bills ?? []}
+        dataSource={filteredBills}
         scroll={{ x: 700 }}
         columns={[
           { title: 'Bill No', dataIndex: 'bill_number' },

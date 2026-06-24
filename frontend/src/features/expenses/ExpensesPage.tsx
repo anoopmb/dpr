@@ -33,6 +33,17 @@ export function ExpensesPage() {
   const [editForm] = Form.useForm<ExpenseFormValues>();
 
   const categoryById = new Map((categories ?? []).map((c) => [c.id, c.name]));
+  const [searchText, setSearchText] = useState('');
+
+  const filteredExpenses = (expenses ?? []).filter((e) => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      (categoryById.get(e.expense_category_id) ?? '').toLowerCase().includes(q) ||
+      (e.vendor_name ?? '').toLowerCase().includes(q) ||
+      (e.remarks ?? '').toLowerCase().includes(q)
+    );
+  });
 
   const handleCreate = async (values: ExpenseFormValues) => {
     if (!selectedProjectId) return;
@@ -104,6 +115,13 @@ export function ExpensesPage() {
         </Typography.Title>
         <Space>
           <ProjectSelector />
+          <Input.Search
+            placeholder="Search by category, vendor, or remarks"
+            allowClear
+            style={{ width: 260 }}
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+          />
           <Button type="primary" icon={<PlusOutlined />} disabled={!selectedProjectId} onClick={() => setCreateModalOpen(true)}>
             Add Expense
           </Button>
@@ -113,7 +131,7 @@ export function ExpensesPage() {
       <Table
         rowKey="id"
         loading={isLoading}
-        dataSource={expenses ?? []}
+        dataSource={filteredExpenses}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50', '100'], showTotal: (total) => `${total} expenses` }}
         scroll={{ x: 750 }}
         columns={[

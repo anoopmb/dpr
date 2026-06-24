@@ -105,7 +105,22 @@ export function MeasurementsPage() {
 
   const boqById = new Map((boqItems ?? []).map((b) => [b.id, b]));
 
-  const rows = useMemo(() => buildDateGroupedRows(measurements ?? []), [measurements]);
+  const [searchText, setSearchText] = useState('');
+
+  const filteredMeasurements = useMemo(() => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return measurements ?? [];
+    return (measurements ?? []).filter((m) => {
+      const item = boqById.get(m.boq_item_id);
+      return (
+        (item?.item_no ?? '').toLowerCase().includes(q) ||
+        (item?.description ?? '').toLowerCase().includes(q) ||
+        (m.chainage ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [measurements, boqById, searchText]);
+
+  const rows = useMemo(() => buildDateGroupedRows(filteredMeasurements), [filteredMeasurements]);
 
   const runAction = async (action: typeof submit, id: string, label: string) => {
     try {
@@ -261,7 +276,16 @@ export function MeasurementsPage() {
         <Typography.Title level={3} style={{ margin: 0 }}>
           Measurement Book & Approvals
         </Typography.Title>
-        <ProjectSelector />
+        <Space>
+          <ProjectSelector />
+          <Input.Search
+            placeholder="Search by item no, description, or chainage"
+            allowClear
+            style={{ width: 280 }}
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+          />
+        </Space>
       </div>
 
       <Table

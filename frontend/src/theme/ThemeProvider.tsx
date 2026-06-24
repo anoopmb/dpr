@@ -78,6 +78,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
               // default slightly-different submenu strip.
               subMenuItemBg: 'transparent',
             },
+            // Compact row height across every <Table> in the app regardless
+            // of its own `size` prop — large/middle/small all share the same
+            // tight vertical padding, so tables that never specified
+            // size="small" become compact too instead of only the ones that
+            // already did.
+            Table: {
+              cellPaddingBlock: 8,
+              cellPaddingBlockMD: 6,
+              cellPaddingBlockSM: 4,
+            },
           },
         }}
       >

@@ -5,6 +5,7 @@ import {
   Col,
   DatePicker,
   Empty,
+  Input,
   Popover,
   Progress,
   Row,
@@ -942,6 +943,7 @@ function ProductionProgressCard({ projectId }: { projectId: string }) {
 function AdminPortfolioView({ onSelectProject }: { onSelectProject: (id: string) => void }) {
   const { data: projects, isLoading: projLoading } = useProjects();
   const [sortBy, setSortBy] = useState<'contract' | 'outstanding' | 'name'>('contract');
+  const [searchText, setSearchText] = useState('');
   const ct = useChartTheme();
   const { fmtAmt } = useNumberFormat();
 
@@ -978,6 +980,12 @@ function AdminPortfolioView({ onSelectProject }: { onSelectProject: (id: string)
     received:    rows.reduce((s, r) => s + r.received, 0),
     outstanding: rows.reduce((s, r) => s + r.outstanding, 0),
   }), [rows]);
+
+  const searchedRows = rows.filter((r) => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return true;
+    return r.name.toLowerCase().includes(q);
+  });
 
   const statusCounts = useMemo(() => {
     const m: Record<string, number> = { ACTIVE: 0, COMPLETED: 0, SUSPENDED: 0 };
@@ -1133,17 +1141,27 @@ function AdminPortfolioView({ onSelectProject }: { onSelectProject: (id: string)
       <Card
         title={<span style={{ fontWeight: 600 }}>All Projects</span>}
         extra={
-          <FilterBtn
-            content={
-              <Select size="small" value={sortBy} onChange={(v: typeof sortBy) => setSortBy(v)} style={{ width: 170 }}
-                options={[
-                  { value: 'contract',    label: 'By contract value' },
-                  { value: 'outstanding', label: 'By outstanding' },
-                  { value: 'name',        label: 'By name' },
-                ]}
-              />
-            }
-          />
+          <Space size={8}>
+            <Input.Search
+              placeholder="Search by project name"
+              allowClear
+              size="small"
+              style={{ width: 200 }}
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+            />
+            <FilterBtn
+              content={
+                <Select size="small" value={sortBy} onChange={(v: typeof sortBy) => setSortBy(v)} style={{ width: 170 }}
+                  options={[
+                    { value: 'contract',    label: 'By contract value' },
+                    { value: 'outstanding', label: 'By outstanding' },
+                    { value: 'name',        label: 'By name' },
+                  ]}
+                />
+              }
+            />
+          </Space>
         }
         bordered={false}
         style={CARD_STYLE}
@@ -1151,7 +1169,7 @@ function AdminPortfolioView({ onSelectProject }: { onSelectProject: (id: string)
       >
         <Table
           rowKey="id"
-          dataSource={rows}
+          dataSource={searchedRows}
           columns={tableColumns}
           loading={loading}
           pagination={false}

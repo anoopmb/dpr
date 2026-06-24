@@ -320,6 +320,13 @@ export function ProjectsListPage() {
   const [form] = Form.useForm<ProjectFormValues>();
   const [editForm] = Form.useForm<ProjectEditFormValues>();
   const [assignmentsProject, setAssignmentsProject] = useState<ProjectRead | null>(null);
+  const [searchText, setSearchText] = useState('');
+
+  const filteredProjects = (projects ?? []).filter((p) => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return true;
+    return p.tender_no.toLowerCase().includes(q) || p.name.toLowerCase().includes(q) || (p.agreement_no ?? '').toLowerCase().includes(q);
+  });
 
   const handleCreate = async (values: ProjectFormValues) => {
     try {
@@ -390,18 +397,27 @@ export function ProjectsListPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <Typography.Title level={3} style={{ margin: 0 }}>
           Projects
         </Typography.Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
-          New Project
-        </Button>
+        <Space>
+          <Input.Search
+            placeholder="Search by tender no, name, or agreement no"
+            allowClear
+            style={{ width: 280 }}
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+          />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
+            New Project
+          </Button>
+        </Space>
       </div>
       <Table
         rowKey="id"
         loading={isLoading}
-        dataSource={projects ?? []}
+        dataSource={filteredProjects}
         pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: ['10', '25', '50'], showTotal: (total) => `${total} projects` }}
         scroll={{ x: 900 }}
         columns={[
