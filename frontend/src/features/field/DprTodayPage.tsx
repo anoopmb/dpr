@@ -584,7 +584,7 @@ function LabourTab({
             align: 'right' as const,
             render: fmtAmt,
           },
-          (entry: DprLabourRead) => entry.worker_type !== 'NORMAL' ? {
+          {
             title: 'Their Workers',
             key: 'cw',
             width: 100,
@@ -602,7 +602,7 @@ function LabourTab({
                   }}
                 />
               ),
-          } : { key: 'noop', width: 0, render: () => null },
+          },
         ]}
         summary={() => (
           <Table.Summary>

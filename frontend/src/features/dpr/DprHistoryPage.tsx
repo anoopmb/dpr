@@ -159,8 +159,8 @@ function DprDetailPanel({
           <ul style={{ margin: '0 0 12px 16px', padding: 0 }}>
             {header.machinery_entries.map((m) => (
               <li key={m.id}>
-                {machineryById.get(m.machinery_id)?.name ?? m.machinery_id} — {m.hours_used} hrs
-                {m.hire_rate ? ` @ ₹${m.hire_rate}/hr` : ''}
+                {machineryById.get(m.machinery_id)?.name ?? m.machinery_id} — {m.quantity_used} {m.hire_unit}
+                {m.hire_rate ? ` @ ₹${m.hire_rate}/${m.hire_unit}` : ''}
               </li>
             ))}
           </ul>
