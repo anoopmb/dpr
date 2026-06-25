@@ -86,27 +86,37 @@ export function DprMonthlyReportPage() {
     return result;
   }, [report, daysInMonth]);
 
-  const totalLeafColumns = 5 + 2 + daysInMonth * 2 + 2;
+  // Item No + Description are the only `fixed: 'left'` columns. A colSpan
+  // that crosses from a fixed column into a non-fixed one breaks antd's
+  // frozen-column overlay (it renders fixed columns as a separate cloned
+  // table laid on top of the scrollable one) — the overlay can't represent
+  // "this cell also covers columns that aren't in the overlay", so the
+  // banner text bled out over the scrollable columns whenever you scrolled
+  // horizontally. Every header/subtotal banner row now spans only the 2
+  // fixed columns; every other column renders its own ordinary (blank, for
+  // header rows) cell instead, picking up the banner color from onRow's
+  // row-level background rather than a per-cell override — so the table
+  // grid stays fully accounted for (no colSpan: 0 cells, which would also
+  // shift subsequent columns left to fill the gap; the BOQ table page hit
+  // this same issue).
+  const FIXED_COLUMN_COUNT = 2;
 
   const headerItemNoOnCell = (row: ReportRow) =>
-    row._type === 'header'
-      ? { colSpan: totalLeafColumns }
-      : row._type === 'subtotal'
-      ? { colSpan: 5, style: { background: SUB_BG, fontWeight: 600, padding: '6px 12px' } }
+    row._type === 'header' || row._type === 'subtotal'
+      ? { colSpan: FIXED_COLUMN_COUNT, style: { fontWeight: 600, padding: '6px 12px' } }
       : {};
-  const blankOnCell = (row: ReportRow) =>
-    row._type === 'header' ? { colSpan: 0 } : row._type === 'subtotal' ? { colSpan: 0 } : {};
-  const subtotalSkipOnCell = (row: ReportRow) =>
-    row._type === 'header' ? { colSpan: 0 } : row._type === 'subtotal' ? { colSpan: 0 } : {};
+  // Description is always the 2nd fixed column — always absorbed into Item
+  // No's span above, for both header and subtotal rows.
+  const descriptionOnCell = (row: ReportRow) =>
+    row._type === 'header' || row._type === 'subtotal' ? { colSpan: 0 } : {};
+  // Unit/Rate/Agreed Qty sit just past the fixed columns — never part of the
+  // banner span, so they always render as their own ordinary cell.
+  const blankOnCell = () => ({});
   // Like blankOnCell, but keeps the cell visible (styled) for subtotal rows
   // instead of hiding it — used for every numeric column past the label span
   // so section subtotals (daily qty/amt, opening/closing qty) actually render.
   const dataOnCell = (row: ReportRow) =>
-    row._type === 'header'
-      ? { colSpan: 0 }
-      : row._type === 'subtotal'
-      ? { style: { background: SUB_BG, fontWeight: 700, whiteSpace: 'nowrap' as const } }
-      : {};
+    row._type === 'subtotal' ? { style: { fontWeight: 700, whiteSpace: 'nowrap' as const } } : {};
 
   const columns: TableColumnsType<ReportRow> = useMemo(() => {
     const cols: TableColumnsType<ReportRow> = [
@@ -129,7 +139,7 @@ export function DprMonthlyReportPage() {
         fixed: 'left',
         width: 220,
         ellipsis: true,
-        onCell: blankOnCell,
+        onCell: descriptionOnCell,
         render: (_, row) => {
           if (row._type === 'item') return row.item.description;
           return null;
@@ -139,7 +149,7 @@ export function DprMonthlyReportPage() {
         title: 'Unit',
         key: 'unit',
         width: 60,
-        onCell: (row) => (row._type === 'subtotal' ? subtotalSkipOnCell(row) : blankOnCell(row)),
+        onCell: blankOnCell,
         render: (_, row) => (row._type === 'item' ? row.item.unit : null),
       },
       {
@@ -147,7 +157,7 @@ export function DprMonthlyReportPage() {
         key: 'rate',
         width: 80,
         align: 'right' as const,
-        onCell: (row) => (row._type === 'subtotal' ? subtotalSkipOnCell(row) : blankOnCell(row)),
+        onCell: blankOnCell,
         render: (_, row) => (row._type === 'item' ? fmtQty(row.item.rate, 2) : null),
       },
       {
@@ -155,7 +165,7 @@ export function DprMonthlyReportPage() {
         key: 'agreed_qty',
         width: 90,
         align: 'right' as const,
-        onCell: (row) => (row._type === 'subtotal' ? subtotalSkipOnCell(row) : blankOnCell(row)),
+        onCell: blankOnCell,
         render: (_, row) => (row._type === 'item' ? fmtQtyByUnit(row.item.agreed_qty, row.item.unit) : null),
       },
       {
