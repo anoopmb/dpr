@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -36,6 +36,7 @@ class MeasurementRead(BaseModel):
     computed_qty: Decimal
     status: MeasurementStatus
     recorded_by: uuid.UUID
+    recorded_by_name: str
     version: int
     superseded_by_id: uuid.UUID | None
     billed: bool
@@ -50,4 +51,6 @@ class MeasurementApprovalRead(BaseModel):
     from_status: str
     to_status: str
     acted_by: uuid.UUID
+    actor_name: str
     remarks: str | None
+    acted_at: datetime

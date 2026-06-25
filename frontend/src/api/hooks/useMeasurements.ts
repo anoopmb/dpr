@@ -13,10 +13,22 @@ export interface MeasurementRead {
   computed_qty: string;
   status: MeasurementStatus;
   recorded_by: string;
+  recorded_by_name: string;
   version: number;
   superseded_by_id: string | null;
   billed: boolean;
   chainage: string | null;
+}
+
+export interface MeasurementApprovalRead {
+  id: string;
+  measurement_id: string;
+  from_status: string;
+  to_status: string;
+  acted_by: string;
+  actor_name: string;
+  remarks: string | null;
+  acted_at: string;
 }
 
 export interface MeasurementCreateInput {
@@ -68,6 +80,15 @@ export function useCreateMeasurement() {
       queryClient.invalidateQueries({ queryKey: ['dpr-production'] });
       queryClient.invalidateQueries({ queryKey: ['dpr'] });
     },
+  });
+}
+
+export function useMeasurementApprovals(measurementId: string | null) {
+  return useQuery({
+    queryKey: ['measurement-approvals', measurementId],
+    queryFn: async () =>
+      (await apiClient.get<MeasurementApprovalRead[]>(`/measurements/${measurementId}/approvals`)).data,
+    enabled: !!measurementId,
   });
 }
 

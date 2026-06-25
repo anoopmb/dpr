@@ -1,5 +1,19 @@
 import { useMemo, useState } from 'react';
-import { Button, Form, Input, InputNumber, Modal, Popconfirm, Space, Statistic, Table, Tag, Typography, message } from 'antd';
+import {
+  Button,
+  Descriptions,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Popconfirm,
+  Space,
+  Statistic,
+  Table,
+  Tag,
+  Typography,
+  message,
+} from 'antd';
 import type { TableColumnsType } from 'antd';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
@@ -7,10 +21,12 @@ import {
   useApproveMeasurement,
   useDeleteMeasurement,
   useLockMeasurement,
+  useMeasurementApprovals,
   useMeasurements,
   useRejectMeasurement,
   useSubmitMeasurement,
   useUpdateMeasurement,
+  type MeasurementApprovalRead,
   type MeasurementRead,
   type MeasurementStatus,
 } from '@/api/hooks/useMeasurements';
@@ -40,7 +56,8 @@ const FIELD_LABELS: Record<string, string> = {
   diameter: 'Diameter (mm)',
 };
 
-const NCOLS = 6;
+// expand column + 6 data columns
+const NCOLS = 7;
 
 type MeasurementRow =
   | { _type: 'date-header'; date: string; count: number; key: string }
@@ -59,6 +76,70 @@ function buildDateGroupedRows(measurements: MeasurementRead[]): MeasurementRow[]
     rows.push({ _type: 'item', measurement: m, key: m.id });
   }
   return rows;
+}
+
+const APPROVAL_COLS: TableColumnsType<MeasurementApprovalRead> = [
+  { title: 'Actor', dataIndex: 'actor_name', key: 'actor_name', width: 150 },
+  {
+    title: 'Transition',
+    key: 'transition',
+    width: 220,
+    render: (_, r) => (
+      <span>
+        <Tag>{r.from_status}</Tag>→<Tag color={r.to_status === 'REJECTED' ? 'red' : 'green'}>{r.to_status}</Tag>
+      </span>
+    ),
+  },
+  {
+    title: 'Remarks',
+    dataIndex: 'remarks',
+    key: 'remarks',
+    render: (v: string | null) => v ?? <Typography.Text type="secondary">—</Typography.Text>,
+  },
+];
+
+function MeasurementDetailPanel({ measurement }: { measurement: MeasurementRead }) {
+  const { data: approvals, isLoading } = useMeasurementApprovals(measurement.id);
+  const { fmtDate, fmtDateTime } = useDateFormat();
+
+  const approvalCols: TableColumnsType<MeasurementApprovalRead> = [
+    ...APPROVAL_COLS,
+    {
+      title: 'When',
+      key: 'acted_at',
+      width: 160,
+      render: (_, r) => fmtDateTime(r.acted_at),
+    },
+  ];
+
+  return (
+    <div style={{ padding: '8px 16px 16px' }}>
+      <Descriptions size="small" column={{ xs: 1, sm: 2, md: 3 }} bordered style={{ marginBottom: 16 }}>
+        <Descriptions.Item label="Recorded By">{measurement.recorded_by_name}</Descriptions.Item>
+        <Descriptions.Item label="Date">{fmtDate(measurement.measurement_date)}</Descriptions.Item>
+        <Descriptions.Item label="Computed Qty">{measurement.computed_qty}</Descriptions.Item>
+        <Descriptions.Item label="Chainage">{measurement.chainage ?? '—'}</Descriptions.Item>
+        {Object.entries(measurement.dimensions).map(([k, v]) => (
+          <Descriptions.Item key={k} label={FIELD_LABELS[k] ?? k}>
+            {v}
+          </Descriptions.Item>
+        ))}
+      </Descriptions>
+      <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
+        Approval History
+      </Typography.Text>
+      <Table<MeasurementApprovalRead>
+        size="small"
+        dataSource={approvals ?? []}
+        columns={approvalCols}
+        rowKey="id"
+        loading={isLoading}
+        pagination={false}
+        bordered
+        locale={{ emptyText: 'No approval actions yet' }}
+      />
+    </div>
+  );
 }
 
 export function MeasurementsPage() {
@@ -83,6 +164,9 @@ export function MeasurementsPage() {
   const [editDimensions, setEditDimensions] = useState<Record<string, number>>({});
   const [editChainage, setEditChainage] = useState('');
 
+  const [rejectingMeasurement, setRejectingMeasurement] = useState<MeasurementRead | null>(null);
+  const [rejectRemarks, setRejectRemarks] = useState('');
+
   const openEditModal = (record: MeasurementRead) => {
     setEditDimensions(
       Object.fromEntries(
@@ -91,6 +175,11 @@ export function MeasurementsPage() {
     );
     setEditChainage(record.chainage ?? '');
     setEditingMeasurement(record);
+  };
+
+  const openRejectModal = (record: MeasurementRead) => {
+    setRejectRemarks('');
+    setRejectingMeasurement(record);
   };
 
   const editWorkType = useMemo(
@@ -128,6 +217,18 @@ export function MeasurementsPage() {
       message.success(`Measurement ${label}`);
     } catch {
       message.error(`Could not ${label.toLowerCase()} measurement`);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!rejectingMeasurement || !rejectRemarks.trim()) return;
+    try {
+      await reject.mutateAsync({ id: rejectingMeasurement.id, remarks: rejectRemarks.trim() });
+      message.success('Measurement rejected');
+      setRejectingMeasurement(null);
+      setRejectRemarks('');
+    } catch {
+      message.error('Could not reject measurement');
     }
   };
 
@@ -195,7 +296,7 @@ export function MeasurementsPage() {
         <Button key="approve" size="small" type="primary" onClick={() => runAction(approve, record.id, 'PM approved')}>
           PM Approve
         </Button>,
-        <Button key="reject" size="small" danger onClick={() => runAction(reject, record.id, 'rejected')}>
+        <Button key="reject" size="small" danger onClick={() => openRejectModal(record)}>
           Reject
         </Button>,
       );
@@ -205,7 +306,7 @@ export function MeasurementsPage() {
         <Button key="approve" size="small" type="primary" onClick={() => runAction(approve, record.id, 'QS approved')}>
           QS Approve
         </Button>,
-        <Button key="reject" size="small" danger onClick={() => runAction(reject, record.id, 'rejected')}>
+        <Button key="reject" size="small" danger onClick={() => openRejectModal(record)}>
           Reject
         </Button>,
       );
@@ -296,7 +397,36 @@ export function MeasurementsPage() {
         bordered
         scroll={{ x: 800 }}
         onRow={(row) => ({ style: { background: row._type === 'date-header' ? DATE_HDR_BG : undefined } })}
+        expandable={{
+          expandedRowRender: (row) =>
+            row._type === 'item' ? <MeasurementDetailPanel measurement={row.measurement} /> : null,
+          rowExpandable: (row) => row._type === 'item',
+        }}
       />
+
+      <Modal
+        title="Reject Measurement"
+        open={!!rejectingMeasurement}
+        onCancel={() => setRejectingMeasurement(null)}
+        onOk={handleReject}
+        okText="Reject"
+        okButtonProps={{ danger: true, disabled: !rejectRemarks.trim() }}
+        confirmLoading={reject.isPending}
+        destroyOnHidden
+      >
+        <Form layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item label="Rejection Reason" required>
+            <Input.TextArea
+              rows={4}
+              maxLength={500}
+              showCount
+              placeholder="Describe why this measurement is being rejected…"
+              value={rejectRemarks}
+              onChange={(e) => setRejectRemarks(e.target.value)}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <Modal
         title="Edit Measurement"
