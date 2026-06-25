@@ -23,8 +23,8 @@ def upgrade() -> None:
     op.create_table(
         'dpr_labour',
         sa.Column('id', sa.dialects.postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-        sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column('dpr_header_id', sa.dialects.postgresql.UUID(as_uuid=True),
                   sa.ForeignKey('dpr_headers.id', ondelete='CASCADE'), nullable=False),
         sa.Column('worker_id', sa.dialects.postgresql.UUID(as_uuid=True),
@@ -43,8 +43,8 @@ def upgrade() -> None:
     op.create_table(
         'worker_payments',
         sa.Column('id', sa.dialects.postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-        sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column('worker_id', sa.dialects.postgresql.UUID(as_uuid=True),
                   sa.ForeignKey('workers.id', ondelete='RESTRICT'), nullable=False),
         sa.Column('project_id', sa.dialects.postgresql.UUID(as_uuid=True),
