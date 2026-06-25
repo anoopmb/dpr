@@ -24,6 +24,7 @@ import {
   useMeasurementApprovals,
   useMeasurements,
   useRejectMeasurement,
+  useRecallMeasurement,
   useSubmitMeasurement,
   useUpdateMeasurement,
   type MeasurementApprovalRead,
@@ -159,6 +160,7 @@ export function MeasurementsPage() {
   const lock = useLockMeasurement();
   const updateMeasurement = useUpdateMeasurement();
   const deleteMeasurement = useDeleteMeasurement();
+  const recallMeasurement = useRecallMeasurement();
 
   const [editingMeasurement, setEditingMeasurement] = useState<MeasurementRead | null>(null);
   const [editDimensions, setEditDimensions] = useState<Record<string, number>>({});
@@ -217,6 +219,15 @@ export function MeasurementsPage() {
       message.success(`Measurement ${label}`);
     } catch {
       message.error(`Could not ${label.toLowerCase()} measurement`);
+    }
+  };
+
+  const handleRecall = async (record: MeasurementRead) => {
+    try {
+      await recallMeasurement.mutateAsync({ id: record.id });
+      message.success('Measurement recalled to draft — you can now edit and resubmit it');
+    } catch {
+      message.error('Could not recall measurement');
     }
   };
 
@@ -316,6 +327,21 @@ export function MeasurementsPage() {
         <Button key="lock" size="small" type="primary" onClick={() => runAction(lock, record.id, 'locked')}>
           Lock
         </Button>,
+      );
+    }
+    if (record.status === 'REJECTED' && canEditOrDelete(record)) {
+      buttons.push(
+        <Popconfirm
+          key="recall"
+          title="Recall to Draft?"
+          description="This measurement will return to Draft so you can edit and resubmit it."
+          onConfirm={() => handleRecall(record)}
+          okText="Recall"
+        >
+          <Button size="small" loading={recallMeasurement.isPending}>
+            Recall to Draft
+          </Button>
+        </Popconfirm>,
       );
     }
     return <Space>{buttons}</Space>;

@@ -11,6 +11,15 @@ from app.repositories.base import BaseRepository
 class MeasurementRepository(BaseRepository[Measurement]):
     model = Measurement
 
+    async def list_for_project_and_date(self, project_id: uuid.UUID, measurement_date: date) -> list[Measurement]:
+        result = await self.session.execute(
+            select(Measurement).where(
+                Measurement.project_id == project_id,
+                Measurement.measurement_date == measurement_date,
+            )
+        )
+        return list(result.scalars().all())
+
     async def list_for_project(self, project_id: uuid.UUID) -> list[Measurement]:
         result = await self.session.execute(
             select(Measurement).where(Measurement.project_id == project_id)
@@ -26,6 +35,7 @@ class MeasurementRepository(BaseRepository[Measurement]):
                 Measurement.boq_item_id == boq_item_id,
                 Measurement.measurement_date == measurement_date,
                 Measurement.status != MeasurementStatus.REJECTED,
+                Measurement.status != MeasurementStatus.DRAFT,
             )
         )
         return Decimal(str(result.scalar_one()))

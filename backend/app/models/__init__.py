@@ -3,7 +3,7 @@ from app.models.audit import AuditLog
 from app.models.billing import PaymentReceived, RunningBill, RunningBillItem
 from app.models.boq import BoqItem, BoqSection
 from app.models.department import Department
-from app.models.dpr import DprHeader, DprIssue, DprMachinery, DprMaterial, DprProductionEntry, DprWorkItem
+from app.models.dpr import DprHeader, DprHeaderApproval, DprIssue, DprMachinery, DprMaterial, DprProductionEntry, DprWorkItem
 from app.models.expense import Expense
 from app.models.master_data import (
     ExpenseCategoryMaster,
@@ -44,6 +44,7 @@ __all__ = [
     "Worker",
     "AttendanceRecord",
     "DprHeader",
+    "DprHeaderApproval",
     "DprWorkItem",
     "DprProductionEntry",
     "DprIssue",

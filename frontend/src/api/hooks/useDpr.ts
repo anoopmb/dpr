@@ -31,6 +31,8 @@ export interface DprMachineryRead {
   hire_rate: string | null;
 }
 
+export type DprStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED';
+
 export interface DprHeaderRead {
   id: string;
   project_id: string;
@@ -42,11 +44,24 @@ export interface DprHeaderRead {
   no_work_reason: string | null;
   submitted_by: string;
   submitted_at: string | null;
-  status: 'DRAFT' | 'SUBMITTED';
+  status: DprStatus;
+  approved_by: string | null;
+  approved_at: string | null;
   work_items: DprWorkItemRead[];
   issues: DprIssueRead[];
   materials: DprMaterialRead[];
   machinery_entries: DprMachineryRead[];
+}
+
+export interface DprHeaderApprovalRead {
+  id: string;
+  dpr_header_id: string;
+  from_status: string;
+  to_status: string;
+  acted_by: string;
+  actor_name: string;
+  remarks: string | null;
+  acted_at: string;
 }
 
 export interface DprProductionEntryRead {
@@ -417,5 +432,41 @@ export function useDeleteDprHeader() {
     onSuccess: (projectId) => {
       queryClient.invalidateQueries({ queryKey: ['dpr', projectId] });
     },
+  });
+}
+
+export function useApproveDpr() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ headerId, remarks }: { headerId: string; remarks?: string }) =>
+      (await apiClient.post<DprHeaderRead>(`/dpr/${headerId}/approve`, { remarks })).data,
+    onSuccess: (header) => invalidateHeader(queryClient, header),
+  });
+}
+
+export function useRejectDpr() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ headerId, remarks }: { headerId: string; remarks: string }) =>
+      (await apiClient.post<DprHeaderRead>(`/dpr/${headerId}/reject`, { remarks })).data,
+    onSuccess: (header) => invalidateHeader(queryClient, header),
+  });
+}
+
+export function useDprApprovals(headerId: string | null) {
+  return useQuery({
+    queryKey: ['dpr-approvals', headerId],
+    queryFn: async () =>
+      (await apiClient.get<DprHeaderApprovalRead[]>(`/dpr/${headerId}/approvals`)).data,
+    enabled: !!headerId,
+  });
+}
+
+export function useDprMeasurements(headerId: string | null) {
+  return useQuery({
+    queryKey: ['dpr-measurements', headerId],
+    queryFn: async () =>
+      (await apiClient.get<import('./useMeasurements').MeasurementRead[]>(`/dpr/${headerId}/measurements`)).data,
+    enabled: !!headerId,
   });
 }

@@ -173,6 +173,16 @@ async def lock_measurement(
     return await _to_read(session, measurement)
 
 
+@router.post("/{measurement_id}/recall", response_model=MeasurementRead)
+async def recall_measurement(
+    measurement_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep
+) -> MeasurementRead:
+    measurement = await MeasurementService(session).recall(
+        measurement_id, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role
+    )
+    return await _to_read(session, measurement)
+
+
 @router.patch(
     "/{measurement_id}",
     response_model=MeasurementRead,

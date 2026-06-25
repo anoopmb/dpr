@@ -45,6 +45,7 @@ export function MaterialsUsedPage() {
   const materialById = new Map((materials ?? []).map((m) => [m.id, m]));
   const uomById = new Map((uoms ?? []).map((u) => [u.id, u]));
   const isDraft = header?.status === 'DRAFT';
+  const isLocked = !!headerId && !isDraft;
 
   const handleMaterialSelect = (materialId: string) => {
     const mat = materialById.get(materialId);
@@ -121,6 +122,15 @@ export function MaterialsUsedPage() {
       <ProjectSelector style={{ marginBottom: 16, width: '100%' }} />
 
       {!selectedProjectId && <Alert type="warning" showIcon message="Select a project to continue" />}
+
+      {isLocked && (
+        <Alert
+          type="info"
+          showIcon
+          message={`The DPR for ${fmtDate(selectedEntryDate)} has been ${header?.status?.toLowerCase()} and is locked. Material entries cannot be added or edited. The Project Manager can return the DPR to Draft if corrections are needed.`}
+          style={{ marginBottom: 16 }}
+        />
+      )}
 
       {selectedProjectId && isLoading && <Skeleton active />}
 

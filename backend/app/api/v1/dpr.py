@@ -2,10 +2,14 @@ import uuid
 from datetime import date
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
+from sqlalchemy import select
 
 from app.api.deps import CurrentUserDep, SessionDep, require_role
-from app.models.user import UserRole
+from app.models.measurement import Measurement
+from app.models.user import User, UserRole
 from app.schemas.dpr import (
+    DprApprovalRequest,
+    DprHeaderApprovalRead,
     DprHeaderCreate,
     DprHeaderRead,
     DprHeaderUpdate,
@@ -16,10 +20,12 @@ from app.schemas.dpr import (
     DprMaterialUpdate,
     DprProductionBulkUpsert,
     DprProductionEntryRead,
+    DprRejectRequest,
     DprWorkItemCreate,
     ProductionProgressRead,
 )
 from app.schemas.dpr_report import DprMonthlyReportRead
+from app.schemas.measurement import MeasurementRead
 from app.services.dpr_service import DprProductionService, DprService
 
 router = APIRouter(prefix="/dpr", tags=["dpr"])
@@ -161,6 +167,93 @@ async def submit_dpr(
 ) -> DprHeaderRead:
     header = await DprService(session, background_tasks).submit(header_id, actor_id=uuid.UUID(current_user.id))
     return DprHeaderRead.model_validate(header)
+
+
+@router.post("/{header_id}/approve", response_model=DprHeaderRead)
+async def approve_dpr(
+    header_id: uuid.UUID,
+    data: DprApprovalRequest,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+    background_tasks: BackgroundTasks,
+) -> DprHeaderRead:
+    header = await DprService(session, background_tasks).approve(
+        header_id, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role, data=data
+    )
+    return DprHeaderRead.model_validate(header)
+
+
+@router.post("/{header_id}/reject", response_model=DprHeaderRead)
+async def reject_dpr(
+    header_id: uuid.UUID,
+    data: DprRejectRequest,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+    background_tasks: BackgroundTasks,
+) -> DprHeaderRead:
+    header = await DprService(session, background_tasks).reject(
+        header_id, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role, data=data
+    )
+    return DprHeaderRead.model_validate(header)
+
+
+@router.get("/{header_id}/approvals", response_model=list[DprHeaderApprovalRead])
+async def list_dpr_approvals(
+    header_id: uuid.UUID, session: SessionDep, _: CurrentUserDep
+) -> list[DprHeaderApprovalRead]:
+    rows = await DprService(session).list_approvals(header_id)
+    return [
+        DprHeaderApprovalRead(
+            id=approval.id,
+            dpr_header_id=approval.dpr_header_id,
+            from_status=approval.from_status,
+            to_status=approval.to_status,
+            acted_by=approval.acted_by,
+            actor_name=full_name,
+            remarks=approval.remarks,
+            acted_at=approval.acted_at,
+        )
+        for approval, full_name in rows
+    ]
+
+
+@router.get("/{header_id}/measurements", response_model=list[MeasurementRead])
+async def list_measurements_for_dpr(
+    header_id: uuid.UUID, session: SessionDep, _: CurrentUserDep
+) -> list[MeasurementRead]:
+    """Measurements recorded on the same project + date as this DPR header."""
+    header = await DprService(session).get(header_id)
+    result = await session.execute(
+        select(Measurement).where(
+            Measurement.project_id == header.project_id,
+            Measurement.measurement_date == header.report_date,
+        )
+    )
+    measurements = list(result.scalars().all())
+    if not measurements:
+        return []
+    user_ids = {m.recorded_by for m in measurements}
+    name_result = await session.execute(select(User.id, User.full_name).where(User.id.in_(user_ids)))
+    name_by_id = dict(name_result.all())
+    return [
+        MeasurementRead(
+            id=m.id,
+            project_id=m.project_id,
+            boq_item_id=m.boq_item_id,
+            work_type_id=m.work_type_id,
+            measurement_date=m.measurement_date,
+            dimensions=m.dimensions,
+            computed_qty=m.computed_qty,
+            status=m.status,
+            recorded_by=m.recorded_by,
+            recorded_by_name=name_by_id.get(m.recorded_by, "Unknown"),
+            version=m.version,
+            superseded_by_id=m.superseded_by_id,
+            billed=m.billed,
+            chainage=m.chainage,
+        )
+        for m in measurements
+    ]
 
 
 @router.put(

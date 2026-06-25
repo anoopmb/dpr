@@ -328,6 +328,27 @@ class MeasurementService:
         )
         return measurement
 
+    async def recall(
+        self, measurement_id: uuid.UUID, actor_id: uuid.UUID, actor_role: UserRole
+    ) -> Measurement:
+        measurement = await self.get(measurement_id)
+        if MeasurementStatus(measurement.status) != MeasurementStatus.REJECTED:
+            raise PermissionDeniedError("Only REJECTED measurements can be recalled to draft.")
+        if measurement.recorded_by != actor_id and actor_role != UserRole.ADMIN:
+            raise PermissionDeniedError("Only the recording engineer can recall this measurement.")
+        result = await self._record_transition(measurement, MeasurementStatus.DRAFT, actor_id, None)
+        await self.notification_service.notify(
+            [measurement.recorded_by],
+            type="MEASUREMENT_RECALLED",
+            title="Measurement recalled to draft",
+            message=f"Your rejected measurement dated {measurement.measurement_date} has been recalled to draft. You may edit and resubmit it.",
+            project_id=measurement.project_id,
+            link_url=_MEASUREMENTS_FIELD_LINK,
+            related_entity_type="MEASUREMENT",
+            related_entity_id=measurement.id,
+        )
+        return result
+
     async def delete(
         self, measurement_id: uuid.UUID, actor_id: uuid.UUID, actor_role: UserRole
     ) -> None:

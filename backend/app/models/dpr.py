@@ -13,6 +13,7 @@ from app.models.base import TimestampedBase
 class DprStatus(StrEnum):
     DRAFT = "DRAFT"
     SUBMITTED = "SUBMITTED"
+    APPROVED = "APPROVED"
 
 
 class DprHeader(TimestampedBase):
@@ -33,6 +34,10 @@ class DprHeader(TimestampedBase):
     )
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[DprStatus] = mapped_column(String(20), nullable=False, default=DprStatus.DRAFT)
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     work_items: Mapped[list["DprWorkItem"]] = relationship(back_populates="dpr_header", cascade="all, delete-orphan")
     issues: Mapped[list["DprIssue"]] = relationship(back_populates="dpr_header", cascade="all, delete-orphan")
@@ -145,3 +150,20 @@ class DprProductionEntry(TimestampedBase):
     amount_today: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     chainage: Mapped[str | None] = mapped_column(String(100))
     remarks: Mapped[str | None] = mapped_column(String(500))
+
+
+class DprHeaderApproval(TimestampedBase):
+    """Append-only DPR header status-transition history (submit → approve/reject)."""
+
+    __tablename__ = "dpr_header_approvals"
+
+    dpr_header_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dpr_headers.id", ondelete="CASCADE"), nullable=False
+    )
+    from_status: Mapped[str] = mapped_column(String(30), nullable=False)
+    to_status: Mapped[str] = mapped_column(String(30), nullable=False)
+    acted_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    remarks: Mapped[str | None] = mapped_column(String(500))
+    acted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

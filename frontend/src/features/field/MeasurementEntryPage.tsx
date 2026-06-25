@@ -7,6 +7,7 @@ import { useProjectContextStore } from '@/store/project-context-store';
 import { useBoqItems } from '@/api/hooks/useBoq';
 import { useWorkTypes } from '@/api/hooks/useMasters';
 import { useCreateMeasurement } from '@/api/hooks/useMeasurements';
+import { useDprList } from '@/api/hooks/useDpr';
 import { useAttachPhoto } from '@/api/hooks/usePhotos';
 import { useUploadPhoto } from '@/api/hooks/useUpload';
 import { PhotoCapture } from '@/components/common/PhotoCapture';
@@ -36,6 +37,10 @@ export function MeasurementEntryPage() {
   const { resolvedMode } = useThemeMode();
   const { fmtDate } = useDateFormat();
   const RECORDED_BG = resolvedMode === 'dark' ? 'rgba(82, 196, 26, 0.12)' : '#f6ffed';
+
+  const { data: dprList } = useDprList(selectedProjectId);
+  const dprForDate = dprList?.find((d) => d.report_date === selectedEntryDate);
+  const dprIsLocked = dprForDate && dprForDate.status !== 'DRAFT';
 
   const [boqItemId, setBoqItemId] = useState<string | null>(null);
   const [dimensions, setDimensions] = useState<Record<string, number>>({});
@@ -112,6 +117,16 @@ export function MeasurementEntryPage() {
       <ProjectSelector style={{ marginBottom: 16, width: '100%' }} />
 
       {!selectedProjectId && <Alert type="warning" showIcon message="Select a project to continue" />}
+
+      {selectedProjectId && dprIsLocked && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={`DPR for ${fmtDate(selectedEntryDate)} is already ${dprForDate?.status?.toLowerCase()}`}
+          description="This measurement will be saved to the Measurement Book but will NOT update the DPR production totals. The Project Manager must return the DPR to Draft before new measurements can reflect in it."
+        />
+      )}
 
       {selectedProjectId && recordedToday.length > 0 && (
         <Card size="small" style={{ marginBottom: 16, background: RECORDED_BG }}>

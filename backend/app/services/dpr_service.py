@@ -12,7 +12,8 @@ from app.core.timezone import get_org_today
 from app.domain.dpr.validators import validate_report_date
 from app.models.attendance import AttendanceRecord
 from app.models.audit import AuditAction
-from app.models.dpr import DprHeader, DprIssue, DprMachinery, DprMaterial, DprProductionEntry, DprStatus, DprWorkItem
+from app.models.dpr import DprHeader, DprHeaderApproval, DprIssue, DprMachinery, DprMaterial, DprProductionEntry, DprStatus, DprWorkItem
+from app.models.user import User
 from app.models.expense import Expense
 from app.models.master_data import (
     ExpenseCategoryMaster,
@@ -29,6 +30,7 @@ from app.repositories.dpr_repo import DprProductionRepository, DprRepository
 from app.repositories.measurement_repo import MeasurementRepository
 from app.schemas.dpr import (
     BoqItemProgressRead,
+    DprApprovalRequest,
     DprHeaderCreate,
     DprHeaderUpdate,
     DprIssueCreate,
@@ -37,6 +39,7 @@ from app.schemas.dpr import (
     DprMaterialCreate,
     DprMaterialUpdate,
     DprProductionBulkUpsert,
+    DprRejectRequest,
     DprWorkItemCreate,
     ProductionProgressRead,
     SectionProgressRead,
@@ -151,7 +154,10 @@ class DprService:
     async def _get_editable_header(self, header_id: uuid.UUID) -> DprHeader:
         header = await self.get(header_id)
         if header.status != DprStatus.DRAFT:
-            raise PermissionDeniedError("This DPR has already been submitted and can no longer be edited.")
+            raise PermissionDeniedError(
+                f"This DPR is {header.status} and can no longer be edited. "
+                "Only DRAFT DPRs are editable."
+            )
         return header
 
     async def _get_editable_work_header(self, header_id: uuid.UUID) -> DprHeader:
@@ -346,6 +352,111 @@ class DprService:
             related_entity_id=header.id,
         )
         return result
+
+    async def approve(
+        self, header_id: uuid.UUID, actor_id: uuid.UUID, actor_role: UserRole, data: DprApprovalRequest
+    ) -> DprHeader:
+        header = await self.get(header_id)
+        if header.status != DprStatus.SUBMITTED:
+            raise PermissionDeniedError(
+                f"Only SUBMITTED DPRs can be approved (current status: {header.status})."
+            )
+        if actor_role not in (UserRole.PROJECT_MANAGER, UserRole.ADMIN):
+            raise PermissionDeniedError("Only a Project Manager or Admin can approve a DPR.")
+
+        before = serialize_model(header)
+        now = datetime.now(timezone.utc)
+        approval = DprHeaderApproval(
+            dpr_header_id=header.id,
+            from_status=DprStatus.SUBMITTED,
+            to_status=DprStatus.APPROVED,
+            acted_by=actor_id,
+            remarks=data.remarks,
+            acted_at=now,
+        )
+        self.session.add(approval)
+        header.status = DprStatus.APPROVED
+        header.approved_by = actor_id
+        header.approved_at = now
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="DPR_HEADER",
+            entity_id=header.id,
+            action=AuditAction.STATUS_CHANGE,
+            actor_id=actor_id,
+            before=before,
+            after=serialize_model(header),
+        )
+        await self.session.commit()
+        result = await self.get(header_id)
+
+        await self.notification_service.notify(
+            [header.submitted_by],
+            type="DPR_APPROVED",
+            title="DPR approved",
+            message=f"Your DPR for {header.report_date} has been approved."
+            + (f" Note: {data.remarks}" if data.remarks else ""),
+            project_id=header.project_id,
+            link_url=_DPR_LINK,
+            related_entity_type="DPR_HEADER",
+            related_entity_id=header.id,
+        )
+        return result
+
+    async def reject(
+        self, header_id: uuid.UUID, actor_id: uuid.UUID, actor_role: UserRole, data: DprRejectRequest
+    ) -> DprHeader:
+        header = await self.get(header_id)
+        if header.status != DprStatus.SUBMITTED:
+            raise PermissionDeniedError(
+                f"Only SUBMITTED DPRs can be rejected (current status: {header.status})."
+            )
+        if actor_role not in (UserRole.PROJECT_MANAGER, UserRole.ADMIN):
+            raise PermissionDeniedError("Only a Project Manager or Admin can reject a DPR.")
+
+        before = serialize_model(header)
+        approval = DprHeaderApproval(
+            dpr_header_id=header.id,
+            from_status=DprStatus.SUBMITTED,
+            to_status=DprStatus.DRAFT,
+            acted_by=actor_id,
+            remarks=data.remarks,
+            acted_at=datetime.now(timezone.utc),
+        )
+        self.session.add(approval)
+        header.status = DprStatus.DRAFT
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="DPR_HEADER",
+            entity_id=header.id,
+            action=AuditAction.STATUS_CHANGE,
+            actor_id=actor_id,
+            before=before,
+            after=serialize_model(header),
+        )
+        await self.session.commit()
+        result = await self.get(header_id)
+
+        await self.notification_service.notify(
+            [header.submitted_by],
+            type="DPR_REJECTED",
+            title="DPR returned for correction",
+            message=f"Your DPR for {header.report_date} has been returned for correction. Reason: {data.remarks}",
+            project_id=header.project_id,
+            link_url=_DPR_LINK,
+            related_entity_type="DPR_HEADER",
+            related_entity_id=header.id,
+        )
+        return result
+
+    async def list_approvals(self, header_id: uuid.UUID) -> list[tuple]:
+        result = await self.session.execute(
+            select(DprHeaderApproval, User.full_name)
+            .join(User, DprHeaderApproval.acted_by == User.id)
+            .where(DprHeaderApproval.dpr_header_id == header_id)
+            .order_by(DprHeaderApproval.acted_at)
+        )
+        return result.all()
 
     async def delete_header(self, header_id: uuid.UUID, actor_id: uuid.UUID) -> None:
         header = await self.session.get(DprHeader, header_id)

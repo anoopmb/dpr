@@ -7,6 +7,27 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.models.dpr import DprStatus, IssueSeverity, IssueStatus
 
 
+class DprApprovalRequest(BaseModel):
+    remarks: str | None = Field(default=None, max_length=500)
+
+
+class DprRejectRequest(BaseModel):
+    remarks: str = Field(min_length=1, max_length=500)
+
+
+class DprHeaderApprovalRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    dpr_header_id: uuid.UUID
+    from_status: str
+    to_status: str
+    acted_by: uuid.UUID
+    actor_name: str
+    remarks: str | None
+    acted_at: datetime
+
+
 class DprHeaderCreate(BaseModel):
     project_id: uuid.UUID
     report_date: date
@@ -123,6 +144,8 @@ class DprHeaderRead(BaseModel):
     submitted_by: uuid.UUID
     submitted_at: datetime | None
     status: DprStatus
+    approved_by: uuid.UUID | None
+    approved_at: datetime | None
     work_items: list[DprWorkItemRead]
     issues: list[DprIssueRead]
     materials: list[DprMaterialRead]

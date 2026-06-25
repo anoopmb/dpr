@@ -115,6 +115,17 @@ export function useUpdateMeasurement() {
   });
 }
 
+export function useRecallMeasurement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id }: { id: string }) =>
+      (await apiClient.post<MeasurementRead>(`/measurements/${id}/recall`)).data,
+    onSuccess: (measurement) => {
+      queryClient.invalidateQueries({ queryKey: ['measurements', measurement.project_id] });
+    },
+  });
+}
+
 export function useDeleteMeasurement() {
   const queryClient = useQueryClient();
   return useMutation({

@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth-store';
 import {
   useDeleteMeasurement,
   useMeasurements,
+  useRecallMeasurement,
   useSubmitMeasurement,
   useUpdateMeasurement,
   type MeasurementRead,
@@ -45,6 +46,7 @@ export function MyMeasurementsPage() {
   const submitMeasurement = useSubmitMeasurement();
   const updateMeasurement = useUpdateMeasurement();
   const deleteMeasurement = useDeleteMeasurement();
+  const recallMeasurement = useRecallMeasurement();
   const { fmtDate } = useDateFormat();
 
   const [editingMeasurement, setEditingMeasurement] = useState<MeasurementRead | null>(null);
@@ -121,6 +123,15 @@ export function MyMeasurementsPage() {
     }
   };
 
+  const handleRecall = async (record: MeasurementRead) => {
+    try {
+      await recallMeasurement.mutateAsync({ id: record.id });
+      message.success('Measurement recalled to draft — you can now edit and resubmit');
+    } catch {
+      message.error('Could not recall measurement');
+    }
+  };
+
   const handleDelete = async (record: MeasurementRead) => {
     try {
       await deleteMeasurement.mutateAsync({ id: record.id, projectId: record.project_id });
@@ -152,28 +163,43 @@ export function MyMeasurementsPage() {
       title: 'Actions',
       key: 'actions',
       width: 180,
-      render: (_, record) =>
-        record.status === 'DRAFT' ? (
-          <Space>
-            <Button size="small" type="primary" loading={submitMeasurement.isPending} onClick={() => handleSubmit(record.id)}>
-              Submit
-            </Button>
-            <Button size="small" onClick={() => openEditModal(record)}>
-              Edit
-            </Button>
+      render: (_, record) => (
+        <Space>
+          {record.status === 'DRAFT' && (
+            <>
+              <Button size="small" type="primary" loading={submitMeasurement.isPending} onClick={() => handleSubmit(record.id)}>
+                Submit
+              </Button>
+              <Button size="small" onClick={() => openEditModal(record)}>
+                Edit
+              </Button>
+              <Popconfirm
+                title="Delete this measurement?"
+                description="This will also remove its contribution from DPR production."
+                onConfirm={() => handleDelete(record)}
+                okText="Delete"
+                okButtonProps={{ danger: true }}
+              >
+                <Button size="small" danger loading={deleteMeasurement.isPending}>
+                  Delete
+                </Button>
+              </Popconfirm>
+            </>
+          )}
+          {record.status === 'REJECTED' && (
             <Popconfirm
-              title="Delete this measurement?"
-              description="This will also remove its contribution from DPR production."
-              onConfirm={() => handleDelete(record)}
-              okText="Delete"
-              okButtonProps={{ danger: true }}
+              title="Recall to Draft?"
+              description="This measurement will return to Draft so you can edit and resubmit it."
+              onConfirm={() => handleRecall(record)}
+              okText="Recall"
             >
-              <Button size="small" danger loading={deleteMeasurement.isPending}>
-                Delete
+              <Button size="small" loading={recallMeasurement.isPending}>
+                Recall to Draft
               </Button>
             </Popconfirm>
-          </Space>
-        ) : null,
+          )}
+        </Space>
+      ),
     },
   ];
 

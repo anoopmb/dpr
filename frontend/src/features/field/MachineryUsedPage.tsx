@@ -36,6 +36,7 @@ export function MachineryUsedPage() {
 
   const machineryById = new Map((machinery ?? []).map((m) => [m.id, m]));
   const isDraft = header?.status === 'DRAFT';
+  const isLocked = !!headerId && !isDraft;
 
   const handleAdd = async (values: { machinery_id: string; hours_used: number; hire_rate?: number }) => {
     try {
@@ -100,6 +101,15 @@ export function MachineryUsedPage() {
       <ProjectSelector style={{ marginBottom: 16, width: '100%' }} />
 
       {!selectedProjectId && <Alert type="warning" showIcon message="Select a project to continue" />}
+
+      {isLocked && (
+        <Alert
+          type="info"
+          showIcon
+          message={`The DPR for ${fmtDate(selectedEntryDate)} has been ${header?.status?.toLowerCase()} and is locked. Machinery entries cannot be added or edited. The Project Manager can return the DPR to Draft if corrections are needed.`}
+          style={{ marginBottom: 16 }}
+        />
+      )}
 
       {selectedProjectId && isLoading && <Skeleton active />}
 

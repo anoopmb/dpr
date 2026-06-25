@@ -33,6 +33,7 @@ import {
   useDeleteDprHeader,
   useDprHeader,
   useDprList,
+  useDprMeasurements,
   useDprProduction,
   useAddDprIssue,
   useSubmitDpr,
@@ -90,7 +91,16 @@ function ProductionTab({
   const selectedProjectId = useProjectContextStore((s) => s.selectedProjectId);
   const { data: sections, isLoading: sectionsLoading } = useBoqSections(selectedProjectId);
   const { data: existingEntries } = useDprProduction(headerId);
+  const { data: dprMeasurements } = useDprMeasurements(headerId);
   const bulkUpsert = useBulkUpsertProduction();
+
+  // BOQ items that have a submitted (or beyond) measurement are locked in the
+  // production tab — the measurement is the single source of truth for that qty.
+  const lockedByMeasurement = new Set(
+    (dprMeasurements ?? [])
+      .filter((m) => m.status !== 'DRAFT' && m.status !== 'REJECTED')
+      .map((m) => m.boq_item_id),
+  );
   const { resolvedMode } = useThemeMode();
   const { fmtAmt, fmtQty, symbol } = useNumberFormat();
 
@@ -195,6 +205,15 @@ function ProductionTab({
       render: (_, row) => {
         if (row._type !== 'item') return null;
         const val = production[row.item.id]?.qty ?? '';
+        const fromMeasurement = lockedByMeasurement.has(row.item.id);
+        if (fromMeasurement) {
+          return (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontWeight: 500 }}>{val || '0'}</span>
+              <Typography.Text type="secondary" style={{ fontSize: 11 }}>← MB</Typography.Text>
+            </span>
+          );
+        }
         return (
           <InputNumber
             size="small"
@@ -529,7 +548,7 @@ export function DprTodayPage() {
     );
   }
 
-  const isSubmitted = header?.status === 'SUBMITTED';
+  const isSubmitted = header?.status !== 'DRAFT';
 
   const tabItems = [
     {
@@ -619,7 +638,9 @@ export function DprTodayPage() {
         </Typography.Title>
         <Space>
           {entryDatePicker}
-          <Tag color={isSubmitted ? 'green' : 'blue'}>{isSubmitted ? 'SUBMITTED' : 'DRAFT'}</Tag>
+          <Tag color={header?.status === 'APPROVED' ? 'green' : header?.status === 'SUBMITTED' ? 'blue' : 'default'}>
+            {header?.status ?? 'DRAFT'}
+          </Tag>
         </Space>
       </div>
       <ProjectSelector style={{ marginBottom: 12, width: '100%' }} />
