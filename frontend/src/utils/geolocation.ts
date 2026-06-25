@@ -4,12 +4,8 @@ export interface CapturedPosition {
   accuracy: number;
 }
 
-export function getCurrentPosition(): Promise<CapturedPosition> {
+function requestPosition(options: PositionOptions): Promise<CapturedPosition> {
   return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error('Geolocation is not supported on this device.'));
-      return;
-    }
     navigator.geolocation.getCurrentPosition(
       (position) =>
         resolve({
@@ -18,9 +14,45 @@ export function getCurrentPosition(): Promise<CapturedPosition> {
           accuracy: position.coords.accuracy,
         }),
       (error) => reject(error),
-      { enableHighAccuracy: true, timeout: 15_000 },
+      options,
     );
   });
+}
+
+export async function getCurrentPosition(): Promise<CapturedPosition> {
+  if (!navigator.geolocation) {
+    throw new Error('Geolocation is not supported on this device.');
+  }
+  try {
+    // GPS-only high-accuracy lookups routinely time out on Android (cold GPS
+    // chip, indoors, etc.) even though iOS resolves the same request quickly
+    // via WiFi-assisted positioning. Fall back to a network-based fix instead
+    // of failing outright.
+    return await requestPosition({ enableHighAccuracy: true, timeout: 20_000 });
+  } catch (error) {
+    // A real permission denial can't be retried into success — surface it
+    // immediately instead of masking it behind a second, doomed attempt.
+    if (error instanceof GeolocationPositionError && error.code === error.PERMISSION_DENIED) {
+      throw error;
+    }
+    return await requestPosition({ enableHighAccuracy: false, timeout: 10_000, maximumAge: 60_000 });
+  }
+}
+
+export function describeLocationError(error: unknown): string {
+  if (error instanceof GeolocationPositionError) {
+    switch (error.code) {
+      case error.PERMISSION_DENIED:
+        return 'Location permission is blocked for this site. Enable it in your browser/app site settings, then tap Refresh.';
+      case error.POSITION_UNAVAILABLE:
+        return 'Could not determine your location. Make sure Location/GPS is turned on for this device, then tap Refresh.';
+      case error.TIMEOUT:
+        return 'Location request timed out. Move to an area with better GPS/network signal, then tap Refresh.';
+      default:
+        return 'Could not get GPS location. Try again.';
+    }
+  }
+  return 'Could not get GPS location. Try again.';
 }
 
 export async function reverseGeocode(latitude: number, longitude: number): Promise<string> {

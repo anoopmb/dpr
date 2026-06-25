@@ -26,7 +26,7 @@ import { AimOutlined, DeleteOutlined, EditOutlined, PlusOutlined, SettingOutline
 import dayjs, { type Dayjs } from 'dayjs';
 import { useCreateProject, useDeleteProject, useProjects, useUpdateProject, type ProjectRead } from '@/api/hooks/useProjects';
 import { GeofenceMapPicker } from '@/components/common/GeofenceMapPicker';
-import { getCurrentPosition } from '@/utils/geolocation';
+import { describeLocationError, getCurrentPosition } from '@/utils/geolocation';
 import { useDepartments } from '@/api/hooks/useMasters';
 import { useUsers } from '@/api/hooks/useUsers';
 import {
@@ -228,8 +228,8 @@ function ProjectSettingsDrawer({ project, onClose }: { project: ProjectRead; onC
       const pos = await getCurrentPosition();
       setGeoLat(pos.latitude);
       setGeoLng(pos.longitude);
-    } catch {
-      message.error('Could not get GPS location');
+    } catch (error) {
+      message.error(describeLocationError(error));
     } finally {
       setLocatingMe(false);
     }

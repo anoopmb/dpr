@@ -17,7 +17,7 @@ import {
 import { useWorkerCategories } from '@/api/hooks/useMasters';
 import { useProjects } from '@/api/hooks/useProjects';
 import { useUploadPhoto } from '@/api/hooks/useUpload';
-import { getCurrentPosition, haversineDistanceMeters, reverseGeocode } from '@/utils/geolocation';
+import { describeLocationError, getCurrentPosition, haversineDistanceMeters, reverseGeocode } from '@/utils/geolocation';
 import { useDateFormat } from '@/utils/format';
 
 const todayStr = new Date().toISOString().slice(0, 10);
@@ -72,8 +72,8 @@ export function AttendanceCheckInPage() {
       const pos = await getCurrentPosition();
       const name = await reverseGeocode(pos.latitude, pos.longitude);
       setLocation({ ...pos, locationName: name });
-    } catch {
-      message.error('Could not get GPS location. Enable location access and try again.');
+    } catch (error) {
+      message.error(describeLocationError(error));
     } finally {
       setLocating(false);
     }
@@ -86,8 +86,8 @@ export function AttendanceCheckInPage() {
         const pos = await getCurrentPosition();
         const name = await reverseGeocode(pos.latitude, pos.longitude);
         if (mounted) setLocation({ ...pos, locationName: name });
-      } catch {
-        if (mounted) message.error('Could not get GPS location. Enable location access and try again.');
+      } catch (error) {
+        if (mounted) message.error(describeLocationError(error));
       } finally {
         if (mounted) setLocating(false);
       }
@@ -168,10 +168,8 @@ export function AttendanceCheckInPage() {
     } catch (error: unknown) {
       if (isAxiosError(error) && error.response?.data?.code === 'ALREADY_CHECKED_IN') {
         message.error('This worker is already checked in for today.');
-      } else if (error instanceof GeolocationPositionError) {
-        message.error('Could not get GPS location. Enable location access and try again.');
-      } else if (error instanceof Error && error.message.includes('Geolocation')) {
-        message.error('Could not get GPS location. Enable location access and try again.');
+      } else if (error instanceof GeolocationPositionError || (error instanceof Error && error.message.includes('Geolocation'))) {
+        message.error(describeLocationError(error));
       } else {
         message.error('Check-in failed');
       }
