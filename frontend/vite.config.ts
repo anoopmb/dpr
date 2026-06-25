@@ -10,8 +10,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'sw-push.js'],
       manifest: {
-        name: 'DPR / Measurement Book System',
-        short_name: 'DPR System',
+        name: 'VKJ DPR',
+        short_name: 'VKJ DPR',
         description: 'Daily Progress Report, Measurement Book, Billing and Expense tracking',
         theme_color: '#1677ff',
         background_color: '#ffffff',
@@ -21,11 +21,13 @@ export default defineConfig({
         scope: '/',
         icons: [
           { src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
-          { src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'maskable' },
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'icon-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg}'],
+        globPatterns: ['**/*.{js,css,html,svg,png}'],
         importScripts: ['/sw-push.js'],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         navigateFallbackDenylist: [/^\/support-centre\.html$/],

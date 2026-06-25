@@ -34,7 +34,6 @@ import { useAuthStore, isFieldRole, type UserRole } from '@/store/auth-store';
 import { ROLE_LABELS } from '@/utils/roles';
 import { useThemeMode, type ThemeMode } from '@/theme/theme-context';
 import { NotificationBell } from '@/components/layout/NotificationBell';
-import { InstallBanner } from '@/components/layout/InstallBanner';
 import { usePushSubscription } from '@/api/hooks/usePushSubscription';
 import { useOrganizationSettings } from '@/api/hooks/useOrganizationSettings';
 import { useIsMobile } from '@/hooks/useIsMobile';
@@ -406,7 +405,6 @@ export function AppLayout({ children }: { children: ReactNode }) {
             transition: 'margin-inline-start 0.2s ease',
           }}
         >
-          <InstallBanner />
           <Header
             style={{
               paddingInline: 16,
