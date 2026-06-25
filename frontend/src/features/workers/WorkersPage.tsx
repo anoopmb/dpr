@@ -31,7 +31,7 @@ export function WorkersPage() {
   const { data: categories } = useWorkerCategories();
   const createWorker = useCreateWorker();
   const updateWorker = useUpdateWorker();
-  const { fmtDate } = useDateFormat();
+  const { fmtDate, fmtDateTime } = useDateFormat();
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editingWorker, setEditingWorker] = useState<WorkerRead | null>(null);
@@ -173,7 +173,7 @@ export function WorkersPage() {
                 columns={[
                   { title: 'Date', dataIndex: 'attendance_date', sorter: (a, b) => a.attendance_date.localeCompare(b.attendance_date), render: fmtDate },
                   { title: 'Worker', dataIndex: 'worker_id', render: (id: string) => workerById.get(id) ?? id },
-                  { title: 'Check-in Time', dataIndex: 'check_in_time', sorter: (a, b) => a.check_in_time.localeCompare(b.check_in_time) },
+                  { title: 'Check-in Time', dataIndex: 'check_in_time', sorter: (a, b) => a.check_in_time.localeCompare(b.check_in_time), render: fmtDateTime },
                   {
                     title: 'Geofence',
                     dataIndex: 'within_geofence',

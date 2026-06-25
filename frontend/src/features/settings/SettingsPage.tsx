@@ -77,12 +77,18 @@ interface OrgFormValues {
   currency_code: string;
   currency_symbol: string;
   date_format: DateFormat;
+  timezone: string;
   decimal_places: number;
   use_thousands_separator: boolean;
   fiscal_year_start_month: number;
   default_measurement_tolerance_percent: number;
   email_notifications_enabled: boolean;
 }
+
+// Real, browser-provided IANA timezone list (Intl.supportedValuesOf is
+// supported in all browsers this app targets) — not a hand-maintained
+// guess list that could drift or omit a zone an org actually needs.
+const TIMEZONE_OPTIONS = Intl.supportedValuesOf('timeZone').map((tz) => ({ value: tz, label: tz }));
 
 function LogoUploadField({
   slot,
@@ -139,7 +145,7 @@ export function SettingsPage() {
   if (isLoading || !settings) {
     return (
       <div>
-        <Typography.Title level={3}>Organization Settings</Typography.Title>
+        <Typography.Title level={3}>Settings</Typography.Title>
         <Card>
           <Skeleton active paragraph={{ rows: 8 }} />
         </Card>
@@ -167,7 +173,7 @@ export function SettingsPage() {
         company_logo_small_dark_url: null,
         favicon_url: null,
       });
-      message.success('Organization settings saved');
+      message.success('Settings saved');
     } catch {
       message.error('Could not save settings');
     }
@@ -175,7 +181,7 @@ export function SettingsPage() {
 
   return (
     <div>
-      <Typography.Title level={3}>Organization Settings</Typography.Title>
+      <Typography.Title level={3}>Settings</Typography.Title>
       <Form
         form={form}
         layout="vertical"
@@ -187,6 +193,7 @@ export function SettingsPage() {
           currency_code: settings.currency_code,
           currency_symbol: settings.currency_symbol,
           date_format: settings.date_format,
+          timezone: settings.timezone,
           decimal_places: settings.decimal_places,
           use_thousands_separator: settings.use_thousands_separator,
           fiscal_year_start_month: settings.fiscal_year_start_month,
@@ -239,6 +246,14 @@ export function SettingsPage() {
               ]}
             />
           </Form.Item>
+          <Form.Item
+            name="timezone"
+            label="Timezone"
+            rules={[{ required: true }]}
+            extra="Used to format every timestamp shown across the app (audit logs, check-in times, etc.) and to determine the current calendar date for attendance/DPR validation server-side — not just a display preference."
+          >
+            <Select showSearch optionFilterProp="label" options={TIMEZONE_OPTIONS} />
+          </Form.Item>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
             <Form.Item name="decimal_places" label="Decimal Places (monetary amounts)">
               <InputNumber min={0} max={4} style={{ width: '100%' }} />
@@ -279,7 +294,7 @@ export function SettingsPage() {
           size="large"
           loading={updateSettings.isPending || uploadPhoto.isPending}
         >
-          Save Organization Settings
+          Save Settings
         </Button>
       </Form>
     </div>

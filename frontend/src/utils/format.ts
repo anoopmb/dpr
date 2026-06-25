@@ -8,8 +8,13 @@
  */
 
 import dayjs, { type Dayjs } from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
 import { useOrganizationSettings } from '@/api/hooks/useOrganizationSettings';
 import { useUoms } from '@/api/hooks/useMasters';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 export interface NumberFormat {
   /** Format a monetary amount using org currency settings */
@@ -68,15 +73,28 @@ export function useNumberFormat(): NumberFormat {
 }
 
 export interface DateFormat {
-  /** Format a date (ISO string, Date, or Dayjs) per the org's date_format setting */
+  /** Format a plain calendar date (ISO string, Date, or Dayjs) per the
+   * org's date_format setting. No timezone conversion — date-only values
+   * (measurement_date, report_date, etc.) have no time component to
+   * convert. */
   fmtDate: (v: string | Date | Dayjs | null | undefined) => string;
+  /** Format a full timestamp (created_at, check_in_time, etc.) converted
+   * to the org's configured timezone, as "<date_format> HH:mm". Use this
+   * instead of fmtDate for any value that includes a time component —
+   * otherwise it silently renders in the viewer's own browser timezone,
+   * which can differ from what every other user/admin sees for the same
+   * event. */
+  fmtDateTime: (v: string | Date | Dayjs | null | undefined) => string;
   /** The org's date_format setting, usable directly as an AntD DatePicker `format` prop */
   dateFormat: string;
+  /** The org's configured IANA timezone (e.g. "Asia/Kolkata") */
+  orgTimezone: string;
 }
 
 export function useDateFormat(): DateFormat {
   const { data: settings } = useOrganizationSettings();
   const dateFormat = settings?.date_format ?? 'DD/MM/YYYY';
+  const orgTimezone = settings?.timezone ?? 'UTC';
 
   const fmtDate = (v: string | Date | Dayjs | null | undefined): string => {
     if (v === null || v === undefined || v === '') return '—';
@@ -84,5 +102,11 @@ export function useDateFormat(): DateFormat {
     return d.isValid() ? d.format(dateFormat) : '—';
   };
 
-  return { fmtDate, dateFormat };
+  const fmtDateTime = (v: string | Date | Dayjs | null | undefined): string => {
+    if (v === null || v === undefined || v === '') return '—';
+    const d = dayjs(v).tz(orgTimezone);
+    return d.isValid() ? d.format(`${dateFormat} HH:mm`) : '—';
+  };
+
+  return { fmtDate, fmtDateTime, dateFormat, orgTimezone };
 }

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button, Card, DatePicker, Descriptions, Empty, Modal, Select, Space, Table, Tag, Typography, theme } from 'antd';
 import type { TableColumnsType } from 'antd';
-import dayjs, { type Dayjs } from 'dayjs';
+import type { Dayjs } from 'dayjs';
 import { EyeOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
 import { useAuditEntityTypes, useAuditLogs, type AuditAction, type AuditLogRead } from '@/api/hooks/useAuditLogs';
 import { useUsers } from '@/api/hooks/useUsers';
@@ -52,8 +52,7 @@ function JsonBlock({ title, data }: { title: string; data: Record<string, unknow
 
 export function AuditLogPage() {
   const isMobile = useIsMobile();
-  const { dateFormat } = useDateFormat();
-  const fmtDateTime = (v: string) => dayjs(v).format(`${dateFormat} HH:mm`);
+  const { dateFormat, fmtDateTime } = useDateFormat();
   const { data: entityTypesData } = useAuditEntityTypes();
   const { data: users } = useUsers();
 

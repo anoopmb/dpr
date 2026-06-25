@@ -16,6 +16,7 @@ export interface OrganizationSettingsRead {
   currency_code: string;
   currency_symbol: string;
   date_format: DateFormat;
+  timezone: string;
   decimal_places: number;
   use_thousands_separator: boolean;
   fiscal_year_start_month: number;
@@ -35,6 +36,7 @@ export interface OrganizationSettingsUpdateInput {
   currency_code?: string;
   currency_symbol?: string;
   date_format?: DateFormat;
+  timezone?: string;
   decimal_places?: number;
   use_thousands_separator?: boolean;
   fiscal_year_start_month?: number;

@@ -109,7 +109,7 @@ const desktopMenuGroups: NavGroup[] = [
     children: [
       { key: '/masters', label: 'Master Data', icon: <SettingOutlined />, roles: ['ADMIN'] },
       { key: '/users', label: 'Users', icon: <IdcardOutlined />, roles: ['ADMIN'] },
-      { key: '/settings', label: 'Organization Settings', icon: <GlobalOutlined />, roles: ['ADMIN'] },
+      { key: '/settings', label: 'Settings', icon: <GlobalOutlined />, roles: ['ADMIN'] },
       { key: '/audit-logs', label: 'Audit Logs', icon: <HistoryOutlined />, roles: ['ADMIN'] },
     ],
   },

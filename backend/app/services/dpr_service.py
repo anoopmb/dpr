@@ -7,6 +7,7 @@ from fastapi import BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import DomainError, NotFoundError, PermissionDeniedError
+from app.core.timezone import get_org_today
 from app.domain.dpr.validators import validate_report_date
 from app.models.audit import AuditAction
 from app.models.dpr import DprHeader, DprIssue, DprMachinery, DprMaterial, DprProductionEntry, DprStatus, DprWorkItem
@@ -62,7 +63,7 @@ class DprService:
         if project is None:
             raise NotFoundError(f"Project {data.project_id} not found.")
 
-        validate_report_date(data.report_date, project.start_date, date.today())
+        validate_report_date(data.report_date, project.start_date, await get_org_today(self.session))
 
         existing = await self.repo.get_by_project_and_date(data.project_id, data.report_date)
         if existing is not None:

@@ -1,9 +1,12 @@
 import uuid
 from decimal import Decimal
+from zoneinfo import available_timezones
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.organization_settings import DateFormat
+
+_VALID_TIMEZONES = available_timezones()
 
 
 class OrganizationSettingsUpdate(BaseModel):
@@ -18,11 +21,19 @@ class OrganizationSettingsUpdate(BaseModel):
     currency_code: str | None = Field(default=None, min_length=3, max_length=3)
     currency_symbol: str | None = Field(default=None, min_length=1, max_length=5)
     date_format: DateFormat | None = None
+    timezone: str | None = Field(default=None, max_length=50)
     decimal_places: int | None = Field(default=None, ge=0, le=4)
     use_thousands_separator: bool | None = None
     fiscal_year_start_month: int | None = Field(default=None, ge=1, le=12)
     default_measurement_tolerance_percent: Decimal | None = Field(default=None, ge=0, le=100)
     email_notifications_enabled: bool | None = None
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, v: str | None) -> str | None:
+        if v is not None and v not in _VALID_TIMEZONES:
+            raise ValueError(f"'{v}' is not a recognized IANA timezone name.")
+        return v
 
 
 class OrganizationSettingsRead(BaseModel):
@@ -40,6 +51,7 @@ class OrganizationSettingsRead(BaseModel):
     currency_code: str
     currency_symbol: str
     date_format: DateFormat
+    timezone: str
     decimal_places: int
     use_thousands_separator: bool
     fiscal_year_start_month: int

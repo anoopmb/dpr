@@ -38,6 +38,13 @@ class OrganizationSettings(TimestampedBase):
     currency_code: Mapped[str] = mapped_column(String(3), nullable=False, default="INR")
     currency_symbol: Mapped[str] = mapped_column(String(5), nullable=False, default="₹")
     date_format: Mapped[DateFormat] = mapped_column(String(20), nullable=False, default=DateFormat.DMY)
+    # IANA zone name (e.g. "Asia/Kolkata") — used both to format timestamps
+    # for display app-wide and, server-side, to determine "today" for
+    # attendance/DPR date logic instead of the server process's own local
+    # clock (which may be a different calendar day than the org's local
+    # time near midnight). Validated against zoneinfo.available_timezones()
+    # in the Pydantic schema, not re-validated here.
+    timezone: Mapped[str] = mapped_column(String(50), nullable=False, default="Asia/Kolkata")
     decimal_places: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
     use_thousands_separator: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     fiscal_year_start_month: Mapped[int] = mapped_column(Integer, nullable=False, default=4)

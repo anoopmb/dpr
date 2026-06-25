@@ -5,6 +5,7 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import DomainError, NotFoundError
+from app.core.timezone import get_org_today
 from app.domain.attendance.validators import GeoPoint, is_within_geofence
 from app.models.attendance import AttendanceRecord
 from app.models.audit import AuditAction
@@ -38,7 +39,7 @@ async def _record_attendance(
 ) -> AttendanceRecord:
     """Shared by AttendanceService.check_in/mark_present and
     WorkerService.create (when a new worker is auto-marked present)."""
-    today = date.today()
+    today = await get_org_today(repo.session)
     existing = await repo.get_for_worker_and_date(worker_id, today)
     if existing is not None:
         raise AlreadyCheckedInError(f"Worker {worker_id} is already checked in for {today}.")
@@ -205,7 +206,7 @@ class AttendanceService:
             if worker is None or worker.project_id != data.project_id:
                 raise NotFoundError(f"Worker {worker_id} not found for this project.")
 
-            existing = await self.repo.get_for_worker_and_date(worker_id, date.today())
+            existing = await self.repo.get_for_worker_and_date(worker_id, await get_org_today(self.session))
             if existing is not None:
                 continue
 
