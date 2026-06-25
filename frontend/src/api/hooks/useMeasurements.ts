@@ -1,7 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
 
-export type MeasurementStatus = 'DRAFT' | 'SUBMITTED' | 'PM_APPROVED' | 'QS_APPROVED' | 'LOCKED' | 'REJECTED';
+// DRAFT/SUBMITTED/REJECTED/LOCKED are the fixed bookends; everything else is
+// an admin-configured approval-level status_code (see useWorkflowConfig) —
+// not a closed set, so this is a plain string, not a union.
+export type MeasurementStatus = string;
 
 export interface MeasurementRead {
   id: string;
@@ -18,6 +21,7 @@ export interface MeasurementRead {
   superseded_by_id: string | null;
   billed: boolean;
   chainage: string | null;
+  rate: string | null;
 }
 
 export interface MeasurementApprovalRead {
@@ -37,6 +41,7 @@ export interface MeasurementCreateInput {
   measurement_date: string;
   dimensions: Record<string, string>;
   chainage?: string | null;
+  rate?: string | null;
 }
 
 export function useMeasurements(projectId: string | null) {
@@ -105,7 +110,7 @@ export function useUpdateMeasurement() {
       data,
     }: {
       id: string;
-      data: { dimensions: Record<string, string>; chainage?: string | null };
+      data: { dimensions: Record<string, string>; chainage?: string | null; rate?: string | null };
     }) => (await apiClient.patch<MeasurementRead>(`/measurements/${id}`, data)).data,
     onSuccess: (measurement) => {
       queryClient.invalidateQueries({ queryKey: ['measurements', measurement.project_id] });

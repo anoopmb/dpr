@@ -61,13 +61,23 @@ class MaterialMaster(TimestampedBase):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class MachineryHireUnit(StrEnum):
+    HOUR = "HOUR"
+    HALF_DAY = "HALF_DAY"
+    DAY = "DAY"
+    WEEK = "WEEK"
+    MONTH = "MONTH"
+    YEAR = "YEAR"
+    OWNED = "OWNED"
+
+
 class MachineryMaster(TimestampedBase):
     __tablename__ = "machinery_master"
 
     code: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     hire_rate: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
-    hire_unit: Mapped[str | None] = mapped_column(String(20))
+    hire_unit: Mapped[str] = mapped_column(String(20), nullable=False, server_default="HOUR")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 

@@ -11,12 +11,16 @@ from app.models.base import TimestampedBase
 
 
 class MeasurementStatus(StrEnum):
+    """The four fixed, built-in statuses. Everything in between DRAFT/SUBMITTED
+    and REJECTED/LOCKED is a configurable approval level (see
+    app.services.workflow_config_service) — those status codes are admin-
+    defined strings, not members of this enum, so `Measurement.status` is a
+    plain string column, not constrained to this enum's values."""
+
     DRAFT = "DRAFT"
     SUBMITTED = "SUBMITTED"
-    PM_APPROVED = "PM_APPROVED"
-    QS_APPROVED = "QS_APPROVED"
-    LOCKED = "LOCKED"
     REJECTED = "REJECTED"
+    LOCKED = "LOCKED"
 
 
 class Measurement(TimestampedBase):
@@ -39,9 +43,10 @@ class Measurement(TimestampedBase):
     measurement_date: Mapped[date] = mapped_column(Date, nullable=False)
     dimensions: Mapped[dict] = mapped_column(JSONB, nullable=False)
     computed_qty: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
-    status: Mapped[MeasurementStatus] = mapped_column(
-        String(20), nullable=False, default=MeasurementStatus.DRAFT
-    )
+    # Plain string, not constrained to MeasurementStatus — holds either a
+    # fixed bookend (DRAFT/SUBMITTED/REJECTED/LOCKED) or an admin-configured
+    # approval level's status_code (see app.models.workflow_config).
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default=MeasurementStatus.DRAFT.value)
     recorded_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
@@ -51,6 +56,7 @@ class Measurement(TimestampedBase):
     )
     billed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     chainage: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    rate: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
 
 
 class MeasurementApproval(TimestampedBase):

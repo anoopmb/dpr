@@ -27,11 +27,16 @@ export interface DprMaterialRead {
 export interface DprMachineryRead {
   id: string;
   machinery_id: string;
-  hours_used: string;
+  quantity_used: string;
+  hire_unit: string;
   hire_rate: string | null;
 }
 
-export type DprStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED';
+// DRAFT/SUBMITTED are fixed bookends; the terminal "fully approved" value is
+// always the literal "APPROVED" (enforced server-side), but an admin can add
+// additional intermediate approval levels with their own status codes before
+// reaching it — so this isn't a closed union.
+export type DprStatus = string;
 
 export interface DprHeaderRead {
   id: string;
@@ -223,6 +228,8 @@ export function useDprHeader(headerId: string | null) {
     queryKey: ['dpr-header', headerId],
     queryFn: async () => (await apiClient.get<DprHeaderRead>(`/dpr/${headerId}`)).data,
     enabled: !!headerId,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 }
 
@@ -232,6 +239,8 @@ export function useDprProduction(headerId: string | null) {
     queryFn: async () =>
       (await apiClient.get<DprProductionEntryRead[]>(`/dpr/${headerId}/production`)).data,
     enabled: !!headerId,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 }
 
@@ -354,7 +363,7 @@ export function useAddDprMachinery() {
     mutationFn: async ({
       headerId,
       data,
-    }: { headerId: string; data: { machinery_id: string; hours_used: string; hire_rate?: string } }) =>
+    }: { headerId: string; data: { machinery_id: string; quantity_used: string; hire_rate?: string } }) =>
       (await apiClient.post<DprHeaderRead>(`/dpr/${headerId}/machinery`, data)).data,
     onSuccess: (header) => invalidateHeader(queryClient, header),
   });
@@ -403,7 +412,7 @@ export function useUpdateDprMachinery() {
       data,
     }: {
       itemId: string;
-      data: { hours_used: string; hire_rate?: string | null };
+      data: { quantity_used: string; hire_rate?: string | null };
     }) => (await apiClient.patch<DprHeaderRead>(`/dpr/machinery/${itemId}`, data)).data,
     onSuccess: (header) => invalidateHeader(queryClient, header),
   });
@@ -468,5 +477,7 @@ export function useDprMeasurements(headerId: string | null) {
     queryFn: async () =>
       (await apiClient.get<import('./useMeasurements').MeasurementRead[]>(`/dpr/${headerId}/measurements`)).data,
     enabled: !!headerId,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 }

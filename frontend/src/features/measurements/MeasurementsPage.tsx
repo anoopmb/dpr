@@ -34,18 +34,32 @@ import {
 import { useAuthStore } from '@/store/auth-store';
 import { useBoqItems } from '@/api/hooks/useBoq';
 import { useWorkTypes } from '@/api/hooks/useMasters';
+import { useEffectiveWorkflow, type WorkflowDefinitionRead } from '@/api/hooks/useWorkflowConfig';
 import { calculateQuantity } from '@/features/measurements/formulaEngine';
 import { useThemeMode } from '@/theme/theme-context';
 import { useDateFormat } from '@/utils/format';
 
-const STATUS_COLOR: Record<MeasurementStatus, string> = {
+// DRAFT/SUBMITTED/REJECTED/LOCKED are fixed bookends with a fixed color;
+// everything else is an admin-configured approval level — colored by
+// cycling a palette keyed on the level's position in the workflow.
+const FIXED_STATUS_COLOR: Record<string, string> = {
   DRAFT: 'default',
   SUBMITTED: 'blue',
-  PM_APPROVED: 'gold',
-  QS_APPROVED: 'cyan',
-  LOCKED: 'green',
   REJECTED: 'red',
+  LOCKED: 'green',
 };
+const LEVEL_COLOR_PALETTE = ['gold', 'cyan', 'purple', 'geekblue', 'volcano', 'lime'];
+
+function statusColor(status: MeasurementStatus, workflow: WorkflowDefinitionRead | undefined): string {
+  if (FIXED_STATUS_COLOR[status]) return FIXED_STATUS_COLOR[status];
+  const idx = workflow?.levels.findIndex((l) => l.status_code === status) ?? -1;
+  return idx >= 0 ? LEVEL_COLOR_PALETTE[idx % LEVEL_COLOR_PALETTE.length] : 'default';
+}
+
+function statusLabel(status: MeasurementStatus, workflow: WorkflowDefinitionRead | undefined): string {
+  const level = workflow?.levels.find((l) => l.status_code === status);
+  return level ? level.label : status.replace(/_/g, ' ');
+}
 
 const FIELD_LABELS: Record<string, string> = {
   length: 'Length (m)',
@@ -57,8 +71,8 @@ const FIELD_LABELS: Record<string, string> = {
   diameter: 'Diameter (mm)',
 };
 
-// expand column + 6 data columns
-const NCOLS = 7;
+// expand column + 7 data columns
+const NCOLS = 8;
 
 type MeasurementRow =
   | { _type: 'date-header'; date: string; count: number; key: string }
@@ -99,7 +113,13 @@ const APPROVAL_COLS: TableColumnsType<MeasurementApprovalRead> = [
   },
 ];
 
-function MeasurementDetailPanel({ measurement }: { measurement: MeasurementRead }) {
+function MeasurementDetailPanel({
+  measurement,
+  boqRate,
+}: {
+  measurement: MeasurementRead;
+  boqRate: string | null;
+}) {
   const { data: approvals, isLoading } = useMeasurementApprovals(measurement.id);
   const { fmtDate, fmtDateTime } = useDateFormat();
 
@@ -113,6 +133,9 @@ function MeasurementDetailPanel({ measurement }: { measurement: MeasurementRead 
     },
   ];
 
+  const effectiveRate = measurement.rate ?? boqRate;
+  const isOverride = measurement.rate != null && boqRate != null && parseFloat(measurement.rate) !== parseFloat(boqRate);
+
   return (
     <div style={{ padding: '8px 16px 16px' }}>
       <Descriptions size="small" column={{ xs: 1, sm: 2, md: 3 }} bordered style={{ marginBottom: 16 }}>
@@ -120,6 +143,19 @@ function MeasurementDetailPanel({ measurement }: { measurement: MeasurementRead 
         <Descriptions.Item label="Date">{fmtDate(measurement.measurement_date)}</Descriptions.Item>
         <Descriptions.Item label="Computed Qty">{measurement.computed_qty}</Descriptions.Item>
         <Descriptions.Item label="Chainage">{measurement.chainage ?? '—'}</Descriptions.Item>
+        <Descriptions.Item label="Rate">
+          {effectiveRate != null ? effectiveRate : '—'}
+          {isOverride && (
+            <Typography.Text type="secondary" style={{ marginLeft: 6, fontSize: 12 }}>
+              (BOQ rate: {boqRate} — overridden)
+            </Typography.Text>
+          )}
+        </Descriptions.Item>
+        <Descriptions.Item label="Amount">
+          {effectiveRate != null
+            ? (parseFloat(measurement.computed_qty) * parseFloat(effectiveRate)).toFixed(2)
+            : '—'}
+        </Descriptions.Item>
         {Object.entries(measurement.dimensions).map(([k, v]) => (
           <Descriptions.Item key={k} label={FIELD_LABELS[k] ?? k}>
             {v}
@@ -148,6 +184,7 @@ export function MeasurementsPage() {
   const { data: measurements, isLoading } = useMeasurements(selectedProjectId);
   const { data: boqItems } = useBoqItems(selectedProjectId);
   const { data: workTypes } = useWorkTypes();
+  const { data: workflow } = useEffectiveWorkflow('MEASUREMENT', selectedProjectId);
   const user = useAuthStore((s) => s.user);
   const { resolvedMode } = useThemeMode();
   const { fmtDate } = useDateFormat();
@@ -165,6 +202,7 @@ export function MeasurementsPage() {
   const [editingMeasurement, setEditingMeasurement] = useState<MeasurementRead | null>(null);
   const [editDimensions, setEditDimensions] = useState<Record<string, number>>({});
   const [editChainage, setEditChainage] = useState('');
+  const [editRate, setEditRate] = useState<number | null>(null);
 
   const [rejectingMeasurement, setRejectingMeasurement] = useState<MeasurementRead | null>(null);
   const [rejectRemarks, setRejectRemarks] = useState('');
@@ -176,6 +214,7 @@ export function MeasurementsPage() {
       ),
     );
     setEditChainage(record.chainage ?? '');
+    setEditRate(record.rate != null ? parseFloat(record.rate) : null);
     setEditingMeasurement(record);
   };
 
@@ -253,6 +292,7 @@ export function MeasurementsPage() {
             editWorkType.dimension_fields.map((f) => [f, String(editDimensions[f] ?? 0)]),
           ),
           chainage: editChainage.trim() || null,
+          rate: editRate != null ? String(editRate) : null,
         },
       });
       message.success('Measurement updated');
@@ -302,32 +342,45 @@ export function MeasurementsPage() {
         );
       }
     }
-    if (record.status === 'SUBMITTED' && (user?.role === 'PROJECT_MANAGER' || user?.role === 'ADMIN')) {
-      buttons.push(
-        <Button key="approve" size="small" type="primary" onClick={() => runAction(approve, record.id, 'PM approved')}>
-          PM Approve
-        </Button>,
-        <Button key="reject" size="small" danger onClick={() => openRejectModal(record)}>
-          Reject
-        </Button>,
-      );
-    }
-    if (record.status === 'PM_APPROVED' && (user?.role === 'QUANTITY_SURVEYOR' || user?.role === 'ADMIN')) {
-      buttons.push(
-        <Button key="approve" size="small" type="primary" onClick={() => runAction(approve, record.id, 'QS approved')}>
-          QS Approve
-        </Button>,
-        <Button key="reject" size="small" danger onClick={() => openRejectModal(record)}>
-          Reject
-        </Button>,
-      );
-    }
-    if (record.status === 'QS_APPROVED' && (user?.role === 'QUANTITY_SURVEYOR' || user?.role === 'ADMIN')) {
-      buttons.push(
-        <Button key="lock" size="small" type="primary" onClick={() => runAction(lock, record.id, 'locked')}>
-          Lock
-        </Button>,
-      );
+    if (workflow) {
+      const codes = workflow.levels.map((l) => l.status_code);
+      let levelIndex = -1;
+      if (record.status === 'SUBMITTED' && workflow.levels.length > 0) {
+        levelIndex = 0;
+      } else {
+        const idx = codes.indexOf(record.status);
+        if (idx >= 0 && idx + 1 < workflow.levels.length) levelIndex = idx + 1;
+      }
+      if (levelIndex >= 0) {
+        const level = workflow.levels[levelIndex];
+        const canAct = user?.role === 'ADMIN' || level.allowed_roles.includes(user?.role as never);
+        if (canAct) {
+          buttons.push(
+            <Button key="approve" size="small" type="primary" onClick={() => runAction(approve, record.id, `${level.label} recorded`)}>
+              {level.label}
+            </Button>,
+          );
+          if (level.allow_reject) {
+            buttons.push(
+              <Button key="reject" size="small" danger onClick={() => openRejectModal(record)}>
+                Reject
+              </Button>,
+            );
+          }
+        }
+      }
+
+      const finalLevel = workflow.levels.find((l) => l.is_final_approval);
+      if (finalLevel && record.status === finalLevel.status_code) {
+        const canLock = user?.role === 'ADMIN' || (workflow.lock_allowed_roles ?? []).includes(user?.role as never);
+        if (canLock) {
+          buttons.push(
+            <Button key="lock" size="small" type="primary" onClick={() => runAction(lock, record.id, 'locked')}>
+              Lock
+            </Button>,
+          );
+        }
+      }
     }
     if (record.status === 'REJECTED' && canEditOrDelete(record)) {
       buttons.push(
@@ -374,12 +427,29 @@ export function MeasurementsPage() {
       render: (_, row) => (row._type === 'item' ? row.measurement.computed_qty : null),
     },
     {
+      title: 'Rate',
+      key: 'rate',
+      width: 100,
+      align: 'right' as const,
+      onCell: (row) => (row._type === 'date-header' ? { colSpan: 0 } : {}),
+      render: (_, row) => {
+        if (row._type !== 'item') return null;
+        const boqRate = boqById.get(row.measurement.boq_item_id)?.rate ?? null;
+        const rate = row.measurement.rate ?? boqRate;
+        if (rate == null) return '—';
+        const isOverride = row.measurement.rate != null && boqRate != null && parseFloat(row.measurement.rate) !== parseFloat(boqRate);
+        return <span title={isOverride ? `BOQ rate: ${boqRate}` : undefined}>{rate}{isOverride && ' *'}</span>;
+      },
+    },
+    {
       title: 'Status',
       key: 'status',
       width: 110,
       onCell: (row) => (row._type === 'date-header' ? { colSpan: 0 } : {}),
       render: (_, row) =>
-        row._type === 'item' ? <Tag color={STATUS_COLOR[row.measurement.status]}>{row.measurement.status}</Tag> : null,
+        row._type === 'item' ? (
+          <Tag color={statusColor(row.measurement.status, workflow)}>{statusLabel(row.measurement.status, workflow)}</Tag>
+        ) : null,
     },
     {
       title: 'Billed',
@@ -421,11 +491,17 @@ export function MeasurementsPage() {
         dataSource={rows}
         columns={columns}
         bordered
-        scroll={{ x: 800 }}
+        pagination={false}
+        scroll={{ x: 900 }}
         onRow={(row) => ({ style: { background: row._type === 'date-header' ? DATE_HDR_BG : undefined } })}
         expandable={{
           expandedRowRender: (row) =>
-            row._type === 'item' ? <MeasurementDetailPanel measurement={row.measurement} /> : null,
+            row._type === 'item' ? (
+              <MeasurementDetailPanel
+                measurement={row.measurement}
+                boqRate={boqById.get(row.measurement.boq_item_id)?.rate ?? null}
+              />
+            ) : null,
           rowExpandable: (row) => row._type === 'item',
         }}
       />
@@ -469,6 +545,16 @@ export function MeasurementsPage() {
                 value={editChainage}
                 onChange={(e) => setEditChainage(e.target.value)}
                 placeholder="e.g. 2/130–2/390"
+              />
+            </Form.Item>
+            <Form.Item label="Rate (optional override)">
+              <InputNumber
+                style={{ width: '100%' }}
+                min={0}
+                precision={2}
+                value={editRate}
+                placeholder="BOQ item rate"
+                onChange={(v) => setEditRate(v)}
               />
             </Form.Item>
             {editWorkType.dimension_fields.map((field) => (

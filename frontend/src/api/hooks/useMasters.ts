@@ -30,9 +30,21 @@ export interface MaterialRow extends MasterRow {
   is_active: boolean;
 }
 
+export type MachineryHireUnit = 'HOUR' | 'HALF_DAY' | 'DAY' | 'WEEK' | 'MONTH' | 'YEAR' | 'OWNED';
+
+export const MACHINERY_HIRE_UNIT_LABELS: Record<MachineryHireUnit, string> = {
+  HOUR: 'Per Hour',
+  HALF_DAY: 'Per Half Day',
+  DAY: 'Per Day',
+  WEEK: 'Per Week',
+  MONTH: 'Per Month',
+  YEAR: 'Per Year',
+  OWNED: 'Owned (no cost)',
+};
+
 export interface MachineryRow extends MasterRow {
   hire_rate: string | null;
-  hire_unit: string | null;
+  hire_unit: MachineryHireUnit;
   is_active: boolean;
 }
 

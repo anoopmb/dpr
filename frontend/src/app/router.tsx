@@ -19,6 +19,7 @@ const BillingPage           = lazy(() => import('@/features/billing/BillingPage'
 const ExpensesPage          = lazy(() => import('@/features/expenses/ExpensesPage').then(m => ({ default: m.ExpensesPage })));
 const MastersPage           = lazy(() => import('@/features/masters/MastersPage').then(m => ({ default: m.MastersPage })));
 const SettingsPage          = lazy(() => import('@/features/settings/SettingsPage').then(m => ({ default: m.SettingsPage })));
+const ApprovalWorkflowPage  = lazy(() => import('@/features/settings/ApprovalWorkflowPage').then(m => ({ default: m.ApprovalWorkflowPage })));
 const UsersPage             = lazy(() => import('@/features/users/UsersPage').then(m => ({ default: m.UsersPage })));
 const AuditLogPage          = lazy(() => import('@/features/admin/AuditLogPage').then(m => ({ default: m.AuditLogPage })));
 const ProfilePage           = lazy(() => import('@/features/profile/ProfilePage').then(m => ({ default: m.ProfilePage })));
@@ -273,6 +274,14 @@ export function AppRouter() {
                     element={
                       <RequireRole roles={['PROJECT_MANAGER', 'ADMIN']}>
                         <SettingsPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route
+                    path="/settings/approval-workflow"
+                    element={
+                      <RequireRole roles={['ADMIN']}>
+                        <ApprovalWorkflowPage />
                       </RequireRole>
                     }
                   />

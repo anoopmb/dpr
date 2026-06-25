@@ -8,7 +8,7 @@ from app.domain.measurement.validators import (
     MeasurementValidationError,
     validate_measurement_against_boq,
 )
-from app.domain.measurement.workflow import MeasurementStatus, transition
+from app.domain.measurement.workflow import DRAFT, SUBMITTED, WorkflowLevel, transition
 from app.core.exceptions import InvalidStateTransitionError
 from app.models.master_data import WorkTypeFormula
 
@@ -67,10 +67,29 @@ def test_validate_measurement_exceeding_tolerance_allowed_with_variation_order()
     validate_measurement_against_boq(Decimal("200"), snapshot)  # should not raise
 
 
+_DEFAULT_LEVELS = [
+    WorkflowLevel(status_code="PM_APPROVED", allow_reject=True),
+    WorkflowLevel(status_code="QS_APPROVED", allow_reject=True),
+]
+
+
 def test_workflow_rejects_illegal_transition():
     with pytest.raises(InvalidStateTransitionError):
-        transition(MeasurementStatus.DRAFT, MeasurementStatus.QS_APPROVED)
+        transition(DRAFT, "QS_APPROVED", _DEFAULT_LEVELS)
 
 
 def test_workflow_allows_sequential_transition():
-    assert transition(MeasurementStatus.DRAFT, MeasurementStatus.SUBMITTED) == MeasurementStatus.SUBMITTED
+    assert transition(DRAFT, SUBMITTED, _DEFAULT_LEVELS) == SUBMITTED
+    assert transition(SUBMITTED, "PM_APPROVED", _DEFAULT_LEVELS) == "PM_APPROVED"
+    assert transition("PM_APPROVED", "QS_APPROVED", _DEFAULT_LEVELS) == "QS_APPROVED"
+
+
+def test_workflow_allows_reject_from_any_level():
+    assert transition(SUBMITTED, "REJECTED", _DEFAULT_LEVELS) == "REJECTED"
+    assert transition("PM_APPROVED", "REJECTED", _DEFAULT_LEVELS) == "REJECTED"
+    assert transition("REJECTED", DRAFT, _DEFAULT_LEVELS) == DRAFT
+
+
+def test_workflow_no_transition_past_final_level():
+    with pytest.raises(InvalidStateTransitionError):
+        transition("QS_APPROVED", "LOCKED", _DEFAULT_LEVELS)

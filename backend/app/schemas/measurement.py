@@ -4,8 +4,6 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.measurement import MeasurementStatus
-
 
 class MeasurementCreate(BaseModel):
     project_id: uuid.UUID
@@ -13,11 +11,13 @@ class MeasurementCreate(BaseModel):
     measurement_date: date
     dimensions: dict[str, Decimal] = Field(min_length=1)
     chainage: str | None = Field(default=None, max_length=100)
+    rate: Decimal | None = Field(default=None, ge=0)
 
 
 class MeasurementUpdate(BaseModel):
     dimensions: dict[str, Decimal] = Field(min_length=1)
     chainage: str | None = Field(default=None, max_length=100)
+    rate: Decimal | None = Field(default=None, ge=0)
 
 
 class MeasurementActionRequest(BaseModel):
@@ -34,13 +34,14 @@ class MeasurementRead(BaseModel):
     measurement_date: date
     dimensions: dict[str, Decimal]
     computed_qty: Decimal
-    status: MeasurementStatus
+    status: str
     recorded_by: uuid.UUID
     recorded_by_name: str
     version: int
     superseded_by_id: uuid.UUID | None
     billed: bool
     chainage: str | None
+    rate: Decimal | None
 
 
 class MeasurementApprovalRead(BaseModel):

@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Button, Card, DatePicker, Empty, Table, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
-import { DownloadOutlined } from '@ant-design/icons';
+import { DownloadOutlined, FilePdfOutlined, PrinterOutlined } from '@ant-design/icons';
 import * as XLSX from 'xlsx';
 import dayjs, { type Dayjs } from 'dayjs';
+import { buildPrintableHTML, triggerPrint } from './dprPrint';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
 import { useProjects } from '@/api/hooks/useProjects';
@@ -620,6 +621,21 @@ export function DprMonthlyReportPage() {
     exportMonthlyReportToExcel(report, project?.name ?? 'Project', month.format('MMMM YYYY'), toNum, toNum);
   };
 
+  const handlePrint = useCallback(() => {
+    if (!report) return;
+    const project = (projects ?? []).find((p) => p.id === selectedProjectId);
+    const html = buildPrintableHTML(
+      report,
+      project?.name ?? 'Project',
+      month.format('MMMM YYYY'),
+      month,
+      fmtAmt,
+      fmtQty,
+      symbol,
+    );
+    triggerPrint(html);
+  }, [report, projects, selectedProjectId, month, fmtAmt, fmtQty, symbol]);
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
@@ -630,6 +646,12 @@ export function DprMonthlyReportPage() {
           <DatePicker picker="month" value={month} onChange={(d) => { if (d) setMonth(d); }} allowClear={false} />
           <Button icon={<DownloadOutlined />} onClick={handleExport} disabled={!report}>
             Export
+          </Button>
+          <Button icon={<PrinterOutlined />} onClick={handlePrint} disabled={!report}>
+            Print
+          </Button>
+          <Button icon={<FilePdfOutlined />} onClick={handlePrint} disabled={!report}>
+            Export PDF
           </Button>
         </div>
       </div>

@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import DomainError, NotFoundError, PermissionDeniedError
+from app.core.storage import delete_fileobj
 from app.core.timezone import get_org_today
 from app.domain.dpr.validators import validate_report_date
 from app.models.attendance import AttendanceRecord
@@ -15,6 +16,7 @@ from app.models.audit import AuditAction
 from app.models.dpr import DprHeader, DprHeaderApproval, DprIssue, DprLabour, DprMachinery, DprMaterial, DprProductionEntry, DprStatus, DprWorkItem
 from app.models.user import User
 from app.models.expense import Expense
+from app.models.workflow_config import WorkflowEntityType
 from app.models.master_data import (
     ExpenseCategoryMaster,
     MachineryMaster,
@@ -60,6 +62,7 @@ from app.schemas.dpr_report import (
 from app.services.audit_service import AuditService, serialize_model
 from app.services.notification_service import NotificationService
 from app.services.project_assignment_service import ProjectAssignmentService
+from app.services.workflow_config_service import WorkflowConfigService
 
 _DPR_LINK = "/dpr-history"
 
@@ -72,8 +75,10 @@ class DprService:
     def __init__(self, session: AsyncSession, background_tasks: BackgroundTasks | None = None) -> None:
         self.session = session
         self.repo = DprRepository(session)
+        self.measurement_repo = MeasurementRepository(session)
         self.notification_service = NotificationService(session, background_tasks)
         self.assignment_service = ProjectAssignmentService(session)
+        self.workflow_config = WorkflowConfigService(session)
         self.audit = AuditService(session)
 
     async def create_header(
@@ -219,12 +224,19 @@ class DprService:
 
     async def add_machinery(self, header_id: uuid.UUID, data: DprMachineryCreate, actor_id: uuid.UUID) -> DprHeader:
         await self._get_editable_work_header(header_id)
-        payload = data.model_dump()
-        if payload["hire_rate"] is None:
-            machinery = await self.session.get(MachineryMaster, data.machinery_id)
-            if machinery is not None:
-                payload["hire_rate"] = machinery.hire_rate
-        entry = DprMachinery(dpr_header_id=header_id, **payload)
+        machinery = await self.session.get(MachineryMaster, data.machinery_id)
+        if machinery is None:
+            raise NotFoundError(f"Machinery {data.machinery_id} not found.")
+        hire_rate = data.hire_rate if data.hire_rate is not None else (
+            None if machinery.hire_unit == "OWNED" else machinery.hire_rate
+        )
+        entry = DprMachinery(
+            dpr_header_id=header_id,
+            machinery_id=data.machinery_id,
+            quantity_used=data.quantity_used,
+            hire_unit=machinery.hire_unit,
+            hire_rate=hire_rate,
+        )
         self.session.add(entry)
         await self.session.flush()
         await self.audit.record(
@@ -291,8 +303,8 @@ class DprService:
         if header is None or header.status != DprStatus.DRAFT:
             raise PermissionDeniedError("Can only edit machinery entries on a DRAFT DPR.")
         before = serialize_model(entry)
-        entry.hours_used = data.hours_used
-        entry.hire_rate = data.hire_rate
+        entry.quantity_used = data.quantity_used
+        entry.hire_rate = None if entry.hire_unit == "OWNED" else data.hire_rate
         await self.session.flush()
         await self.audit.record(
             entity_type="DPR_MACHINERY",
@@ -326,6 +338,19 @@ class DprService:
 
     async def submit(self, header_id: uuid.UUID, actor_id: uuid.UUID) -> DprHeader:
         header = await self._get_editable_header(header_id)
+        measurement_workflow = await self.workflow_config.get_effective_definition(
+            WorkflowEntityType.MEASUREMENT, header.project_id
+        )
+        pending_codes = WorkflowConfigService.pending_status_codes(measurement_workflow)
+        pending = await self.measurement_repo.count_status_for_project_date(
+            header.project_id, header.report_date, pending_codes
+        )
+        if pending > 0:
+            raise DomainError(
+                f"Cannot submit DPR — {pending} measurement(s) have not completed the full "
+                "PM + QS approval flow. Every measurement for this date must be QS approved, "
+                "locked, or rejected before the DPR can be submitted."
+            )
         before = serialize_model(header)
         header.status = DprStatus.SUBMITTED
         header.submitted_at = datetime.now(timezone.utc)
@@ -358,27 +383,40 @@ class DprService:
         self, header_id: uuid.UUID, actor_id: uuid.UUID, actor_role: UserRole, data: DprApprovalRequest
     ) -> DprHeader:
         header = await self.get(header_id)
-        if header.status != DprStatus.SUBMITTED:
-            raise PermissionDeniedError(
-                f"Only SUBMITTED DPRs can be approved (current status: {header.status})."
-            )
-        if actor_role not in (UserRole.PROJECT_MANAGER, UserRole.ADMIN):
-            raise PermissionDeniedError("Only a Project Manager or Admin can approve a DPR.")
+        current = header.status
+        definition = await self.workflow_config.get_effective_definition(
+            WorkflowEntityType.DPR_HEADER, header.project_id
+        )
+        codes = [lvl.status_code for lvl in definition.levels]
+
+        if current == DprStatus.SUBMITTED:
+            if not definition.levels:
+                raise PermissionDeniedError("No approval levels are configured for this project's DPR workflow.")
+            level_index = 0
+        elif current in codes and codes.index(current) + 1 < len(definition.levels):
+            level_index = codes.index(current) + 1
+        else:
+            raise PermissionDeniedError(f"DPR in status {current} is not awaiting approval.")
+
+        level = definition.levels[level_index]
+        if actor_role != UserRole.ADMIN and actor_role.value not in level.allowed_roles:
+            raise PermissionDeniedError(f"Only {', '.join(level.allowed_roles)} may approve at this level.")
 
         before = serialize_model(header)
         now = datetime.now(timezone.utc)
         approval = DprHeaderApproval(
             dpr_header_id=header.id,
-            from_status=DprStatus.SUBMITTED,
-            to_status=DprStatus.APPROVED,
+            from_status=current,
+            to_status=level.status_code,
             acted_by=actor_id,
             remarks=data.remarks,
             acted_at=now,
         )
         self.session.add(approval)
-        header.status = DprStatus.APPROVED
-        header.approved_by = actor_id
-        header.approved_at = now
+        header.status = level.status_code
+        if level.is_final_approval:
+            header.approved_by = actor_id
+            header.approved_at = now
         await self.session.flush()
         await self.audit.record(
             entity_type="DPR_HEADER",
@@ -391,34 +429,67 @@ class DprService:
         await self.session.commit()
         result = await self.get(header_id)
 
-        await self.notification_service.notify(
-            [header.submitted_by],
-            type="DPR_APPROVED",
-            title="DPR approved",
-            message=f"Your DPR for {header.report_date} has been approved."
-            + (f" Note: {data.remarks}" if data.remarks else ""),
-            project_id=header.project_id,
-            link_url=_DPR_LINK,
-            related_entity_type="DPR_HEADER",
-            related_entity_id=header.id,
-        )
+        if level.is_final_approval:
+            await self.notification_service.notify(
+                [header.submitted_by],
+                type="DPR_APPROVED",
+                title="DPR approved",
+                message=f"Your DPR for {header.report_date} has been approved."
+                + (f" Note: {data.remarks}" if data.remarks else ""),
+                project_id=header.project_id,
+                link_url=_DPR_LINK,
+                related_entity_type="DPR_HEADER",
+                related_entity_id=header.id,
+            )
+        else:
+            next_level = definition.levels[level_index + 1]
+            reviewer_ids: set[uuid.UUID] = set()
+            for role_value in next_level.allowed_roles:
+                reviewer_ids.update(
+                    await self.assignment_service.resolve_users_for_role(header.project_id, UserRole(role_value))
+                )
+            await self.notification_service.notify(
+                list(reviewer_ids),
+                type="DPR_APPROVED",
+                title="DPR awaiting your approval",
+                message=(
+                    f"A DPR for {header.report_date} was approved at the {level.label} level "
+                    f"and now needs {next_level.label}."
+                ),
+                project_id=header.project_id,
+                link_url=_DPR_LINK,
+                related_entity_type="DPR_HEADER",
+                related_entity_id=header.id,
+            )
         return result
 
     async def reject(
         self, header_id: uuid.UUID, actor_id: uuid.UUID, actor_role: UserRole, data: DprRejectRequest
     ) -> DprHeader:
         header = await self.get(header_id)
-        if header.status != DprStatus.SUBMITTED:
-            raise PermissionDeniedError(
-                f"Only SUBMITTED DPRs can be rejected (current status: {header.status})."
-            )
-        if actor_role not in (UserRole.PROJECT_MANAGER, UserRole.ADMIN):
-            raise PermissionDeniedError("Only a Project Manager or Admin can reject a DPR.")
+        current = header.status
+        definition = await self.workflow_config.get_effective_definition(
+            WorkflowEntityType.DPR_HEADER, header.project_id
+        )
+        codes = [lvl.status_code for lvl in definition.levels]
+
+        level = None
+        if current == DprStatus.SUBMITTED and definition.levels:
+            level = definition.levels[0]
+        elif current in codes:
+            idx = codes.index(current)
+            if idx + 1 < len(definition.levels):
+                level = definition.levels[idx + 1]
+
+        if level is None or not level.allow_reject:
+            raise PermissionDeniedError(f"DPR in status {current} cannot be rejected.")
+        if actor_role != UserRole.ADMIN and actor_role.value not in level.allowed_roles:
+            raise PermissionDeniedError(f"Only {', '.join(level.allowed_roles)} may reject at this level.")
 
         before = serialize_model(header)
         approval = DprHeaderApproval(
             dpr_header_id=header.id,
-            from_status=DprStatus.SUBMITTED,
+            from_status=current,
             to_status=DprStatus.DRAFT,
             acted_by=actor_id,
             remarks=data.remarks,
@@ -437,6 +508,13 @@ class DprService:
         )
         await self.session.commit()
         result = await self.get(header_id)
+
+        # Measurements may have been approved while this DPR was locked
+        # (sync_from_measurements no-ops against a non-DRAFT header) — now
+        # that it's back in DRAFT, bring production entries up to date.
+        await DprProductionService(self.session).resync_all_for_date(
+            header.project_id, header.report_date, actor_id
+        )
 
         await self.notification_service.notify(
             [header.submitted_by],
@@ -468,7 +546,11 @@ class DprService:
         doesn't duplicate them.
         """
         header = await self.get(header_id)
-        existing_ids: set[uuid.UUID] = {e.worker_id for e in header.labour_entries}
+
+        existing_result = await self.session.execute(
+            select(DprLabour.worker_id).where(DprLabour.dpr_header_id == header_id)
+        )
+        existing_ids: set[uuid.UUID] = {row[0] for row in existing_result}
 
         rows = await self.session.execute(
             select(Worker, WorkerCategoryMaster.daily_rate)
@@ -500,10 +582,52 @@ class DprService:
         return suggestions
 
     async def list_labour(self, header_id: uuid.UUID) -> list[DprLabour]:
+        header = await self.session.get(DprHeader, header_id)
+        if header and header.status == DprStatus.DRAFT:
+            await self._sync_labour_from_attendance(header)
         result = await self.session.execute(
             select(DprLabour).where(DprLabour.dpr_header_id == header_id).order_by(DprLabour.created_at)
         )
         return list(result.scalars().all())
+
+    async def _sync_labour_from_attendance(self, header: DprHeader) -> None:
+        existing_ids = {
+            row[0]
+            for row in (
+                await self.session.execute(
+                    select(DprLabour.worker_id).where(DprLabour.dpr_header_id == header.id)
+                )
+            )
+        }
+        checked_in = (
+            await self.session.execute(
+                select(Worker, WorkerCategoryMaster.daily_rate)
+                .join(WorkerCategoryMaster, Worker.worker_category_id == WorkerCategoryMaster.id)
+                .join(AttendanceRecord, AttendanceRecord.worker_id == Worker.id)
+                .where(
+                    AttendanceRecord.project_id == header.project_id,
+                    AttendanceRecord.attendance_date == header.report_date,
+                )
+            )
+        ).all()
+        added = False
+        for worker, category_rate in checked_in:
+            if worker.id in existing_ids:
+                continue
+            rate = worker.default_rate if worker.default_rate is not None else (category_rate or Decimal("0"))
+            qty = Decimal("1") if worker.wage_unit != "HOUR" else Decimal("0")
+            self.session.add(
+                DprLabour(
+                    dpr_header_id=header.id,
+                    worker_id=worker.id,
+                    quantity=qty,
+                    rate=rate,
+                    amount=(qty * rate).quantize(Decimal("0.01")),
+                )
+            )
+            added = True
+        if added:
+            await self.session.commit()
 
     async def add_labour(self, header_id: uuid.UUID, data: DprLabourCreate, actor_id: uuid.UUID) -> DprLabour:
         await self._get_editable_header(header_id)
@@ -586,6 +710,23 @@ class DprService:
             raise NotFoundError(f"DPR {header_id} not found.")
         if header.status != DprStatus.DRAFT:
             raise PermissionDeniedError("Only DRAFT DPRs can be deleted.")
+        measurement_workflow = await self.workflow_config.get_effective_definition(
+            WorkflowEntityType.MEASUREMENT, header.project_id
+        )
+        final_codes = WorkflowConfigService.final_approval_status_codes(measurement_workflow)
+        has_approved = await self.measurement_repo.has_status_for_project_date(
+            header.project_id, header.report_date, final_codes
+        )
+        if has_approved:
+            raise DomainError(
+                "Cannot delete DPR — one or more measurements for this date have been approved. "
+                "Delete or recall the approved measurements first."
+            )
+        # Collect issue photo URLs before cascade delete so we can clean up storage.
+        issue_result = await self.session.execute(
+            select(DprIssue).where(DprIssue.dpr_header_id == header_id)
+        )
+        photo_urls = [i.photo_url for i in issue_result.scalars().all() if i.photo_url]
         before = serialize_model(header)
         await self.session.delete(header)
         await self.audit.record(
@@ -596,6 +737,8 @@ class DprService:
             before=before,
         )
         await self.session.commit()
+        for url in photo_urls:
+            delete_fileobj(url)
 
 
 class DprProductionService:
@@ -606,19 +749,30 @@ class DprProductionService:
         self.section_repo = BoqSectionRepository(session)
         self.dpr_repo = DprRepository(session)
         self.measurement_repo = MeasurementRepository(session)
+        self.workflow_config = WorkflowConfigService(session)
         self.audit = AuditService(session)
 
     async def sync_from_measurements(
         self, project_id: uuid.UUID, boq_item_id: uuid.UUID, measurement_date: date, actor_id: uuid.UUID
     ) -> None:
         """Keeps the day's DPR production entry for this BOQ item in sync
-        with the live sum of all non-rejected measurements recorded against
+        with the live sum of all PM/QS-approved measurements recorded against
         it on this date, so DPR never needs separate manual re-entry of a
-        quantity already captured by a Measurement. Auto-creates a DRAFT
-        DPR header for the date if none exists yet. No-ops once the header
-        is no longer DRAFT (submitted/locked DPRs are immutable) or marked
-        as a no-work day."""
-        qty = await self.measurement_repo.sum_computed_qty_for_item_date(boq_item_id, measurement_date)
+        quantity already captured by a Measurement. The amount uses each
+        measurement's own recorded rate (falling back to the BOQ item's rate
+        if none was set), not just the BOQ item's present-day rate, so a rate
+        override made in the measurement entry screen actually reaches DPR
+        calculations. Auto-creates a DRAFT DPR header for the date if none
+        exists yet. No-ops once the header is no longer DRAFT
+        (submitted/locked DPRs are immutable) or marked as a no-work day."""
+        measurement_workflow = await self.workflow_config.get_effective_definition(
+            WorkflowEntityType.MEASUREMENT, project_id
+        )
+        feeds_production_codes = WorkflowConfigService.feeds_production_status_codes(measurement_workflow)
+        qty, amount = await self.measurement_repo.sum_qty_and_amount_for_item_date(
+            boq_item_id, measurement_date, feeds_production_codes
+        )
+        amount = amount.quantize(Decimal("0.01"))
 
         header = await self.dpr_repo.get_by_project_and_date(project_id, measurement_date)
         if header is None:
@@ -642,11 +796,6 @@ class DprProductionService:
                 await self.session.commit()
             return
 
-        boq_item = await self.boq_repo.get(boq_item_id)
-        if boq_item is None:
-            return
-        amount = (qty * boq_item.rate).quantize(Decimal("0.01"))
-
         if existing is not None:
             existing.qty_today = qty
             existing.amount_today = amount
@@ -657,6 +806,19 @@ class DprProductionService:
                 )
             )
         await self.session.commit()
+
+    async def resync_all_for_date(
+        self, project_id: uuid.UUID, measurement_date: date, actor_id: uuid.UUID
+    ) -> None:
+        """Re-runs sync_from_measurements for every BOQ item that has a
+        measurement on this project/date — used after a DPR header moves
+        back to DRAFT, so approvals that happened while it was locked are
+        picked up immediately rather than waiting on the next measurement
+        action."""
+        measurements = await self.measurement_repo.list_for_project_and_date(project_id, measurement_date)
+        boq_item_ids = {m.boq_item_id for m in measurements}
+        for boq_item_id in boq_item_ids:
+            await self.sync_from_measurements(project_id, boq_item_id, measurement_date, actor_id)
 
     async def bulk_upsert(
         self, header_id: uuid.UUID, data: DprProductionBulkUpsert, actor_id: uuid.UUID
@@ -678,9 +840,18 @@ class DprProductionService:
         boq_items = await self.boq_repo.list_for_project(header.project_id)
         boq_by_id = {b.id: b for b in boq_items}
 
+        measurement_locked = await self.measurement_repo.list_boq_item_ids_for_project_date(
+            header.project_id, header.report_date
+        )
+
         results: list[DprProductionEntry] = []
 
         for entry_data in data.entries:
+            if entry_data.boq_item_id in measurement_locked:
+                # Owned by the Measurement Book sync — a stale/bypassed client
+                # tried to manually overwrite it. Skip rather than clobber the
+                # measurement-derived qty/amount with a BOQ-rate recalculation.
+                continue
             boq_item = boq_by_id.get(entry_data.boq_item_id)
             if boq_item is None:
                 raise NotFoundError(f"BOQ item {entry_data.boq_item_id} not found in this project.")
@@ -995,8 +1166,8 @@ class DprProductionService:
                     MachineryMaster.name,
                     MachineryMaster.hire_unit,
                     DprHeader.report_date,
-                    func.sum(DprMachinery.hours_used).label("qty"),
-                    func.sum(DprMachinery.hours_used * func.coalesce(DprMachinery.hire_rate, 0)).label("amount"),
+                    func.sum(DprMachinery.quantity_used).label("qty"),
+                    func.sum(DprMachinery.quantity_used * func.coalesce(DprMachinery.hire_rate, 0)).label("amount"),
                 )
                 .join(DprHeader, DprMachinery.dpr_header_id == DprHeader.id)
                 .join(MachineryMaster, DprMachinery.machinery_id == MachineryMaster.id)
@@ -1164,7 +1335,7 @@ class DprProductionService:
             .where(DprHeader.project_id == project_id, DprHeader.report_date <= opening_as_of)
         )
         opening_machinery = await self.session.scalar(
-            select(func.coalesce(func.sum(DprMachinery.hours_used * func.coalesce(DprMachinery.hire_rate, 0)), 0))
+            select(func.coalesce(func.sum(DprMachinery.quantity_used * func.coalesce(DprMachinery.hire_rate, 0)), 0))
             .join(DprHeader, DprMachinery.dpr_header_id == DprHeader.id)
             .where(DprHeader.project_id == project_id, DprHeader.report_date <= opening_as_of)
         )

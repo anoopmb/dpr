@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
   Alert,
   Button,
-  Descriptions,
   Empty,
   Form,
   Input,
@@ -31,24 +30,33 @@ import {
 import { useAuthStore } from '@/store/auth-store';
 import { useMaterials, useMachinery } from '@/api/hooks/useMasters';
 import { useBoqItems } from '@/api/hooks/useBoq';
+import { useEffectiveWorkflow, type WorkflowDefinitionRead } from '@/api/hooks/useWorkflowConfig';
 import { useThemeMode } from '@/theme/theme-context';
 import { useDateFormat } from '@/utils/format';
 import type { MeasurementRead, MeasurementStatus } from '@/api/hooks/useMeasurements';
 
-const STATUS_COLOR: Record<DprStatus, string> = {
+// DRAFT/SUBMITTED/REJECTED/LOCKED/APPROVED are fixed bookends with fixed
+// colors; everything else is an admin-configured approval level — colored
+// by cycling a palette keyed on the level's position in its workflow.
+const FIXED_STATUS_COLOR: Record<string, string> = {
   DRAFT: 'blue',
   SUBMITTED: 'gold',
   APPROVED: 'green',
-};
-
-const M_STATUS_COLOR: Record<MeasurementStatus, string> = {
-  DRAFT: 'default',
-  SUBMITTED: 'blue',
-  PM_APPROVED: 'gold',
-  QS_APPROVED: 'cyan',
-  LOCKED: 'green',
   REJECTED: 'red',
+  LOCKED: 'green',
 };
+const LEVEL_COLOR_PALETTE = ['gold', 'cyan', 'purple', 'geekblue', 'volcano', 'lime'];
+
+function statusColor(status: string, workflow: WorkflowDefinitionRead | undefined): string {
+  if (FIXED_STATUS_COLOR[status]) return FIXED_STATUS_COLOR[status];
+  const idx = workflow?.levels.findIndex((l) => l.status_code === status) ?? -1;
+  return idx >= 0 ? LEVEL_COLOR_PALETTE[idx % LEVEL_COLOR_PALETTE.length] : 'default';
+}
+
+function statusLabel(status: string, workflow: WorkflowDefinitionRead | undefined): string {
+  const level = workflow?.levels.find((l) => l.status_code === status);
+  return level ? level.label : status.replace(/_/g, ' ');
+}
 
 function rowKind(header: DprHeaderRead): 'no-work' | 'pre-work' | 'normal' {
   if (header.no_work) return 'no-work';
@@ -94,6 +102,7 @@ function DprDetailPanel({
 }) {
   const { data: approvals, isLoading: approvalsLoading } = useDprApprovals(header.id);
   const { data: measurements, isLoading: measurementsLoading } = useDprMeasurements(header.id);
+  const { data: measurementWorkflow } = useEffectiveWorkflow('MEASUREMENT', header.project_id);
   const { fmtDateTime, fmtDate } = useDateFormat();
 
   const approvalCols: TableColumnsType<DprHeaderApprovalRead> = [
@@ -118,7 +127,9 @@ function DprDetailPanel({
       title: 'Status',
       dataIndex: 'status',
       width: 110,
-      render: (s: MeasurementStatus) => <Tag color={M_STATUS_COLOR[s]}>{s}</Tag>,
+      render: (s: MeasurementStatus) => (
+        <Tag color={statusColor(s, measurementWorkflow)}>{statusLabel(s, measurementWorkflow)}</Tag>
+      ),
     },
   ];
 
@@ -223,8 +234,28 @@ export function DprHistoryPage() {
   const { resolvedMode } = useThemeMode();
   const approveDpr = useApproveDpr();
   const rejectDpr = useRejectDpr();
+  const { data: dprWorkflow } = useEffectiveWorkflow('DPR_HEADER', selectedProjectId);
 
-  const canApprove = user?.role === 'PROJECT_MANAGER' || user?.role === 'ADMIN';
+  // The level a SUBMITTED (or mid-chain) header is currently awaiting, if
+  // any — null when there's nothing left to approve at this status.
+  const getActionLevel = (header: DprHeaderRead) => {
+    if (!dprWorkflow) return null;
+    const codes = dprWorkflow.levels.map((l) => l.status_code);
+    if (header.status === 'SUBMITTED' && dprWorkflow.levels.length > 0) return dprWorkflow.levels[0];
+    const idx = codes.indexOf(header.status);
+    if (idx >= 0 && idx + 1 < dprWorkflow.levels.length) return dprWorkflow.levels[idx + 1];
+    return null;
+  };
+
+  const canActOnLevel = (level: { allowed_roles: string[] }) =>
+    user?.role === 'ADMIN' || level.allowed_roles.includes(user?.role as never);
+
+  // Static column-inclusion check (AntD columns are an array, not per-row) —
+  // show the Actions column at all if this user's role could act on any
+  // configured level; the per-row render below still gates by the specific
+  // level each header is actually awaiting.
+  const canApproveAnything =
+    user?.role === 'ADMIN' || (dprWorkflow?.levels.some((l) => l.allowed_roles.includes(user?.role as never)) ?? false);
 
   const ROW_BG: Record<string, string | undefined> = {
     'no-work': resolvedMode === 'dark' ? 'rgba(255, 255, 255, 0.04)' : '#f5f5f5',
@@ -278,7 +309,7 @@ export function DprHistoryPage() {
       title: 'Status',
       dataIndex: 'status',
       width: 100,
-      render: (s: DprStatus) => <Tag color={STATUS_COLOR[s]}>{s}</Tag>,
+      render: (s: DprStatus) => <Tag color={statusColor(s, dprWorkflow)}>{statusLabel(s, dprWorkflow)}</Tag>,
     },
     {
       title: 'Day Type',
@@ -318,37 +349,42 @@ export function DprHistoryPage() {
       render: (_, header) =>
         header.issues.length > 0 ? <Tag color="red">{header.issues.length}</Tag> : '—',
     },
-    ...(canApprove
+    ...(canApproveAnything
       ? [
           {
             title: 'Actions',
             key: 'actions',
             width: 180,
-            render: (_: unknown, header: DprHeaderRead) =>
-              header.status === 'SUBMITTED' ? (
+            render: (_: unknown, header: DprHeaderRead) => {
+              const level = getActionLevel(header);
+              if (!level || !canActOnLevel(level)) return null;
+              return (
                 <Space>
                   <Popconfirm
-                    title="Approve this DPR?"
+                    title={`${level.label}?`}
                     description="This will formally sign off the day's report."
                     onConfirm={() => handleApprove(header)}
                     okText="Approve"
                   >
                     <Button size="small" type="primary" loading={approveDpr.isPending}>
-                      Approve
+                      {level.label}
                     </Button>
                   </Popconfirm>
-                  <Button
-                    size="small"
-                    danger
-                    onClick={() => {
-                      setRejectRemarks('');
-                      setRejectingHeader(header);
-                    }}
-                  >
-                    Return
-                  </Button>
+                  {level.allow_reject && (
+                    <Button
+                      size="small"
+                      danger
+                      onClick={() => {
+                        setRejectRemarks('');
+                        setRejectingHeader(header);
+                      }}
+                    >
+                      Return
+                    </Button>
+                  )}
                 </Space>
-              ) : null,
+              );
+            },
           },
         ]
       : []),

@@ -2,19 +2,105 @@ import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import DomainError, NotFoundError
+from app.core.storage import delete_fileobj
 from app.core.timezone import get_org_today
 from app.domain.attendance.validators import GeoPoint, is_within_geofence
 from app.models.attendance import AttendanceRecord
 from app.models.audit import AuditAction
+from app.models.dpr import DprHeader, DprLabour, DprStatus
+from app.models.master_data import WorkerCategoryMaster
 from app.models.project import Project
 from app.models.worker import Worker
 from app.repositories.attendance_repo import AttendanceRepository
 from app.repositories.worker_repo import WorkerRepository
 from app.schemas.attendance import AttendanceCheckInCreate, MarkPresentRequest, WorkerCreate, WorkerUpdate
 from app.services.audit_service import AuditService, serialize_model
+
+
+async def _sync_labour_on_checkin(
+    session: AsyncSession,
+    *,
+    project_id: uuid.UUID,
+    attendance_date: date,
+    worker: Worker,
+) -> None:
+    """Auto-create a DprLabour row when a worker checks in, if a DRAFT DPR exists for that day."""
+    header = (
+        await session.execute(
+            select(DprHeader).where(
+                DprHeader.project_id == project_id,
+                DprHeader.report_date == attendance_date,
+                DprHeader.status == DprStatus.DRAFT,
+            )
+        )
+    ).scalar_one_or_none()
+    if header is None:
+        return
+
+    already = (
+        await session.execute(
+            select(DprLabour).where(
+                DprLabour.dpr_header_id == header.id,
+                DprLabour.worker_id == worker.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if already is not None:
+        return
+
+    category_rate = (
+        await session.execute(
+            select(WorkerCategoryMaster.daily_rate).where(WorkerCategoryMaster.id == worker.worker_category_id)
+        )
+    ).scalar_one_or_none() or Decimal("0")
+
+    rate = worker.default_rate if worker.default_rate is not None else category_rate
+    qty = Decimal("1") if worker.wage_unit != "HOUR" else Decimal("0")
+    session.add(
+        DprLabour(
+            dpr_header_id=header.id,
+            worker_id=worker.id,
+            quantity=qty,
+            rate=rate,
+            amount=(qty * rate).quantize(Decimal("0.01")),
+        )
+    )
+
+
+async def _sync_labour_on_delete(
+    session: AsyncSession,
+    *,
+    project_id: uuid.UUID,
+    attendance_date: date,
+    worker_id: uuid.UUID,
+) -> None:
+    """Auto-delete a DprLabour row when an attendance record is removed."""
+    header = (
+        await session.execute(
+            select(DprHeader).where(
+                DprHeader.project_id == project_id,
+                DprHeader.report_date == attendance_date,
+                DprHeader.status == DprStatus.DRAFT,
+            )
+        )
+    ).scalar_one_or_none()
+    if header is None:
+        return
+
+    entry = (
+        await session.execute(
+            select(DprLabour).where(
+                DprLabour.dpr_header_id == header.id,
+                DprLabour.worker_id == worker_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if entry is not None:
+        await session.delete(entry)
 
 
 class AlreadyCheckedInError(DomainError):
@@ -187,6 +273,12 @@ class AttendanceService:
             actor_id=marked_by,
             after=serialize_model(record),
         )
+        await _sync_labour_on_checkin(
+            self.session,
+            project_id=project.id,
+            attendance_date=record.attendance_date,
+            worker=worker,
+        )
         await self.session.commit()
         await self.session.refresh(record)
         return record
@@ -228,6 +320,12 @@ class AttendanceService:
                 actor_id=marked_by,
                 after=serialize_model(record),
             )
+            await _sync_labour_on_checkin(
+                self.session,
+                project_id=project.id,
+                attendance_date=record.attendance_date,
+                worker=worker,
+            )
             records.append(record)
 
         await self.session.commit()
@@ -239,3 +337,30 @@ class AttendanceService:
         self, project_id: uuid.UUID, attendance_date: date | None = None
     ) -> list[AttendanceRecord]:
         return await self.repo.list_for_project(project_id, attendance_date)
+
+    async def delete(self, record_id: uuid.UUID, actor_id: uuid.UUID) -> None:
+        record = await self.session.get(AttendanceRecord, record_id)
+        if record is None:
+            raise NotFoundError("Attendance record not found.")
+        before = serialize_model(record)
+        photo_url = record.photo_url
+        project_id = record.project_id
+        worker_id = record.worker_id
+        attendance_date = record.attendance_date
+        await self.session.delete(record)
+        await self.audit.record(
+            entity_type="ATTENDANCE_RECORD",
+            entity_id=record_id,
+            action=AuditAction.DELETE,
+            actor_id=actor_id,
+            before=before,
+        )
+        await _sync_labour_on_delete(
+            self.session,
+            project_id=project_id,
+            attendance_date=attendance_date,
+            worker_id=worker_id,
+        )
+        await self.session.commit()
+        if photo_url:
+            delete_fileobj(photo_url)

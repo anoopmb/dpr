@@ -1,5 +1,10 @@
 import { useState } from 'react';
-import { Alert, Button, Form, InputNumber, List, Modal, Popconfirm, Select, Skeleton, Typography, message } from 'antd';
+import {
+  Alert, Button, InputNumber, Popconfirm, Select, Skeleton, Table, Tag,
+  Typography, message, theme,
+} from 'antd';
+import type { TableColumnsType } from 'antd';
+import { CheckOutlined, CloseOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
 import {
@@ -12,25 +17,27 @@ import {
 import { useMaterials, useUoms } from '@/api/hooks/useMasters';
 import { useTodayDprHeader } from '@/hooks/useTodayDprHeader';
 import { RequireAttendance } from '@/components/field/RequireAttendance';
-import { useDateFormat } from '@/utils/format';
+import { useDateFormat, useNumberFormat } from '@/utils/format';
 
-interface AddMaterialValues {
-  material_id: string;
-  qty_consumed: number;
-  uom_id: string;
+let _draftSeq = 0;
+const nextDraftKey = () => `dm-${++_draftSeq}`;
+
+interface DraftRow {
+  key: string;
+  material_id: string | null;
+  qty: number | null;
+  uom_id: string | null;
   rate: number | null;
 }
 
-interface EditMaterialValues {
-  qty_consumed: number;
-  uom_id: string;
-  rate: number | null;
-}
+type Row = { _kind: 'existing'; entry: DprMaterialRead } | { _kind: 'draft'; draft: DraftRow };
 
 export function MaterialsUsedPage() {
   const selectedProjectId = useProjectContextStore((s) => s.selectedProjectId);
   const selectedEntryDate = useProjectContextStore((s) => s.selectedEntryDate);
   const { fmtDate } = useDateFormat();
+  const { fmtAmt, symbol } = useNumberFormat();
+  const { token } = theme.useToken();
   const { headerId, isLoading, ensureHeader, creating } = useTodayDprHeader(selectedProjectId);
   const { data: header } = useDprHeader(headerId);
   const { data: materials } = useMaterials();
@@ -38,80 +45,264 @@ export function MaterialsUsedPage() {
   const addMaterial = useAddDprMaterial();
   const updateMaterial = useUpdateDprMaterial();
   const deleteMaterial = useDeleteDprMaterial();
-  const [form] = Form.useForm<AddMaterialValues>();
-  const [editForm] = Form.useForm<EditMaterialValues>();
-  const [editingItem, setEditingItem] = useState<DprMaterialRead | null>(null);
+  const [drafts, setDrafts] = useState<DraftRow[]>([]);
+  const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
 
   const materialById = new Map((materials ?? []).map((m) => [m.id, m]));
-  const uomById = new Map((uoms ?? []).map((u) => [u.id, u]));
   const isDraft = header?.status === 'DRAFT';
   const isLocked = !!headerId && !isDraft;
+  const entries = header?.materials ?? [];
 
-  const handleMaterialSelect = (materialId: string) => {
-    const mat = materialById.get(materialId);
-    if (!mat) return;
-    form.setFieldsValue({
-      uom_id: mat.default_uom_id,
-      rate: mat.cost_rate != null ? parseFloat(mat.cost_rate) : null,
-    });
-  };
+  const patchDraft = (key: string, patch: Partial<DraftRow>) =>
+    setDrafts((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
 
-  const handleAdd = async (values: AddMaterialValues) => {
+  const removeDraft = (key: string) =>
+    setDrafts((prev) => prev.filter((d) => d.key !== key));
+
+  const saveDraft = async (draft: DraftRow) => {
+    if (!draft.material_id || draft.qty == null || !draft.uom_id) {
+      message.warning('Material, quantity and unit are required');
+      return;
+    }
+    setSavingKeys((p) => new Set(p).add(draft.key));
     try {
       const id = headerId ?? (await ensureHeader());
       await addMaterial.mutateAsync({
         headerId: id,
         data: {
-          material_id: values.material_id,
-          qty_consumed: String(values.qty_consumed),
-          uom_id: values.uom_id,
-          rate: values.rate != null ? String(values.rate) : undefined,
+          material_id: draft.material_id,
+          qty_consumed: String(draft.qty),
+          uom_id: draft.uom_id,
+          rate: draft.rate != null ? String(draft.rate) : undefined,
         },
       });
-      message.success('Material entry added');
-      form.resetFields();
+      removeDraft(draft.key);
     } catch {
       message.error('Could not add entry');
+    } finally {
+      setSavingKeys((p) => { const s = new Set(p); s.delete(draft.key); return s; });
     }
   };
 
-  const openEdit = (item: DprMaterialRead) => {
-    setEditingItem(item);
-    editForm.setFieldsValue({
-      qty_consumed: parseFloat(item.qty_consumed),
-      uom_id: item.uom_id,
-      rate: item.rate != null ? parseFloat(item.rate) : null,
-    });
-  };
-
-  const handleEditSave = async (values: EditMaterialValues) => {
-    if (!editingItem) return;
+  const saveQty = async (entry: DprMaterialRead, raw: string) => {
+    const qty = parseFloat(raw);
+    if (isNaN(qty) || qty === parseFloat(entry.qty_consumed)) return;
     try {
-      await updateMaterial.mutateAsync({
-        itemId: editingItem.id,
-        data: {
-          qty_consumed: String(values.qty_consumed),
-          uom_id: values.uom_id,
-          rate: values.rate != null ? String(values.rate) : undefined,
-        },
-      });
-      message.success('Entry updated');
-      setEditingItem(null);
-      editForm.resetFields();
-    } catch {
-      message.error('Could not update entry');
-    }
+      await updateMaterial.mutateAsync({ itemId: entry.id, data: { qty_consumed: String(qty), uom_id: entry.uom_id, rate: entry.rate ?? undefined } });
+    } catch { message.error('Could not update'); }
   };
 
-  const handleDelete = async (item: DprMaterialRead) => {
+  const saveRate = async (entry: DprMaterialRead, raw: string) => {
+    const rate = raw ? parseFloat(raw) : null;
+    const cur = entry.rate != null ? parseFloat(entry.rate) : null;
+    if (rate === cur) return;
+    try {
+      await updateMaterial.mutateAsync({ itemId: entry.id, data: { qty_consumed: entry.qty_consumed, uom_id: entry.uom_id, rate: rate != null ? String(rate) : undefined } });
+    } catch { message.error('Could not update'); }
+  };
+
+  const saveUom = async (entry: DprMaterialRead, uomId: string) => {
+    if (uomId === entry.uom_id) return;
+    try {
+      await updateMaterial.mutateAsync({ itemId: entry.id, data: { qty_consumed: entry.qty_consumed, uom_id: uomId, rate: entry.rate ?? undefined } });
+    } catch { message.error('Could not update'); }
+  };
+
+  const handleDelete = async (entry: DprMaterialRead) => {
     if (!headerId) return;
-    try {
-      await deleteMaterial.mutateAsync({ itemId: item.id, headerId });
-      message.success('Entry deleted');
-    } catch {
-      message.error('Could not delete entry');
-    }
+    try { await deleteMaterial.mutateAsync({ itemId: entry.id, headerId }); }
+    catch { message.error('Could not delete'); }
   };
+
+  const rows: Row[] = [
+    ...entries.map((entry): Row => ({ _kind: 'existing', entry })),
+    ...drafts.map((draft): Row => ({ _kind: 'draft', draft })),
+  ];
+
+  const totalCost = entries.reduce((s, e) => s + (e.rate ? parseFloat(e.rate) * parseFloat(e.qty_consumed) : 0), 0);
+
+  const inp = { width: '100%' };
+
+  const columns: TableColumnsType<Row> = [
+    {
+      title: '#',
+      key: 'idx',
+      width: 40,
+      render: (_: unknown, _row: Row, i: number) => (
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>{i + 1}</Typography.Text>
+      ),
+    },
+    {
+      title: 'Material',
+      key: 'material',
+      render: (_: unknown, row: Row) =>
+        row._kind === 'existing' ? (
+          <Typography.Text>{materialById.get(row.entry.material_id)?.name ?? row.entry.material_id}</Typography.Text>
+        ) : (
+          <Select
+            size="small"
+            showSearch
+            optionFilterProp="label"
+            style={inp}
+            placeholder="Select material…"
+            value={row.draft.material_id}
+            onChange={(v) => {
+              const mat = materialById.get(v);
+              patchDraft(row.draft.key, {
+                material_id: v,
+                uom_id: mat?.default_uom_id ?? null,
+                rate: mat?.cost_rate != null ? parseFloat(mat.cost_rate) : null,
+              });
+            }}
+            options={(materials ?? []).map((m) => ({ value: m.id, label: m.name }))}
+          />
+        ),
+    },
+    {
+      title: 'Qty',
+      key: 'qty',
+      width: 100,
+      render: (_: unknown, row: Row) =>
+        row._kind === 'existing' ? (
+          <InputNumber
+            key={`${row.entry.id}-qty-${row.entry.qty_consumed}`}
+            size="small"
+            min={0}
+            style={inp}
+            defaultValue={parseFloat(row.entry.qty_consumed)}
+            onBlur={(e) => saveQty(row.entry, e.target.value)}
+            disabled={!isDraft}
+          />
+        ) : (
+          <InputNumber
+            size="small"
+            min={0}
+            style={inp}
+            placeholder="0"
+            value={row.draft.qty}
+            onChange={(v) => patchDraft(row.draft.key, { qty: v })}
+          />
+        ),
+    },
+    {
+      title: 'Unit',
+      key: 'uom',
+      width: 90,
+      render: (_: unknown, row: Row) =>
+        row._kind === 'existing' ? (
+          <Select
+            key={`${row.entry.id}-uom-${row.entry.uom_id}`}
+            size="small"
+            showSearch
+            optionFilterProp="label"
+            style={inp}
+            defaultValue={row.entry.uom_id}
+            onChange={(v) => saveUom(row.entry, v)}
+            options={(uoms ?? []).map((u) => ({ value: u.id, label: u.code }))}
+            disabled={!isDraft}
+          />
+        ) : (
+          <Select
+            size="small"
+            showSearch
+            optionFilterProp="label"
+            style={inp}
+            placeholder="Unit"
+            value={row.draft.uom_id}
+            onChange={(v) => patchDraft(row.draft.key, { uom_id: v })}
+            options={(uoms ?? []).map((u) => ({ value: u.id, label: u.code }))}
+          />
+        ),
+    },
+    {
+      title: `Rate (${symbol})`,
+      key: 'rate',
+      width: 120,
+      render: (_: unknown, row: Row) =>
+        row._kind === 'existing' ? (
+          <InputNumber
+            key={`${row.entry.id}-rate-${row.entry.rate}`}
+            size="small"
+            min={0}
+            precision={2}
+            style={inp}
+            defaultValue={row.entry.rate != null ? parseFloat(row.entry.rate) : undefined}
+            placeholder="—"
+            onBlur={(e) => saveRate(row.entry, e.target.value)}
+            disabled={!isDraft}
+          />
+        ) : (
+          <InputNumber
+            size="small"
+            min={0}
+            precision={2}
+            style={inp}
+            placeholder="Rate (auto)"
+            value={row.draft.rate}
+            onChange={(v) => patchDraft(row.draft.key, { rate: v })}
+          />
+        ),
+    },
+    {
+      title: `Amount (${symbol})`,
+      key: 'amount',
+      width: 110,
+      align: 'right' as const,
+      render: (_: unknown, row: Row) => {
+        if (row._kind === 'existing') {
+          const amt = row.entry.rate != null ? parseFloat(row.entry.rate) * parseFloat(row.entry.qty_consumed) : null;
+          return <Typography.Text strong>{amt != null ? fmtAmt(amt) : '—'}</Typography.Text>;
+        }
+        const amt = row.draft.rate != null && row.draft.qty != null ? row.draft.rate * row.draft.qty : null;
+        return <Typography.Text type="secondary">{amt != null ? fmtAmt(amt) : '—'}</Typography.Text>;
+      },
+    },
+    {
+      title: '',
+      key: 'actions',
+      width: 68,
+      render: (_: unknown, row: Row) => {
+        if (row._kind === 'existing') {
+          if (!isDraft) return null;
+          return (
+            <Popconfirm
+              title="Delete this entry?"
+              onConfirm={() => handleDelete(row.entry)}
+              okText="Delete"
+              okButtonProps={{ danger: true }}
+            >
+              <Button
+                size="small"
+                type="text"
+                danger
+                icon={<DeleteOutlined />}
+                loading={deleteMaterial.isPending}
+              />
+            </Popconfirm>
+          );
+        }
+        return (
+          <span style={{ display: 'flex', gap: 2 }}>
+            <Button
+              size="small"
+              type="text"
+              icon={<CheckOutlined />}
+              style={{ color: token.colorSuccess }}
+              loading={savingKeys.has(row.draft.key) || creating}
+              onClick={() => saveDraft(row.draft)}
+            />
+            <Button
+              size="small"
+              type="text"
+              danger
+              icon={<CloseOutlined />}
+              onClick={() => removeDraft(row.draft.key)}
+            />
+          </span>
+        );
+      },
+    },
+  ];
 
   return (
     <div>
@@ -127,7 +318,7 @@ export function MaterialsUsedPage() {
         <Alert
           type="info"
           showIcon
-          message={`The DPR for ${fmtDate(selectedEntryDate)} has been ${header?.status?.toLowerCase()} and is locked. Material entries cannot be added or edited. The Project Manager can return the DPR to Draft if corrections are needed.`}
+          message={`The DPR for ${fmtDate(selectedEntryDate)} has been ${header?.status?.toLowerCase()} and is locked.`}
           style={{ marginBottom: 16 }}
         />
       )}
@@ -136,86 +327,57 @@ export function MaterialsUsedPage() {
 
       {selectedProjectId && !isLoading && (
         <RequireAttendance projectId={selectedProjectId}>
-          <Form form={form} layout="vertical" onFinish={handleAdd}>
-            <Form.Item name="material_id" label="Material" rules={[{ required: true }]}>
-              <Select
-                size="large"
-                showSearch
-                optionFilterProp="label"
-                options={(materials ?? []).map((m) => ({ value: m.id, label: m.name }))}
-                onSelect={handleMaterialSelect}
-              />
-            </Form.Item>
-            <Form.Item name="qty_consumed" label="Quantity" rules={[{ required: true }]}>
-              <InputNumber min={0} style={{ width: '100%' }} size="large" />
-            </Form.Item>
-            <Form.Item name="uom_id" label="Unit" rules={[{ required: true }]}>
-              <Select size="large" showSearch optionFilterProp="label" options={(uoms ?? []).map((u) => ({ value: u.id, label: u.code }))} />
-            </Form.Item>
-            <Form.Item name="rate" label="Rate (per unit)" rules={[{ required: false }]}>
-              <InputNumber min={0} style={{ width: '100%' }} size="large" placeholder="Auto-filled from master, editable" />
-            </Form.Item>
-            <Button type="primary" htmlType="submit" block size="large" loading={addMaterial.isPending || creating} disabled={!isDraft && !!headerId}>
-              Add Entry
-            </Button>
-          </Form>
-          <List
-            style={{ marginTop: 24 }}
-            header="Entries for this date"
-            dataSource={header?.materials ?? []}
-            renderItem={(row) => {
-              const matName = materialById.get(row.material_id)?.name ?? row.material_id;
-              const uomCode = uomById.get(row.uom_id)?.code ?? '';
-              const rateStr = row.rate != null ? ` @ ₹${parseFloat(row.rate).toLocaleString('en-IN')}/${uomCode}` : '';
-              return (
-                <List.Item
-                  actions={
-                    isDraft
-                      ? [
-                          <Button key="edit" onClick={() => openEdit(row)}>Edit</Button>,
-                          <Popconfirm
-                            key="delete"
-                            title="Delete this material entry?"
-                            onConfirm={() => handleDelete(row)}
-                            okText="Delete"
-                            okButtonProps={{ danger: true }}
-                          >
-                            <Button danger loading={deleteMaterial.isPending}>Delete</Button>
-                          </Popconfirm>,
-                        ]
-                      : []
-                  }
+          <div style={{
+            border: `1px solid ${token.colorBorderSecondary}`,
+            borderRadius: token.borderRadiusLG,
+            overflow: 'hidden',
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '10px 16px',
+              background: token.colorFillAlter,
+              borderBottom: `1px solid ${token.colorBorderSecondary}`,
+            }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Typography.Text strong style={{ fontSize: 14 }}>Line Items</Typography.Text>
+                <Tag style={{ margin: 0, fontSize: 11 }}>
+                  {entries.length} item{entries.length !== 1 ? 's' : ''}
+                </Tag>
+              </span>
+              {isDraft && (
+                <Button
+                  size="small"
+                  icon={<PlusOutlined />}
+                  onClick={() => setDrafts((p) => [...p, { key: nextDraftKey(), material_id: null, qty: null, uom_id: null, rate: null }])}
                 >
-                  <span>
-                    {matName} — {row.qty_consumed} {uomCode}{rateStr}
-                  </span>
-                </List.Item>
-              );
-            }}
-          />
+                  Add Material
+                </Button>
+              )}
+            </div>
+
+            <Table<Row>
+              rowKey={(row) => row._kind === 'existing' ? row.entry.id : row.draft.key}
+              size="small"
+              dataSource={rows}
+              columns={columns}
+              pagination={false}
+              scroll={{ x: 680 }}
+              locale={{ emptyText: isDraft ? 'No entries yet — click "Add Material" above' : 'No material entries' }}
+              summary={totalCost > 0 ? () => (
+                <Table.Summary>
+                  <Table.Summary.Row style={{ fontWeight: 700 }}>
+                    <Table.Summary.Cell index={0} colSpan={5}>Total Material Cost</Table.Summary.Cell>
+                    <Table.Summary.Cell index={5} align="right">{fmtAmt(totalCost)}</Table.Summary.Cell>
+                    {isDraft && <Table.Summary.Cell index={6} />}
+                  </Table.Summary.Row>
+                </Table.Summary>
+              ) : undefined}
+            />
+          </div>
         </RequireAttendance>
       )}
-
-      <Modal
-        title="Edit Material Entry"
-        open={!!editingItem}
-        onCancel={() => { setEditingItem(null); editForm.resetFields(); }}
-        onOk={() => editForm.submit()}
-        confirmLoading={updateMaterial.isPending}
-        destroyOnHidden
-      >
-        <Form form={editForm} layout="vertical" onFinish={handleEditSave}>
-          <Form.Item name="qty_consumed" label="Quantity" rules={[{ required: true }]}>
-            <InputNumber min={0} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="uom_id" label="Unit" rules={[{ required: true }]}>
-            <Select showSearch optionFilterProp="label" options={(uoms ?? []).map((u) => ({ value: u.id, label: u.code }))} />
-          </Form.Item>
-          <Form.Item name="rate" label="Rate (per unit)">
-            <InputNumber min={0} style={{ width: '100%' }} />
-          </Form.Item>
-        </Form>
-      </Modal>
     </div>
   );
 }

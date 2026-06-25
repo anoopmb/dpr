@@ -113,20 +113,21 @@ class DprMaterialUpdate(BaseModel):
 
 class DprMachineryCreate(BaseModel):
     machinery_id: uuid.UUID
-    hours_used: Decimal = Field(gt=0, le=24)
-    hire_rate: Decimal | None = Field(default=None, gt=0)
+    quantity_used: Decimal = Field(gt=0)
+    hire_rate: Decimal | None = Field(default=None, ge=0)
 
 
 class DprMachineryUpdate(BaseModel):
-    hours_used: Decimal = Field(gt=0, le=24)
-    hire_rate: Decimal | None = Field(default=None, gt=0)
+    quantity_used: Decimal = Field(gt=0)
+    hire_rate: Decimal | None = Field(default=None, ge=0)
 
 
 class DprMachineryRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     machinery_id: uuid.UUID
-    hours_used: Decimal
+    quantity_used: Decimal
+    hire_unit: str
     hire_rate: Decimal | None
 
 

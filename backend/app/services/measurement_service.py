@@ -5,14 +5,15 @@ from decimal import Decimal
 from fastapi import BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError, PermissionDeniedError
+from app.core.exceptions import DomainError, NotFoundError, PermissionDeniedError
 from app.domain.measurement.calculators import calculate_quantity
 from app.domain.measurement.validators import BoqItemSnapshot, validate_measurement_against_boq
-from app.domain.measurement.workflow import MeasurementStatus, transition
+from app.domain.measurement.workflow import DRAFT, LOCKED, REJECTED, SUBMITTED, WorkflowLevel, transition
 from app.models.audit import AuditAction
 from app.models.master_data import WorkTypeMaster
 from app.models.measurement import Measurement, MeasurementApproval
 from app.models.user import UserRole
+from app.models.workflow_config import WorkflowDefinition, WorkflowEntityType
 from app.repositories.boq_repo import BoqRepository
 from app.repositories.measurement_repo import MeasurementRepository
 from app.schemas.measurement import MeasurementActionRequest, MeasurementCreate, MeasurementUpdate
@@ -21,6 +22,7 @@ from app.services.dpr_service import DprProductionService
 from app.services.notification_service import NotificationService
 from app.services.organization_settings_service import OrganizationSettingsService
 from app.services.project_assignment_service import ProjectAssignmentService
+from app.services.workflow_config_service import WorkflowConfigService
 
 _MEASUREMENTS_LINK = "/measurements"
 _MEASUREMENTS_FIELD_LINK = "/field/my-measurements"
@@ -35,6 +37,7 @@ class MeasurementService:
         self.notification_service = NotificationService(session, background_tasks)
         self.assignment_service = ProjectAssignmentService(session)
         self.production_service = DprProductionService(session)
+        self.workflow_config = WorkflowConfigService(session)
         self.audit = AuditService(session)
 
     async def _get_work_type(self, work_type_id: uuid.UUID) -> WorkTypeMaster:
@@ -42,6 +45,19 @@ class MeasurementService:
         if work_type is None:
             raise NotFoundError(f"Work type {work_type_id} not found.")
         return work_type
+
+    async def _get_effective_workflow(self, project_id: uuid.UUID) -> WorkflowDefinition:
+        return await self.workflow_config.get_effective_definition(WorkflowEntityType.MEASUREMENT, project_id)
+
+    @staticmethod
+    def _to_domain_levels(definition: WorkflowDefinition) -> list[WorkflowLevel]:
+        return [WorkflowLevel(status_code=lvl.status_code, allow_reject=lvl.allow_reject) for lvl in definition.levels]
+
+    async def _resolve_users_for_roles(self, project_id: uuid.UUID, role_values: list[str]) -> list[uuid.UUID]:
+        ids: set[uuid.UUID] = set()
+        for role_value in role_values:
+            ids.update(await self.assignment_service.resolve_users_for_role(project_id, UserRole(role_value)))
+        return list(ids)
 
     async def create(self, data: MeasurementCreate, recorded_by: uuid.UUID) -> Measurement:
         boq_item = await self.boq_repo.get(data.boq_item_id)
@@ -71,9 +87,10 @@ class MeasurementService:
             measurement_date=data.measurement_date,
             dimensions={k: str(v) for k, v in data.dimensions.items()},
             computed_qty=computed_qty,
-            status=MeasurementStatus.DRAFT,
+            status=DRAFT,
             recorded_by=recorded_by,
             chainage=data.chainage,
+            rate=data.rate if data.rate is not None else boq_item.rate,
         )
         self.repo.add(measurement)
         await self.session.flush()
@@ -102,10 +119,17 @@ class MeasurementService:
         return measurement
 
     async def _record_transition(
-        self, measurement: Measurement, target: MeasurementStatus, actor_id: uuid.UUID, remarks: str | None
+        self,
+        measurement: Measurement,
+        target: str,
+        actor_id: uuid.UUID,
+        remarks: str | None,
+        levels: list[WorkflowLevel],
+        force: bool = False,
     ) -> Measurement:
         from_status = measurement.status
-        transition(MeasurementStatus(from_status), target)
+        if not force:
+            transition(from_status, target, levels)
 
         before = serialize_model(measurement)
 
@@ -137,63 +161,87 @@ class MeasurementService:
         measurement = await self.get(measurement_id)
         if measurement.recorded_by != actor_id and actor_role != UserRole.ADMIN:
             raise PermissionDeniedError("Only the recording engineer can submit this measurement.")
-        result = await self._record_transition(measurement, MeasurementStatus.SUBMITTED, actor_id, None)
+
+        definition = await self._get_effective_workflow(measurement.project_id)
+        domain_levels = self._to_domain_levels(definition)
+
+        if not definition.approvals_enabled:
+            final_level = next((lvl for lvl in definition.levels if lvl.is_final_approval), None)
+            if final_level is None:
+                raise DomainError(
+                    "Approvals are disabled for this project's measurement workflow, but no "
+                    "final-approval level is configured to auto-advance to. Configure one in "
+                    "Settings › Approval Workflow."
+                )
+            result = await self._record_transition(
+                measurement, final_level.status_code, actor_id, None, domain_levels, force=True
+            )
+            await self.production_service.sync_from_measurements(
+                measurement.project_id, measurement.boq_item_id, measurement.measurement_date, actor_id
+            )
+            await self.notification_service.notify(
+                [measurement.recorded_by],
+                type="MEASUREMENT_APPROVED",
+                title="Measurement auto-approved",
+                message=(
+                    f"Your measurement dated {measurement.measurement_date} was auto-approved — "
+                    "approvals are disabled for this project."
+                ),
+                project_id=measurement.project_id,
+                link_url=_MEASUREMENTS_FIELD_LINK,
+                related_entity_type="MEASUREMENT",
+                related_entity_id=measurement.id,
+            )
+            return result
+
+        result = await self._record_transition(measurement, SUBMITTED, actor_id, None, domain_levels)
         await self.production_service.sync_from_measurements(
             measurement.project_id, measurement.boq_item_id, measurement.measurement_date, actor_id
         )
 
-        pm_ids = await self.assignment_service.resolve_users_for_role(
-            measurement.project_id, UserRole.PROJECT_MANAGER
-        )
-        await self.notification_service.notify(
-            pm_ids,
-            type="MEASUREMENT_SUBMITTED",
-            title="Measurement submitted for approval",
-            message=f"A measurement dated {measurement.measurement_date} was submitted for your approval.",
-            project_id=measurement.project_id,
-            link_url=_MEASUREMENTS_LINK,
-            related_entity_type="MEASUREMENT",
-            related_entity_id=measurement.id,
-        )
+        if definition.levels:
+            first_level = definition.levels[0]
+            reviewer_ids = await self._resolve_users_for_roles(measurement.project_id, first_level.allowed_roles)
+            await self.notification_service.notify(
+                reviewer_ids,
+                type="MEASUREMENT_SUBMITTED",
+                title="Measurement submitted for approval",
+                message=f"A measurement dated {measurement.measurement_date} was submitted for your approval.",
+                project_id=measurement.project_id,
+                link_url=_MEASUREMENTS_LINK,
+                related_entity_type="MEASUREMENT",
+                related_entity_id=measurement.id,
+            )
         return result
 
     async def approve(
         self, measurement_id: uuid.UUID, actor_id: uuid.UUID, actor_role: UserRole, data: MeasurementActionRequest
     ) -> Measurement:
         measurement = await self.get(measurement_id)
-        current = MeasurementStatus(measurement.status)
+        current = measurement.status
+        definition = await self._get_effective_workflow(measurement.project_id)
+        codes = [lvl.status_code for lvl in definition.levels]
 
-        if current == MeasurementStatus.SUBMITTED:
-            if actor_role not in (UserRole.PROJECT_MANAGER, UserRole.ADMIN):
-                raise PermissionDeniedError("Only a Project Manager can approve a submitted measurement.")
-            target = MeasurementStatus.PM_APPROVED
-        elif current == MeasurementStatus.PM_APPROVED:
-            if actor_role not in (UserRole.QUANTITY_SURVEYOR, UserRole.ADMIN):
-                raise PermissionDeniedError("Only a Quantity Surveyor can give final approval.")
-            target = MeasurementStatus.QS_APPROVED
+        if current == SUBMITTED:
+            if not definition.levels:
+                raise PermissionDeniedError("No approval levels are configured for this project's measurement workflow.")
+            level_index = 0
+        elif current in codes and codes.index(current) + 1 < len(definition.levels):
+            level_index = codes.index(current) + 1
         else:
             raise PermissionDeniedError(f"Measurement in status {current} is not awaiting approval.")
 
-        result = await self._record_transition(measurement, target, actor_id, data.remarks)
+        level = definition.levels[level_index]
+        if actor_role != UserRole.ADMIN and actor_role.value not in level.allowed_roles:
+            raise PermissionDeniedError(f"Only {', '.join(level.allowed_roles)} may approve at this level.")
+
+        domain_levels = self._to_domain_levels(definition)
+        result = await self._record_transition(measurement, level.status_code, actor_id, data.remarks, domain_levels)
         await self.production_service.sync_from_measurements(
             measurement.project_id, measurement.boq_item_id, measurement.measurement_date, actor_id
         )
 
-        if target == MeasurementStatus.PM_APPROVED:
-            qs_ids = await self.assignment_service.resolve_users_for_role(
-                measurement.project_id, UserRole.QUANTITY_SURVEYOR
-            )
-            await self.notification_service.notify(
-                qs_ids,
-                type="MEASUREMENT_PM_APPROVED",
-                title="Measurement awaiting your final approval",
-                message=f"A measurement dated {measurement.measurement_date} was PM-approved and now needs QS approval.",
-                project_id=measurement.project_id,
-                link_url=_MEASUREMENTS_LINK,
-                related_entity_type="MEASUREMENT",
-                related_entity_id=measurement.id,
-            )
-        else:
+        if level.is_final_approval:
             await self.notification_service.notify(
                 [measurement.recorded_by],
                 type="MEASUREMENT_APPROVED",
@@ -204,15 +252,47 @@ class MeasurementService:
                 related_entity_type="MEASUREMENT",
                 related_entity_id=measurement.id,
             )
+        else:
+            next_level = definition.levels[level_index + 1]
+            reviewer_ids = await self._resolve_users_for_roles(measurement.project_id, next_level.allowed_roles)
+            await self.notification_service.notify(
+                reviewer_ids,
+                type="MEASUREMENT_PM_APPROVED",
+                title="Measurement awaiting your approval",
+                message=(
+                    f"A measurement dated {measurement.measurement_date} was approved at the "
+                    f"{level.label} level and now needs {next_level.label}."
+                ),
+                project_id=measurement.project_id,
+                link_url=_MEASUREMENTS_LINK,
+                related_entity_type="MEASUREMENT",
+                related_entity_id=measurement.id,
+            )
         return result
 
     async def reject(
         self, measurement_id: uuid.UUID, actor_id: uuid.UUID, actor_role: UserRole, data: MeasurementActionRequest
     ) -> Measurement:
         measurement = await self.get(measurement_id)
-        if actor_role not in (UserRole.PROJECT_MANAGER, UserRole.QUANTITY_SURVEYOR, UserRole.ADMIN):
-            raise PermissionDeniedError("Only PM/QS/Admin can reject a measurement.")
-        result = await self._record_transition(measurement, MeasurementStatus.REJECTED, actor_id, data.remarks)
+        current = measurement.status
+        definition = await self._get_effective_workflow(measurement.project_id)
+        codes = [lvl.status_code for lvl in definition.levels]
+
+        level = None
+        if current == SUBMITTED and definition.levels:
+            level = definition.levels[0]
+        elif current in codes:
+            idx = codes.index(current)
+            if idx + 1 < len(definition.levels):
+                level = definition.levels[idx + 1]
+
+        if level is None or not level.allow_reject:
+            raise PermissionDeniedError(f"Measurement in status {current} cannot be rejected.")
+        if actor_role != UserRole.ADMIN and actor_role.value not in level.allowed_roles:
+            raise PermissionDeniedError(f"Only {', '.join(level.allowed_roles)} may reject at this level.")
+
+        domain_levels = self._to_domain_levels(definition)
+        result = await self._record_transition(measurement, REJECTED, actor_id, data.remarks, domain_levels)
         await self.production_service.sync_from_measurements(
             measurement.project_id, measurement.boq_item_id, measurement.measurement_date, actor_id
         )
@@ -233,12 +313,16 @@ class MeasurementService:
         self, measurement_id: uuid.UUID, actor_id: uuid.UUID, actor_role: UserRole, data: MeasurementActionRequest
     ) -> Measurement:
         measurement = await self.get(measurement_id)
-        if actor_role not in (UserRole.QUANTITY_SURVEYOR, UserRole.ADMIN):
-            raise PermissionDeniedError("Only a Quantity Surveyor can lock a measurement.")
+        definition = await self._get_effective_workflow(measurement.project_id)
+        lock_roles = definition.lock_allowed_roles or []
+        if actor_role != UserRole.ADMIN and actor_role.value not in lock_roles:
+            raise PermissionDeniedError("Not permitted to lock measurements for this project.")
+
+        final_level = next((lvl for lvl in definition.levels if lvl.is_final_approval), None)
+        if final_level is None or measurement.status != final_level.status_code:
+            raise PermissionDeniedError(f"Measurement in status {measurement.status} is not awaiting lock.")
 
         from_status = measurement.status
-        transition(MeasurementStatus(from_status), MeasurementStatus.LOCKED)
-
         before = serialize_model(measurement)
 
         boq_item = await self.boq_repo.get(measurement.boq_item_id)
@@ -249,13 +333,13 @@ class MeasurementService:
         approval = MeasurementApproval(
             measurement_id=measurement.id,
             from_status=from_status,
-            to_status=MeasurementStatus.LOCKED,
+            to_status=LOCKED,
             acted_by=actor_id,
             remarks=data.remarks,
             acted_at=datetime.now(timezone.utc),
         )
         self.session.add(approval)
-        measurement.status = MeasurementStatus.LOCKED
+        measurement.status = LOCKED
         await self.session.flush()
         await self.audit.record(
             entity_type="MEASUREMENT",
@@ -284,7 +368,7 @@ class MeasurementService:
         self, measurement_id: uuid.UUID, data: MeasurementUpdate, actor_id: uuid.UUID, actor_role: UserRole
     ) -> Measurement:
         measurement = await self.get(measurement_id)
-        if MeasurementStatus(measurement.status) != MeasurementStatus.DRAFT:
+        if measurement.status != DRAFT:
             raise PermissionDeniedError("Only DRAFT measurements can be edited.")
         if measurement.recorded_by != actor_id and actor_role != UserRole.ADMIN:
             raise PermissionDeniedError("Only the recording engineer can edit this measurement.")
@@ -311,6 +395,8 @@ class MeasurementService:
         measurement.dimensions = {k: str(v) for k, v in data.dimensions.items()}
         measurement.computed_qty = computed_qty
         measurement.chainage = data.chainage
+        if data.rate is not None:
+            measurement.rate = data.rate
         await self.session.flush()
         await self.audit.record(
             entity_type="MEASUREMENT",
@@ -332,11 +418,13 @@ class MeasurementService:
         self, measurement_id: uuid.UUID, actor_id: uuid.UUID, actor_role: UserRole
     ) -> Measurement:
         measurement = await self.get(measurement_id)
-        if MeasurementStatus(measurement.status) != MeasurementStatus.REJECTED:
+        if measurement.status != REJECTED:
             raise PermissionDeniedError("Only REJECTED measurements can be recalled to draft.")
         if measurement.recorded_by != actor_id and actor_role != UserRole.ADMIN:
             raise PermissionDeniedError("Only the recording engineer can recall this measurement.")
-        result = await self._record_transition(measurement, MeasurementStatus.DRAFT, actor_id, None)
+        definition = await self._get_effective_workflow(measurement.project_id)
+        domain_levels = self._to_domain_levels(definition)
+        result = await self._record_transition(measurement, DRAFT, actor_id, None, domain_levels)
         await self.notification_service.notify(
             [measurement.recorded_by],
             type="MEASUREMENT_RECALLED",
@@ -353,7 +441,7 @@ class MeasurementService:
         self, measurement_id: uuid.UUID, actor_id: uuid.UUID, actor_role: UserRole
     ) -> None:
         measurement = await self.get(measurement_id)
-        if MeasurementStatus(measurement.status) != MeasurementStatus.DRAFT:
+        if measurement.status != DRAFT:
             raise PermissionDeniedError("Only DRAFT measurements can be deleted.")
         if measurement.recorded_by != actor_id and actor_role != UserRole.ADMIN:
             raise PermissionDeniedError("Only the recording engineer can delete this measurement.")

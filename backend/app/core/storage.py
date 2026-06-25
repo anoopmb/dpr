@@ -60,3 +60,20 @@ def upload_fileobj(fileobj: BinaryIO, prefix: str, filename: str, content_type: 
     if settings.storage_backend == "local":
         return _upload_to_local(fileobj, key)
     return _upload_to_s3(fileobj, key, content_type)
+
+
+def delete_fileobj(url: str) -> None:
+    """Best-effort deletion of a previously uploaded file. Never raises."""
+    try:
+        if settings.storage_backend == "local":
+            prefix = f"{settings.public_base_url}/uploads/"
+            if url.startswith(prefix):
+                key = url[len(prefix):]
+                (Path(settings.local_upload_dir) / key).unlink(missing_ok=True)
+        else:
+            bucket_prefix = f"{settings.s3_endpoint_url}/{settings.s3_bucket}/"
+            if url.startswith(bucket_prefix):
+                key = url[len(bucket_prefix):]
+                get_s3_client().delete_object(Bucket=settings.s3_bucket, Key=key)
+    except Exception:
+        pass

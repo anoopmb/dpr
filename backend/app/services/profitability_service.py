@@ -107,7 +107,7 @@ class ProfitabilityService:
         rows = await self.session.execute(
             select(
                 DprHeader.report_date,
-                func.coalesce(func.sum(DprMachinery.hours_used * DprMachinery.hire_rate), 0),
+                func.coalesce(func.sum(DprMachinery.quantity_used * DprMachinery.hire_rate), 0),
             )
             .join(DprMachinery, DprHeader.id == DprMachinery.dpr_header_id)
             .where(DprHeader.project_id == project_id)

@@ -14,6 +14,8 @@ import {
   useUoms,
   useWorkTypes,
   useWorkerCategories,
+  MACHINERY_HIRE_UNIT_LABELS,
+  type MachineryHireUnit,
   type MachineryRow,
   type MaterialRow,
   type StockLocationRow,
@@ -237,9 +239,14 @@ function MaterialsTab() {
 interface MachineryFormValues {
   code: string;
   name: string;
+  hire_unit: MachineryHireUnit;
   hire_rate?: number;
-  hire_unit?: string;
 }
+
+const HIRE_UNIT_OPTIONS = (Object.keys(MACHINERY_HIRE_UNIT_LABELS) as MachineryHireUnit[]).map((k) => ({
+  value: k,
+  label: MACHINERY_HIRE_UNIT_LABELS[k],
+}));
 
 function MachineryTab() {
   const isMobile = useIsMobile();
@@ -251,6 +258,7 @@ function MachineryTab() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<MachineryRow | null>(null);
   const [form] = Form.useForm<MachineryFormValues>();
+  const [watchedUnit, setWatchedUnit] = useState<MachineryHireUnit>('HOUR');
   const [searchText, setSearchText] = useState('');
 
   const filteredData = (query.data ?? []).filter((row) => {
@@ -259,20 +267,36 @@ function MachineryTab() {
     return row.code.toLowerCase().includes(q) || row.name.toLowerCase().includes(q);
   });
 
-  const openAdd = () => { setEditing(null); form.resetFields(); setModalOpen(true); };
+  const openAdd = () => {
+    setEditing(null);
+    form.resetFields();
+    form.setFieldValue('hire_unit', 'HOUR');
+    setWatchedUnit('HOUR');
+    setModalOpen(true);
+  };
   const openEdit = (row: MachineryRow) => {
     setEditing(row);
-    form.setFieldsValue({ code: row.code, name: row.name, hire_rate: row.hire_rate ? parseFloat(row.hire_rate) : undefined, hire_unit: row.hire_unit ?? undefined });
+    form.setFieldsValue({
+      code: row.code,
+      name: row.name,
+      hire_unit: row.hire_unit,
+      hire_rate: row.hire_unit === 'OWNED' ? undefined : (row.hire_rate ? parseFloat(row.hire_rate) : undefined),
+    });
+    setWatchedUnit(row.hire_unit);
     setModalOpen(true);
   };
 
   const handleSave = async (values: MachineryFormValues) => {
+    const payload = {
+      ...values,
+      hire_rate: values.hire_unit === 'OWNED' ? undefined : values.hire_rate,
+    };
     try {
       if (editing) {
-        await updateMachinery.mutateAsync({ id: editing.id, data: values });
+        await updateMachinery.mutateAsync({ id: editing.id, data: payload });
         message.success('Machinery updated');
       } else {
-        await createMachinery.mutateAsync(values);
+        await createMachinery.mutateAsync(payload);
         message.success('Machinery added');
       }
       setModalOpen(false); form.resetFields();
@@ -297,10 +321,22 @@ function MachineryTab() {
         columns={[
           { title: 'Code', dataIndex: 'code', sorter: (a: MachineryRow, b: MachineryRow) => a.code.localeCompare(b.code) },
           { title: 'Name', dataIndex: 'name', sorter: (a: MachineryRow, b: MachineryRow) => a.name.localeCompare(b.name) },
-          { title: 'Hire Rate', dataIndex: 'hire_rate', render: (v: string | null, row: MachineryRow) => v !== null ? `${fmtAmt(v)}${row.hire_unit ? ` / ${row.hire_unit}` : ''}` : '—' },
+          {
+            title: 'Unit',
+            dataIndex: 'hire_unit',
+            width: 130,
+            render: (v: MachineryHireUnit) => MACHINERY_HIRE_UNIT_LABELS[v] ?? v,
+          },
+          {
+            title: 'Hire Rate',
+            dataIndex: 'hire_rate',
+            width: 130,
+            render: (v: string | null, row: MachineryRow) =>
+              row.hire_unit === 'OWNED' ? 'Owned' : (v ? fmtAmt(v) : '—'),
+          },
           {
             title: 'Actions', key: 'actions', width: 100,
-            render: (_, row) => (
+            render: (_: unknown, row: MachineryRow) => (
               <Space>
                 <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(row)} />
                 <Popconfirm title="Delete this machinery?" description="This cannot be undone." onConfirm={() => handleDelete(row.id)} okText="Delete" okButtonProps={{ danger: true }}>
@@ -312,11 +348,23 @@ function MachineryTab() {
         ]}
       />
       <Modal title={editing ? 'Edit Machinery' : 'Add Machinery'} open={modalOpen} onCancel={() => setModalOpen(false)} onOk={() => form.submit()} confirmLoading={createMachinery.isPending || updateMachinery.isPending} destroyOnHidden>
-        <Form form={form} layout="vertical" onFinish={handleSave}>
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={handleSave}
+          onValuesChange={(changed) => { if (changed.hire_unit) setWatchedUnit(changed.hire_unit); }}
+          initialValues={{ hire_unit: 'HOUR' }}
+        >
           <Form.Item name="code" label="Code" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="name" label="Name" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="hire_rate" label={`Hire Rate (${symbol}, optional)`}><InputNumber style={{ width: '100%' }} min={0} /></Form.Item>
-          <Form.Item name="hire_unit" label="Hire Unit (e.g. Daily, Hr)"><Input /></Form.Item>
+          <Form.Item name="hire_unit" label="Billing Unit" rules={[{ required: true }]}>
+            <Select options={HIRE_UNIT_OPTIONS} />
+          </Form.Item>
+          {watchedUnit !== 'OWNED' && (
+            <Form.Item name="hire_rate" label={`Hire Rate (${symbol})`}>
+              <InputNumber style={{ width: '100%' }} min={0} placeholder="Optional" />
+            </Form.Item>
+          )}
         </Form>
       </Modal>
     </div>

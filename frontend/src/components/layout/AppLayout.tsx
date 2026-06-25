@@ -110,6 +110,7 @@ const desktopMenuGroups: NavGroup[] = [
       { key: '/masters', label: 'Master Data', icon: <SettingOutlined />, roles: ['ADMIN'] },
       { key: '/users', label: 'Users', icon: <IdcardOutlined />, roles: ['ADMIN'] },
       { key: '/settings', label: 'Settings', icon: <GlobalOutlined />, roles: ['ADMIN'] },
+      { key: '/settings/approval-workflow', label: 'Approval Workflow', icon: <CheckOutlined />, roles: ['ADMIN'] },
       { key: '/audit-logs', label: 'Audit Logs', icon: <HistoryOutlined />, roles: ['ADMIN'] },
     ],
   },
@@ -121,9 +122,13 @@ const fieldMenuItems = [
   { key: '/field/machinery', label: 'Machinery Used', icon: <CarOutlined /> },
   { key: '/field/workers', label: 'Attendance', icon: <TeamOutlined /> },
   { key: '/field/measurements', label: 'Measurements', icon: <CameraOutlined /> },
-  { key: '/field/my-measurements', label: 'My Measurements', icon: <FileTextOutlined /> },
   { key: '/field/my-indents', label: 'My Material Indents', icon: <InboxOutlined /> },
 ] as const;
+
+// On desktop, Today's DPR already consolidates Materials/Machinery/Attendance/
+// Measurements into tabs, so the standalone pages are redundant there — only
+// keep them in the menu on mobile, where they act as quick-access shortcuts.
+const DESKTOP_ALWAYS_VISIBLE_FIELD_KEY = '/field/dpr-today';
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
@@ -149,8 +154,13 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const isField = isFieldRole(user?.role);
   const isAdmin = user?.role === 'ADMIN';
 
+  const visibleFieldMenuItems = useMemo(
+    () => (isMobile ? fieldMenuItems : fieldMenuItems.filter((item) => item.key === DESKTOP_ALWAYS_VISIBLE_FIELD_KEY)),
+    [isMobile],
+  );
+
   const menuItems = useMemo((): MenuProps['items'] => {
-    if (isField) return fieldMenuItems.map((item) => ({ key: item.key, icon: item.icon, label: item.label }));
+    if (isField) return visibleFieldMenuItems.map((item) => ({ key: item.key, icon: item.icon, label: item.label }));
 
     const items: MenuProps['items'] = [
       { key: dashboardNavItem.key, icon: dashboardNavItem.icon, label: dashboardNavItem.label },
@@ -172,11 +182,11 @@ export function AppLayout({ children }: { children: ReactNode }) {
         key: 'grp-field',
         icon: <MobileOutlined />,
         label: 'Field Access',
-        children: fieldMenuItems.map((item) => ({ key: item.key, icon: item.icon, label: item.label })),
+        children: visibleFieldMenuItems.map((item) => ({ key: item.key, icon: item.icon, label: item.label })),
       });
     }
     return items;
-  }, [isField, isAdmin, user?.role]);
+  }, [isField, isAdmin, user?.role, visibleFieldMenuItems]);
 
   const allNavKeys = useMemo(() => {
     if (isField) return fieldMenuItems.map((item) => item.key as string);

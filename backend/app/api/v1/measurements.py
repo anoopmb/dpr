@@ -37,6 +37,7 @@ async def _to_read(session: SessionDep, measurement: Measurement) -> Measurement
         superseded_by_id=measurement.superseded_by_id,
         billed=measurement.billed,
         chainage=measurement.chainage,
+        rate=measurement.rate,
     )
 
 
@@ -64,6 +65,7 @@ async def _to_read_many(session: SessionDep, measurements: list[Measurement]) ->
             superseded_by_id=m.superseded_by_id,
             billed=m.billed,
             chainage=m.chainage,
+            rate=m.rate,
         )
         for m in measurements
     ]

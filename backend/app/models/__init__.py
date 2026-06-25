@@ -26,6 +26,7 @@ from app.models.user import User
 from app.models.variation_order import VariationOrder
 from app.models.worker import Worker
 from app.models.worker_payment import WorkerPayment
+from app.models.workflow_config import WorkflowDefinition, WorkflowEntityType, WorkflowStage
 
 __all__ = [
     "Project",
@@ -68,4 +69,7 @@ __all__ = [
     "OrganizationSettings",
     "Notification",
     "PushSubscription",
+    "WorkflowDefinition",
+    "WorkflowEntityType",
+    "WorkflowStage",
 ]

@@ -1,5 +1,4 @@
 import uuid
-from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -84,7 +83,7 @@ class WorkerLedgerService:
 
     async def list_summary(self, project_id: uuid.UUID) -> list[WorkerLedgerSummaryRow]:
         workers_result = await self.session.execute(
-            select(Worker).where(Worker.project_id == project_id, Worker.is_active == True).order_by(Worker.full_name)
+            select(Worker).where(Worker.project_id == project_id, Worker.is_active).order_by(Worker.full_name)
         )
         workers = list(workers_result.scalars().all())
 

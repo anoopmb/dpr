@@ -33,7 +33,7 @@ class DprHeader(TimestampedBase):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    status: Mapped[DprStatus] = mapped_column(String(20), nullable=False, default=DprStatus.DRAFT)
+    status: Mapped[DprStatus] = mapped_column(String(50), nullable=False, default=DprStatus.DRAFT)
     approved_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
     )
@@ -119,7 +119,7 @@ class DprMaterial(TimestampedBase):
 class DprMachinery(TimestampedBase):
     __tablename__ = "dpr_machinery"
     __table_args__ = (
-        CheckConstraint("hours_used > 0 AND hours_used <= 24", name="ck_dpr_machinery_hours_range"),
+        CheckConstraint("quantity_used > 0", name="ck_dpr_machinery_qty_positive"),
     )
 
     dpr_header_id: Mapped[uuid.UUID] = mapped_column(
@@ -128,11 +128,11 @@ class DprMachinery(TimestampedBase):
     machinery_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("machinery_master.id", ondelete="RESTRICT"), nullable=False
     )
-    hours_used: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
-    # Snapshotted at entry time (defaults from MachineryMaster.hire_rate if
-    # not supplied) so later edits to the master rate never rewrite the cost
-    # of hours already logged — rates fluctuate day to day in practice.
-    hire_rate: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    quantity_used: Mapped[Decimal] = mapped_column(Numeric(10, 3), nullable=False)
+    # Snapshotted from MachineryMaster at entry time so historical records are
+    # accurate even if the master rate or unit changes later.
+    hire_unit: Mapped[str] = mapped_column(String(20), nullable=False, server_default="HOUR")
+    hire_rate: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
 
     dpr_header: Mapped["DprHeader"] = relationship(back_populates="machinery_entries")
 

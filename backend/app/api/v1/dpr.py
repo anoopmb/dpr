@@ -346,6 +346,7 @@ async def list_measurements_for_dpr(
             superseded_by_id=m.superseded_by_id,
             billed=m.billed,
             chainage=m.chainage,
+            rate=m.rate,
         )
         for m in measurements
     ]

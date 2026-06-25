@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.master_data import WorkTypeFormula
+from app.models.master_data import MachineryHireUnit, WorkTypeFormula
 from app.models.stock_location import StockLocationType
 
 
@@ -89,15 +89,15 @@ class MaterialRead(MaterialCreate):
 class MachineryCreate(BaseModel):
     code: str = Field(min_length=1, max_length=50)
     name: str = Field(min_length=1, max_length=255)
-    hire_rate: Decimal | None = None
-    hire_unit: str | None = Field(default=None, max_length=20)
+    hire_unit: MachineryHireUnit = MachineryHireUnit.HOUR
+    hire_rate: Decimal | None = Field(default=None, ge=0)
 
 
 class MachineryUpdate(BaseModel):
     code: str | None = Field(default=None, min_length=1, max_length=50)
     name: str | None = Field(default=None, min_length=1, max_length=255)
+    hire_unit: MachineryHireUnit | None = None
     hire_rate: Decimal | None = None
-    hire_unit: str | None = Field(default=None, max_length=20)
 
 
 class MachineryRead(MachineryCreate):

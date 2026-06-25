@@ -315,7 +315,7 @@ export function ProductionProgressPage() {
           pagination={false}
           size="small"
           bordered
-          scroll={{ x: 'max-content' }}
+          scroll={{ x: 'max-content', y: 'calc(100vh - 220px)' }}
           onRow={(row) => ({
             style: {
               background:

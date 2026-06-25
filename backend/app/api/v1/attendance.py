@@ -79,3 +79,14 @@ async def list_attendance_for_project(
 ) -> list[AttendanceRecordRead]:
     records = await AttendanceService(session).list_for_project(project_id, attendance_date)
     return [AttendanceRecordRead.model_validate(r) for r in records]
+
+
+@router.delete(
+    "/attendance/records/{record_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_role(*_SUPERVISOR_ROLES))],
+)
+async def delete_attendance_record(
+    record_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep
+) -> None:
+    await AttendanceService(session).delete(record_id, actor_id=uuid.UUID(current_user.id))

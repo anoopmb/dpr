@@ -126,6 +126,18 @@ export function useMarkPresent() {
   });
 }
 
+export function useDeleteAttendance() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ recordId, projectId }: { recordId: string; projectId: string }) => {
+      await apiClient.delete(`/attendance/records/${recordId}`);
+      return { projectId };
+    },
+    onSuccess: ({ projectId }) =>
+      queryClient.invalidateQueries({ queryKey: ['attendance', projectId] }),
+  });
+}
+
 export function useUpdateWorker() {
   const queryClient = useQueryClient();
   return useMutation({
