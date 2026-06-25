@@ -40,6 +40,16 @@ import {
   useUpdateDprHeader,
   type IssueSeverity,
 } from '@/api/hooks/useDpr';
+import {
+  useDprLabour,
+  useDprLabourSuggestions,
+  useAddDprLabour,
+  useUpdateDprLabour,
+  useDeleteDprLabour,
+  type DprLabourRead,
+  type DprLabourSuggestion,
+} from '@/api/hooks/useDprLabour';
+import { useWorkers } from '@/api/hooks/useAttendance';
 import { useBoqSections, type BoqItemRead, type BoqSectionRead } from '@/api/hooks/useBoq';
 import { useProjects } from '@/api/hooks/useProjects';
 import { useUploadPhoto } from '@/api/hooks/useUpload';
@@ -74,6 +84,220 @@ function buildProductionRows(sections: BoqSectionRead[]): ProductionRow[] {
     }
   }
   return rows;
+}
+
+function LabourTab({
+  headerId,
+  projectId,
+  isSubmitted,
+}: {
+  headerId: string;
+  projectId: string;
+  isSubmitted: boolean;
+}) {
+  const { data: entries, isLoading } = useDprLabour(headerId);
+  const { data: suggestions } = useDprLabourSuggestions(isSubmitted ? null : headerId);
+  const { data: workers } = useWorkers(projectId);
+  const addLabour = useAddDprLabour();
+  const updateLabour = useUpdateDprLabour();
+  const deleteLabour = useDeleteDprLabour();
+  const { fmtAmt } = useNumberFormat();
+  const [addingWorker, setAddingWorker] = useState<string | null>(null);
+
+  const workerById = new Map((workers ?? []).map((w) => [w.id, w]));
+  const savedWorkerIds = new Set((entries ?? []).map((e) => e.worker_id));
+
+  const handleSaveSuggestion = async (s: DprLabourSuggestion) => {
+    try {
+      await addLabour.mutateAsync({
+        headerId,
+        data: { worker_id: s.worker_id, quantity: s.quantity, rate: s.rate },
+      });
+      message.success(`${s.worker_name} added`);
+    } catch {
+      message.error('Could not add entry');
+    }
+  };
+
+  const handleAddManual = async (workerId: string) => {
+    const worker = workerById.get(workerId);
+    if (!worker) return;
+    setAddingWorker(workerId);
+    try {
+      await addLabour.mutateAsync({
+        headerId,
+        data: {
+          worker_id: workerId,
+          quantity: worker.wage_unit === 'HOUR' ? '0' : '1',
+          rate: worker.default_rate ?? '0',
+        },
+      });
+      message.success(`${worker.full_name} added`);
+    } catch {
+      message.error('Could not add entry');
+    } finally {
+      setAddingWorker(null);
+    }
+  };
+
+  const handleQtyChange = async (entry: DprLabourRead, qty: number | null) => {
+    if (qty == null) return;
+    try {
+      await updateLabour.mutateAsync({ itemId: entry.id, data: { quantity: String(qty), rate: entry.rate } });
+    } catch {
+      message.error('Could not update');
+    }
+  };
+
+  const handleDelete = async (entry: DprLabourRead) => {
+    try {
+      await deleteLabour.mutateAsync({ itemId: entry.id, headerId });
+      message.success('Entry removed');
+    } catch {
+      message.error('Could not remove entry');
+    }
+  };
+
+  const totalAmount = (entries ?? []).reduce((s, e) => s + parseFloat(e.amount || '0'), 0);
+
+  return (
+    <div>
+      {!isSubmitted && (suggestions ?? []).filter((s) => !savedWorkerIds.has(s.worker_id)).length > 0 && (
+        <Card size="small" style={{ marginBottom: 12 }} title="Attendance-based suggestions (click to add)">
+          <Space wrap>
+            {(suggestions ?? [])
+              .filter((s) => !savedWorkerIds.has(s.worker_id))
+              .map((s) => (
+                <Button
+                  key={s.worker_id}
+                  size="small"
+                  onClick={() => handleSaveSuggestion(s)}
+                  loading={addLabour.isPending}
+                >
+                  {s.worker_name} ({s.wage_unit ?? 'DAY'})
+                </Button>
+              ))}
+          </Space>
+        </Card>
+      )}
+
+      {!isSubmitted && (
+        <div style={{ marginBottom: 12 }}>
+          <Select
+            placeholder="Add contractor / other worker…"
+            showSearch
+            optionFilterProp="label"
+            style={{ width: '100%' }}
+            value={null}
+            onChange={(v) => handleAddManual(v)}
+            options={(workers ?? [])
+              .filter((w) => !savedWorkerIds.has(w.id))
+              .map((w) => ({ value: w.id, label: `${w.full_name} (${w.worker_type})` }))}
+          />
+        </div>
+      )}
+
+      <Table
+        rowKey="id"
+        size="small"
+        loading={isLoading}
+        dataSource={entries ?? []}
+        pagination={false}
+        scroll={{ x: 600 }}
+        columns={[
+          { title: 'Worker', dataIndex: 'worker_name' },
+          {
+            title: 'Type',
+            dataIndex: 'worker_type',
+            width: 110,
+            render: (t: string) => <Tag color={t === 'NORMAL' ? 'blue' : t === 'CONTRACTOR' ? 'orange' : 'purple'}>{t}</Tag>,
+          },
+          { title: 'Unit', dataIndex: 'wage_unit', width: 60, render: (v: string | null) => v ?? 'DAY' },
+          {
+            title: 'Qty',
+            key: 'qty',
+            width: 100,
+            render: (_: unknown, entry: DprLabourRead) =>
+              isSubmitted ? (
+                <span>{entry.quantity}</span>
+              ) : (
+                <InputNumber
+                  size="small"
+                  min={0}
+                  step={entry.wage_unit === 'HOUR' ? 0.5 : 1}
+                  value={parseFloat(entry.quantity)}
+                  style={{ width: 80 }}
+                  onChange={(v) => handleQtyChange(entry, v)}
+                />
+              ),
+          },
+          {
+            title: 'Rate',
+            dataIndex: 'rate',
+            width: 90,
+            align: 'right' as const,
+            render: fmtAmt,
+          },
+          {
+            title: 'Amount',
+            dataIndex: 'amount',
+            width: 100,
+            align: 'right' as const,
+            render: fmtAmt,
+          },
+          entry => entry.worker_type !== 'NORMAL' ? {
+            title: 'Their Workers',
+            key: 'cw',
+            width: 100,
+            render: (_: unknown, e: DprLabourRead) =>
+              isSubmitted ? (
+                <span>{e.contractor_workers_count ?? '—'}</span>
+              ) : (
+                <InputNumber
+                  size="small"
+                  min={0}
+                  value={e.contractor_workers_count ?? undefined}
+                  style={{ width: 80 }}
+                  placeholder="0"
+                  onChange={async (v) => {
+                    try {
+                      await updateLabour.mutateAsync({ itemId: e.id, data: { contractor_workers_count: v ?? null } });
+                    } catch { /* silent */ }
+                  }}
+                />
+              ),
+          } : { key: 'noop', width: 0, render: () => null },
+          !isSubmitted
+            ? {
+                title: '',
+                key: 'del',
+                width: 50,
+                render: (_: unknown, entry: DprLabourRead) => (
+                  <Popconfirm
+                    title="Remove this labour entry?"
+                    onConfirm={() => handleDelete(entry)}
+                    okText="Remove"
+                    okButtonProps={{ danger: true }}
+                  >
+                    <Button size="small" danger loading={deleteLabour.isPending} />
+                  </Popconfirm>
+                ),
+              }
+            : { key: 'noop2', width: 0, render: () => null },
+        ]}
+        summary={() => (
+          <Table.Summary>
+            <Table.Summary.Row style={{ fontWeight: 700 }}>
+              <Table.Summary.Cell index={0} colSpan={5}>Total Labour Cost</Table.Summary.Cell>
+              <Table.Summary.Cell index={5} align="right">{fmtAmt(totalAmount)}</Table.Summary.Cell>
+              <Table.Summary.Cell index={6} />
+              <Table.Summary.Cell index={7} />
+            </Table.Summary.Row>
+          </Table.Summary>
+        )}
+      />
+    </div>
+  );
 }
 
 interface ProductionState {
@@ -556,6 +780,13 @@ export function DprTodayPage() {
       label: 'Production',
       children: currentDprHeaderId ? (
         <ProductionTab headerId={currentDprHeaderId} isSubmitted={isSubmitted} />
+      ) : null,
+    },
+    {
+      key: 'labour',
+      label: 'Labour',
+      children: currentDprHeaderId && selectedProjectId ? (
+        <LabourTab headerId={currentDprHeaderId} projectId={selectedProjectId} isSubmitted={isSubmitted} />
       ) : null,
     },
     {

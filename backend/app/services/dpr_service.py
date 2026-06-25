@@ -12,7 +12,7 @@ from app.core.timezone import get_org_today
 from app.domain.dpr.validators import validate_report_date
 from app.models.attendance import AttendanceRecord
 from app.models.audit import AuditAction
-from app.models.dpr import DprHeader, DprHeaderApproval, DprIssue, DprMachinery, DprMaterial, DprProductionEntry, DprStatus, DprWorkItem
+from app.models.dpr import DprHeader, DprHeaderApproval, DprIssue, DprLabour, DprMachinery, DprMaterial, DprProductionEntry, DprStatus, DprWorkItem
 from app.models.user import User
 from app.models.expense import Expense
 from app.models.master_data import (
@@ -44,6 +44,7 @@ from app.schemas.dpr import (
     ProductionProgressRead,
     SectionProgressRead,
 )
+from app.schemas.dpr_labour import DprLabourCreate, DprLabourSuggestion, DprLabourUpdate
 from app.schemas.dpr_report import (
     DailyAmountCell,
     DailyProductionCell,
@@ -457,6 +458,127 @@ class DprService:
             .order_by(DprHeaderApproval.acted_at)
         )
         return result.all()
+
+    async def list_labour_suggestions(self, header_id: uuid.UUID) -> list[DprLabourSuggestion]:
+        """Return attendance-based pre-fill hints for the Labour tab.
+
+        For each NORMAL worker who checked in on this DPR's date, we suggest one
+        row with quantity=1.0 (DAY) or 0.0 (HOUR — engineer fills in actual hours).
+        Workers already saved in dpr_labour are excluded so re-opening the tab
+        doesn't duplicate them.
+        """
+        header = await self.get(header_id)
+        existing_ids: set[uuid.UUID] = {e.worker_id for e in header.labour_entries}
+
+        rows = await self.session.execute(
+            select(Worker, WorkerCategoryMaster.daily_rate)
+            .join(WorkerCategoryMaster, Worker.worker_category_id == WorkerCategoryMaster.id)
+            .join(AttendanceRecord, AttendanceRecord.worker_id == Worker.id)
+            .where(
+                AttendanceRecord.project_id == header.project_id,
+                AttendanceRecord.attendance_date == header.report_date,
+                Worker.worker_type == "NORMAL",
+            )
+        )
+        suggestions: list[DprLabourSuggestion] = []
+        for worker, category_rate in rows.all():
+            if worker.id in existing_ids:
+                continue
+            rate = worker.default_rate if worker.default_rate is not None else (category_rate or Decimal("0"))
+            qty = Decimal("1") if worker.wage_unit != "HOUR" else Decimal("0")
+            suggestions.append(
+                DprLabourSuggestion(
+                    worker_id=worker.id,
+                    worker_name=worker.full_name,
+                    worker_type=worker.worker_type,
+                    wage_unit=worker.wage_unit,
+                    quantity=qty,
+                    rate=rate,
+                    amount=(qty * rate).quantize(Decimal("0.01")),
+                )
+            )
+        return suggestions
+
+    async def list_labour(self, header_id: uuid.UUID) -> list[DprLabour]:
+        result = await self.session.execute(
+            select(DprLabour).where(DprLabour.dpr_header_id == header_id).order_by(DprLabour.created_at)
+        )
+        return list(result.scalars().all())
+
+    async def add_labour(self, header_id: uuid.UUID, data: DprLabourCreate, actor_id: uuid.UUID) -> DprLabour:
+        await self._get_editable_header(header_id)
+        worker = await self.session.get(Worker, data.worker_id)
+        if worker is None:
+            raise NotFoundError(f"Worker {data.worker_id} not found.")
+        amount = (data.quantity * data.rate).quantize(Decimal("0.01"))
+        entry = DprLabour(
+            dpr_header_id=header_id,
+            worker_id=data.worker_id,
+            quantity=data.quantity,
+            rate=data.rate,
+            amount=amount,
+            contractor_workers_count=data.contractor_workers_count,
+            remarks=data.remarks,
+        )
+        self.session.add(entry)
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="DPR_LABOUR",
+            entity_id=entry.id,
+            action=AuditAction.CREATE,
+            actor_id=actor_id,
+            after=serialize_model(entry),
+        )
+        await self.session.commit()
+        return entry
+
+    async def update_labour(self, item_id: uuid.UUID, data: DprLabourUpdate, actor_id: uuid.UUID) -> DprLabour:
+        entry = await self.session.get(DprLabour, item_id)
+        if entry is None:
+            raise NotFoundError(f"DPR labour entry {item_id} not found.")
+        header = await self.session.get(DprHeader, entry.dpr_header_id)
+        if header is None or header.status != DprStatus.DRAFT:
+            raise PermissionDeniedError("Can only edit labour entries on a DRAFT DPR.")
+        before = serialize_model(entry)
+        if data.quantity is not None:
+            entry.quantity = data.quantity
+        if data.rate is not None:
+            entry.rate = data.rate
+        if data.contractor_workers_count is not None:
+            entry.contractor_workers_count = data.contractor_workers_count
+        if data.remarks is not None:
+            entry.remarks = data.remarks
+        entry.amount = (entry.quantity * entry.rate).quantize(Decimal("0.01"))
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="DPR_LABOUR",
+            entity_id=entry.id,
+            action=AuditAction.UPDATE,
+            actor_id=actor_id,
+            before=before,
+            after=serialize_model(entry),
+        )
+        await self.session.commit()
+        return entry
+
+    async def delete_labour(self, item_id: uuid.UUID, actor_id: uuid.UUID) -> None:
+        entry = await self.session.get(DprLabour, item_id)
+        if entry is None:
+            raise NotFoundError(f"DPR labour entry {item_id} not found.")
+        header = await self.session.get(DprHeader, entry.dpr_header_id)
+        if header is None or header.status != DprStatus.DRAFT:
+            raise PermissionDeniedError("Can only delete labour entries on a DRAFT DPR.")
+        before = serialize_model(entry)
+        entity_id = entry.id
+        await self.session.delete(entry)
+        await self.audit.record(
+            entity_type="DPR_LABOUR",
+            entity_id=entity_id,
+            action=AuditAction.DELETE,
+            actor_id=actor_id,
+            before=before,
+        )
+        await self.session.commit()
 
     async def delete_header(self, header_id: uuid.UUID, actor_id: uuid.UUID) -> None:
         header = await self.session.get(DprHeader, header_id)

@@ -14,6 +14,7 @@ class DailyProfitabilityRead(BaseModel):
     production_value: Decimal
     machinery_cost: Decimal
     material_cost: Decimal
+    labour_cost: Decimal
     expense_cost: Decimal
     total_cost: Decimal
     net_profit: Decimal
@@ -26,6 +27,7 @@ class ProfitabilityRead(BaseModel):
     production_value: Decimal
     machinery_cost: Decimal
     material_cost: Decimal
+    labour_cost: Decimal
     expense_cost: Decimal
     total_cost: Decimal
     net_profit: Decimal

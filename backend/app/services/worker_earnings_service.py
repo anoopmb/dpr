@@ -36,6 +36,7 @@ class WorkerEarningsService:
             select(
                 Worker.id,
                 Worker.full_name,
+                Worker.default_rate,
                 WorkerCategoryMaster.id,
                 WorkerCategoryMaster.name,
                 WorkerCategoryMaster.daily_rate,
@@ -46,7 +47,7 @@ class WorkerEarningsService:
             .where(AttendanceRecord.project_id == project_id)
             .where(AttendanceRecord.attendance_date >= from_date)
             .where(AttendanceRecord.attendance_date <= to_date)
-            .group_by(Worker.id, Worker.full_name, WorkerCategoryMaster.id, WorkerCategoryMaster.name, WorkerCategoryMaster.daily_rate)
+            .group_by(Worker.id, Worker.full_name, Worker.default_rate, WorkerCategoryMaster.id, WorkerCategoryMaster.name, WorkerCategoryMaster.daily_rate)
             .order_by(Worker.full_name)
         )
         if worker_category_id is not None:
@@ -58,8 +59,9 @@ class WorkerEarningsService:
         total_days = 0
         total_earnings = Decimal("0.00")
 
-        for worker_id, worker_name, category_id, category_name, daily_rate, days_present in result:
-            earnings = (daily_rate * days_present).quantize(Decimal("0.01")) if daily_rate is not None else None
+        for worker_id, worker_name, worker_default_rate, category_id, category_name, daily_rate, days_present in result:
+            effective_rate = worker_default_rate if worker_default_rate is not None else daily_rate
+            earnings = (effective_rate * days_present).quantize(Decimal("0.01")) if effective_rate is not None else None
             rows.append(
                 WorkerEarningsRow(
                     worker_id=worker_id,
@@ -67,7 +69,7 @@ class WorkerEarningsService:
                     category_id=category_id,
                     category_name=category_name,
                     days_present=days_present,
-                    daily_rate=daily_rate,
+                    daily_rate=effective_rate,
                     total_earnings=earnings,
                 )
             )
@@ -99,6 +101,7 @@ class WorkerEarningsService:
                 AttendanceRecord.attendance_date,
                 Worker.id,
                 Worker.full_name,
+                Worker.default_rate,
                 WorkerCategoryMaster.id,
                 WorkerCategoryMaster.name,
                 WorkerCategoryMaster.daily_rate,
@@ -118,8 +121,9 @@ class WorkerEarningsService:
         rows: list[DailyLabourLogRow] = []
         total_cost = Decimal("0.00")
 
-        for attendance_date, worker_id, worker_name, category_id, category_name, daily_rate in result:
-            cost = daily_rate.quantize(Decimal("0.01")) if daily_rate is not None else None
+        for attendance_date, worker_id, worker_name, worker_default_rate, category_id, category_name, daily_rate in result:
+            effective_rate = worker_default_rate if worker_default_rate is not None else daily_rate
+            cost = effective_rate.quantize(Decimal("0.01")) if effective_rate is not None else None
             rows.append(
                 DailyLabourLogRow(
                     attendance_date=attendance_date,
@@ -127,7 +131,7 @@ class WorkerEarningsService:
                     worker_name=worker_name,
                     category_id=category_id,
                     category_name=category_name,
-                    daily_rate=daily_rate,
+                    daily_rate=effective_rate,
                     cost=cost,
                 )
             )

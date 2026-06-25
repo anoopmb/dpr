@@ -11,6 +11,7 @@ export interface DailyProfitabilityRead {
   production_value: string;
   machinery_cost: string;
   material_cost: string;
+  labour_cost: string;
   expense_cost: string;
   total_cost: string;
   net_profit: string;
@@ -23,6 +24,7 @@ export interface ProfitabilityRead {
   production_value: string;
   machinery_cost: string;
   material_cost: string;
+  labour_cost: string;
   expense_cost: string;
   total_cost: string;
   net_profit: string;

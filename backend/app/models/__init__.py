@@ -3,7 +3,7 @@ from app.models.audit import AuditLog
 from app.models.billing import PaymentReceived, RunningBill, RunningBillItem
 from app.models.boq import BoqItem, BoqSection
 from app.models.department import Department
-from app.models.dpr import DprHeader, DprHeaderApproval, DprIssue, DprMachinery, DprMaterial, DprProductionEntry, DprWorkItem
+from app.models.dpr import DprHeader, DprHeaderApproval, DprIssue, DprLabour, DprMachinery, DprMaterial, DprProductionEntry, DprWorkItem
 from app.models.expense import Expense
 from app.models.master_data import (
     ExpenseCategoryMaster,
@@ -25,6 +25,7 @@ from app.models.stock_location import StockLocation
 from app.models.user import User
 from app.models.variation_order import VariationOrder
 from app.models.worker import Worker
+from app.models.worker_payment import WorkerPayment
 
 __all__ = [
     "Project",
@@ -50,6 +51,8 @@ __all__ = [
     "DprIssue",
     "DprMaterial",
     "DprMachinery",
+    "DprLabour",
+    "WorkerPayment",
     "Measurement",
     "MeasurementApproval",
     "MaterialIndent",

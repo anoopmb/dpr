@@ -24,6 +24,7 @@ from app.schemas.dpr import (
     DprWorkItemCreate,
     ProductionProgressRead,
 )
+from app.schemas.dpr_labour import DprLabourCreate, DprLabourRead, DprLabourSuggestion, DprLabourUpdate
 from app.schemas.dpr_report import DprMonthlyReportRead
 from app.schemas.measurement import MeasurementRead
 from app.services.dpr_service import DprProductionService, DprService
@@ -215,6 +216,100 @@ async def list_dpr_approvals(
         )
         for approval, full_name in rows
     ]
+
+
+@router.get("/{header_id}/labour/suggestions", response_model=list[DprLabourSuggestion])
+async def get_labour_suggestions(
+    header_id: uuid.UUID, session: SessionDep, _: CurrentUserDep
+) -> list[DprLabourSuggestion]:
+    return await DprService(session).list_labour_suggestions(header_id)
+
+
+@router.get("/{header_id}/labour", response_model=list[DprLabourRead])
+async def list_labour(header_id: uuid.UUID, session: SessionDep, _: CurrentUserDep) -> list[DprLabourRead]:
+    from app.models.worker import Worker as WorkerModel
+    entries = await DprService(session).list_labour(header_id)
+    result = []
+    for entry in entries:
+        worker = await session.get(WorkerModel, entry.worker_id)
+        result.append(
+            DprLabourRead(
+                id=entry.id,
+                dpr_header_id=entry.dpr_header_id,
+                worker_id=entry.worker_id,
+                worker_name=worker.full_name if worker else "Unknown",
+                worker_type=worker.worker_type if worker else "NORMAL",
+                wage_unit=worker.wage_unit if worker else None,
+                quantity=entry.quantity,
+                rate=entry.rate,
+                amount=entry.amount,
+                contractor_workers_count=entry.contractor_workers_count,
+                remarks=entry.remarks,
+            )
+        )
+    return result
+
+
+@router.post(
+    "/{header_id}/labour",
+    response_model=DprLabourRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_role(*_FIELD_ROLES))],
+)
+async def add_labour(
+    header_id: uuid.UUID, data: DprLabourCreate, session: SessionDep, current_user: CurrentUserDep
+) -> DprLabourRead:
+    from app.models.worker import Worker as WorkerModel
+    entry = await DprService(session).add_labour(header_id, data, actor_id=uuid.UUID(current_user.id))
+    worker = await session.get(WorkerModel, entry.worker_id)
+    return DprLabourRead(
+        id=entry.id,
+        dpr_header_id=entry.dpr_header_id,
+        worker_id=entry.worker_id,
+        worker_name=worker.full_name if worker else "Unknown",
+        worker_type=worker.worker_type if worker else "NORMAL",
+        wage_unit=worker.wage_unit if worker else None,
+        quantity=entry.quantity,
+        rate=entry.rate,
+        amount=entry.amount,
+        contractor_workers_count=entry.contractor_workers_count,
+        remarks=entry.remarks,
+    )
+
+
+@router.patch(
+    "/labour/{item_id}",
+    response_model=DprLabourRead,
+    dependencies=[Depends(require_role(*_FIELD_ROLES))],
+)
+async def update_labour(
+    item_id: uuid.UUID, data: DprLabourUpdate, session: SessionDep, current_user: CurrentUserDep
+) -> DprLabourRead:
+    from app.models.worker import Worker as WorkerModel
+    entry = await DprService(session).update_labour(item_id, data, actor_id=uuid.UUID(current_user.id))
+    worker = await session.get(WorkerModel, entry.worker_id)
+    return DprLabourRead(
+        id=entry.id,
+        dpr_header_id=entry.dpr_header_id,
+        worker_id=entry.worker_id,
+        worker_name=worker.full_name if worker else "Unknown",
+        worker_type=worker.worker_type if worker else "NORMAL",
+        wage_unit=worker.wage_unit if worker else None,
+        quantity=entry.quantity,
+        rate=entry.rate,
+        amount=entry.amount,
+        contractor_workers_count=entry.contractor_workers_count,
+        remarks=entry.remarks,
+    )
+
+
+@router.delete(
+    "/labour/{item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_role(*_FIELD_ROLES))],
+)
+async def delete_labour(item_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep) -> None:
+    await DprService(session).delete_labour(item_id, actor_id=uuid.UUID(current_user.id))
 
 
 @router.get("/{header_id}/measurements", response_model=list[MeasurementRead])

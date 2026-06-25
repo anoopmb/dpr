@@ -45,6 +45,9 @@ class DprHeader(TimestampedBase):
     machinery_entries: Mapped[list["DprMachinery"]] = relationship(
         back_populates="dpr_header", cascade="all, delete-orphan"
     )
+    labour_entries: Mapped[list["DprLabour"]] = relationship(
+        back_populates="dpr_header", cascade="all, delete-orphan"
+    )
 
 
 class DprWorkItem(TimestampedBase):
@@ -150,6 +153,36 @@ class DprProductionEntry(TimestampedBase):
     amount_today: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     chainage: Mapped[str | None] = mapped_column(String(100))
     remarks: Mapped[str | None] = mapped_column(String(500))
+
+
+class DprLabour(TimestampedBase):
+    """Labour cost entry per worker per DPR day.
+
+    NORMAL workers: quantity = days (1.0) or hours worked.
+    CONTRACTOR/SUBCONTRACTOR: quantity = measured work units (CUM, SQM, etc.).
+    Rate is snapshotted at entry time from the worker's default_rate or category
+    daily_rate so later rate changes never rewrite historical costs.
+    """
+
+    __tablename__ = "dpr_labour"
+    __table_args__ = (
+        UniqueConstraint("dpr_header_id", "worker_id", name="uq_dpr_labour_header_worker"),
+    )
+
+    dpr_header_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dpr_headers.id", ondelete="CASCADE"), nullable=False
+    )
+    worker_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workers.id", ondelete="RESTRICT"), nullable=False
+    )
+    quantity: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
+    rate: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    # Number of the contractor's own labourers deployed (CONTRACTOR/SUBCONTRACTOR only).
+    contractor_workers_count: Mapped[int | None] = mapped_column()
+    remarks: Mapped[str | None] = mapped_column(String(500))
+
+    dpr_header: Mapped["DprHeader"] = relationship(back_populates="labour_entries")
 
 
 class DprHeaderApproval(TimestampedBase):

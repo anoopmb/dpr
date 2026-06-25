@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
 
+export type WorkerType = 'NORMAL' | 'CONTRACTOR' | 'SUBCONTRACTOR';
+
 export interface WorkerRead {
   id: string;
   project_id: string;
@@ -10,6 +12,9 @@ export interface WorkerRead {
   photo_url: string | null;
   contractor_name: string | null;
   is_active: boolean;
+  worker_type: WorkerType;
+  wage_unit: string | null;
+  default_rate: string | null;
 }
 
 export interface WorkerCreateInput {
@@ -19,6 +24,9 @@ export interface WorkerCreateInput {
   phone?: string;
   photo_url?: string;
   contractor_name?: string;
+  worker_type?: WorkerType;
+  wage_unit?: string;
+  default_rate?: string;
   mark_present_today?: boolean;
 }
 
@@ -28,6 +36,9 @@ export interface WorkerUpdateInput {
   contractor_name?: string;
   worker_category_id?: string;
   is_active?: boolean;
+  worker_type?: WorkerType;
+  wage_unit?: string;
+  default_rate?: string | null;
 }
 
 export interface AttendanceRecordRead {

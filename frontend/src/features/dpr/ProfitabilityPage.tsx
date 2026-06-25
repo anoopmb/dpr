@@ -46,6 +46,8 @@ export function ProfitabilityPage() {
     if (mach > 0) segments.push({ label: 'Machinery', amount: mach });
     const mat = parseFloat(profitability.material_cost);
     if (mat > 0) segments.push({ label: 'Materials', amount: mat });
+    const lab = parseFloat(profitability.labour_cost);
+    if (lab > 0) segments.push({ label: 'Labour', amount: lab });
     for (const cat of profitability.expense_by_category) {
       const amt = parseFloat(cat.amount);
       if (amt > 0) segments.push({ label: cat.category_name, amount: amt });
@@ -72,6 +74,12 @@ export function ProfitabilityPage() {
     {
       title: 'Material Cost',
       dataIndex: 'material_cost',
+      align: 'right' as const,
+      render: (v: string) => fmtAmt(v),
+    },
+    {
+      title: 'Labour Cost',
+      dataIndex: 'labour_cost',
       align: 'right' as const,
       render: (v: string) => fmtAmt(v),
     },

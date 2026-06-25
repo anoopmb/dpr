@@ -20,6 +20,7 @@ from app.api.v1 import (
     reports,
     uploads,
     users,
+    worker_ledger,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -45,3 +46,4 @@ api_router.include_router(notifications.router)
 api_router.include_router(reports.router)
 api_router.include_router(push.router)
 api_router.include_router(audit.router)
+api_router.include_router(worker_ledger.router)

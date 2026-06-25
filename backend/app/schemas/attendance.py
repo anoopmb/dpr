@@ -12,6 +12,9 @@ class WorkerCreate(BaseModel):
     phone: str | None = Field(default=None, max_length=20)
     photo_url: str | None = Field(default=None, max_length=500)
     contractor_name: str | None = Field(default=None, max_length=255)
+    worker_type: str = Field(default="NORMAL", max_length=20)
+    wage_unit: str | None = Field(default=None, max_length=20)
+    default_rate: Decimal | None = None
     # When true, the worker is auto-marked present for today as part of
     # being added — only honored if the project does not require photo/GPS
     # verification; otherwise the service rejects it and a full check-in
@@ -30,6 +33,9 @@ class WorkerRead(BaseModel):
     photo_url: str | None
     contractor_name: str | None
     is_active: bool
+    worker_type: str
+    wage_unit: str | None
+    default_rate: Decimal | None
 
 
 class WorkerUpdate(BaseModel):
@@ -38,6 +44,9 @@ class WorkerUpdate(BaseModel):
     contractor_name: str | None = Field(default=None, max_length=255)
     worker_category_id: uuid.UUID | None = None
     is_active: bool | None = None
+    worker_type: str | None = Field(default=None, max_length=20)
+    wage_unit: str | None = Field(default=None, max_length=20)
+    default_rate: Decimal | None = None
 
 
 class AttendanceCheckInCreate(BaseModel):
