@@ -1185,9 +1185,11 @@ function IssuesTab({
 function MeasurementsTab({
   projectId,
   entryDate,
+  isSubmitted,
 }: {
   projectId: string;
   entryDate: string;
+  isSubmitted: boolean;
 }) {
   const user = useAuthStore((s) => s.user);
   const { data: measurements, isLoading } = useMeasurements(projectId);
@@ -1564,13 +1566,16 @@ function MeasurementsTab({
             <Typography.Text strong style={{ fontSize: 14 }}>Measurements</Typography.Text>
             <Tag style={{ margin: 0, fontSize: 11 }}>{forDate.length} record{forDate.length !== 1 ? 's' : ''}</Tag>
           </span>
-          <Button
-            size="small" icon={<PlusOutlined />}
-            onClick={() => setDrafts((p) => [...p, { key: nextMeasKey(), boq_item_id: null, dimensions: {}, chainage: '', qty: null, rate: null }])}
-          >
-            Add Measurement
-          </Button>
+          {!isSubmitted && (
+            <Button
+              size="small" icon={<PlusOutlined />}
+              onClick={() => setDrafts((p) => [...p, { key: nextMeasKey(), boq_item_id: null, dimensions: {}, chainage: '', qty: null, rate: null }])}
+            >
+              Add Measurement
+            </Button>
+          )}
         </div>
+        {isSubmitted && <Alert type="info" showIcon style={{ margin: 12 }} message="DPR is submitted — new measurements cannot be added here." />}
 
         <Table<MeasRow>
           rowKey={(row) => row._kind === 'existing' ? row.entry.id : row.draft.key}
@@ -2101,7 +2106,7 @@ export function DprTodayPage() {
     {
       key: 'measurements',
       label: 'Measurements',
-      children: selectedProjectId ? <MeasurementsTab projectId={selectedProjectId} entryDate={entryDateStr} /> : null,
+      children: selectedProjectId ? <MeasurementsTab projectId={selectedProjectId} entryDate={entryDateStr} isSubmitted={isSubmitted} /> : null,
     },
     {
       key: 'issues',
