@@ -21,6 +21,7 @@ import {
   MobileOutlined,
   MoonFilled,
   PercentageOutlined,
+  QuestionCircleOutlined,
   RiseOutlined,
   SettingOutlined,
   SunFilled,
@@ -228,6 +229,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   const profileMenuItems: MenuProps['items'] = [
     { key: 'my-profile', icon: <UserOutlined />, label: 'My Profile' },
+    { key: 'support-centre', icon: <QuestionCircleOutlined />, label: 'Support Centre' },
     { type: 'divider' },
     {
       key: 'theme-group',
@@ -254,6 +256,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
     }
     if (key === 'my-profile') {
       navigate('/profile');
+    }
+    if (key === 'support-centre') {
+      window.open('/support-centre.html', '_blank', 'noopener,noreferrer');
     }
   };
 

@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Support Centre — DPR / Measurement Book / Billing System</title>
+<style>
+  :root {
+    --accent: #1677ff;
+    --accent-dark: #0958d9;
+    --green: #18a058;
+    --gold: #d4a106;
+    --red: #d4380d;
+    --cyan: #08979c;
+    --purple: #722ed1;
+    --gray: #6b7280;
+    --bg: #f5f7fa;
+    --card: #ffffff;
+    --border: #e2e5e9;
+    --text: #0f172a;
+    --muted: #6b7280;
+    --code-bg: #f1f3f6;
+    --sidebar-width: 280px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ── Layout ───────────────────────────────────────────── */
+  .shell { display: flex; min-height: 100vh; }
+  .sidebar {
+    width: var(--sidebar-width);
+    flex-shrink: 0;
+    background: #0b1220;
+    color: #cbd5e1;
+    padding: 24px 0;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+  }
+  .sidebar .brand {
+    padding: 0 20px 20px;
+    border-bottom: 1px solid #1f2937;
+    margin-bottom: 16px;
+  }
+  .sidebar .brand .logo {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+  }
+  .sidebar .brand .logo .mark {
+    width: 32px; height: 32px; border-radius: 8px; background: var(--accent);
+    display: flex; align-items: center; justify-content: center; color: white; font-weight: 800; font-size: 14px;
+  }
+  .sidebar .brand .logo .name { font-weight: 700; color: #fff; font-size: 15px; }
+  .sidebar .brand .sub { font-size: 12px; color: #94a3b8; }
+  .sidebar nav { padding: 0 12px; }
+  .sidebar .toc-group { margin-bottom: 4px; }
+  .sidebar .toc-group > a {
+    display: block; padding: 9px 12px; border-radius: 8px; color: #cbd5e1; font-weight: 600; font-size: 13.5px;
+  }
+  .sidebar .toc-group > a:hover { background: #1a2434; text-decoration: none; }
+  .sidebar .toc-sub { padding-left: 22px; }
+  .sidebar .toc-sub a {
+    display: block; padding: 6px 12px; border-radius: 6px; color: #94a3b8; font-size: 12.5px;
+  }
+  .sidebar .toc-sub a:hover { background: #1a2434; color: #e2e8f0; text-decoration: none; }
+
+  .content { flex: 1; min-width: 0; padding: 0; }
+  .topbar {
+    position: sticky; top: 0; z-index: 5; background: rgba(245,247,250,0.92); backdrop-filter: blur(6px);
+    border-bottom: 1px solid var(--border); padding: 14px 36px; display: flex; justify-content: space-between; align-items: center;
+  }
+  .topbar .title { font-weight: 700; font-size: 15px; }
+  .topbar .meta { font-size: 12px; color: var(--muted); }
+  .main { padding: 28px 36px 80px; max-width: 1080px; }
+
+  section.guide-section { margin-bottom: 56px; padding-top: 8px; }
+  section.guide-section h2 {
+    font-size: 24px; margin: 0 0 6px; padding-bottom: 12px; border-bottom: 3px solid var(--accent);
+    display: flex; align-items: center; gap: 10px;
+  }
+  section.guide-section h2 .num {
+    display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px;
+    border-radius: 8px; background: var(--accent); color: white; font-size: 14px; font-weight: 800;
+  }
+  .section-intro { color: var(--muted); font-size: 14.5px; margin: 10px 0 24px; max-width: 760px; }
+
+  h3.screen-title {
+    font-size: 17px; margin: 32px 0 4px; padding: 10px 14px; background: #eef2ff; border-left: 4px solid var(--accent);
+    border-radius: 0 8px 8px 0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+  }
+  h4.sub-title { font-size: 14.5px; margin: 22px 0 8px; color: var(--accent-dark); }
+
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: .2px; }
+  .pill.route { background: #f1f3f6; color: #334155; font-family: 'SFMono-Regular', Consolas, monospace; }
+  .pill.role { background: #e6f4ff; color: var(--accent-dark); margin-right: 4px; }
+  .pill.draft { background: #f1f3f6; color: #475569; }
+  .pill.blue { background: #e6f4ff; color: var(--accent-dark); }
+  .pill.gold { background: #fef3c7; color: #92400e; }
+  .pill.cyan { background: #d1f7f5; color: #0e7490; }
+  .pill.green { background: #dcfce7; color: #15803d; }
+  .pill.red { background: #fee2e2; color: #b91c1c; }
+  .pill.purple { background: #f3e8ff; color: #7e22ce; }
+
+  p { margin: 0 0 12px; }
+  ul, ol { margin: 0 0 14px; padding-left: 22px; }
+  li { margin-bottom: 4px; }
+  code { background: var(--code-bg); padding: 2px 6px; border-radius: 4px; font-size: 12.5px; font-family: 'SFMono-Regular', Consolas, monospace; }
+
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 22px; font-size: 13.5px; }
+  table th, table td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table th { background: #f8fafc; font-weight: 700; color: #334155; }
+  table tr:hover td { background: #fafbfc; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin: 14px 0; }
+  .card-note { background: #fffbe6; border: 1px solid #fde68a; border-radius: 10px; padding: 12px 16px; margin: 14px 0; font-size: 13.5px; }
+  .card-note strong { color: #92400e; }
+  .card-warn { background: #fff1f0; border: 1px solid #ffccc7; border-radius: 10px; padding: 12px 16px; margin: 14px 0; font-size: 13.5px; }
+  .card-warn strong { color: #b91c1c; }
+  .card-tip { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 10px; padding: 12px 16px; margin: 14px 0; font-size: 13.5px; }
+  .card-tip strong { color: var(--accent-dark); }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  @media (max-width: 760px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+  /* ── Flow diagrams (pure CSS, no images/JS) ──────────────── */
+  .flow-wrap { overflow-x: auto; padding: 18px 4px 8px; }
+  .flow { display: flex; align-items: center; flex-wrap: nowrap; gap: 0; min-width: max-content; }
+  .flow-step {
+    background: white; border: 2px solid var(--accent); border-radius: 10px; padding: 10px 16px;
+    font-weight: 700; font-size: 13px; text-align: center; min-width: 120px; color: var(--accent-dark);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .flow-step.terminal { border-color: var(--green); color: var(--green); background: #f0fdf4; }
+  .flow-step.draft { border-color: var(--gray); color: var(--gray); background: #f8fafc; }
+  .flow-step.rejected { border-color: var(--red); color: var(--red); background: #fff1f0; }
+  .flow-step.gold { border-color: var(--gold); color: #92400e; background: #fffbeb; }
+  .flow-arrow { font-size: 22px; color: #94a3b8; padding: 0 10px; flex-shrink: 0; }
+  .flow-label {
+    font-size: 11px; color: var(--muted); text-align: center; margin-top: 6px; max-width: 130px;
+  }
+  .flow-col { display: flex; flex-direction: column; align-items: center; }
+  .branch-note {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--red);
+    border: 1px dashed var(--red); border-radius: 8px; padding: 6px 10px; margin: 6px 6px 0 0; background: #fff8f7;
+  }
+  .branch-note.gray { color: var(--gray); border-color: #cbd5e1; background: #f8fafc; }
+
+  /* Notification fan-out diagram */
+  .fanout { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .fanout .source { background: var(--accent); color: white; border-radius: 10px; padding: 12px 18px; font-weight: 700; font-size: 13px; }
+  .fanout .channels { display: flex; flex-direction: column; gap: 8px; }
+  .fanout .channel {
+    border: 2px solid var(--purple); color: #6b21a8; background: #faf5ff; border-radius: 8px;
+    padding: 7px 14px; font-size: 12.5px; font-weight: 600; white-space: nowrap;
+  }
+
+  /* Navigation map cards */
+  .navmap { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  @media (max-width: 760px) { .navmap { grid-template-columns: 1fr; } }
+  .navmap .group-card { border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; background: white; }
+  .navmap .group-card h4 { margin: 0 0 10px; font-size: 14px; color: var(--accent-dark); display: flex; align-items: center; gap: 8px; }
+  .navmap .group-card ul { margin: 0; padding-left: 18px; font-size: 13px; }
+  .navmap .group-card li { margin-bottom: 5px; }
+
+  .glossary dt { font-weight: 700; margin-top: 14px; color: var(--accent-dark); }
+  .glossary dd { margin: 4px 0 0; color: #334155; }
+
+  .back-to-top { position: fixed; bottom: 24px; right: 24px; background: var(--accent); color: white; border-radius: 50%;
+    width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 18px; box-shadow: 0 4px 12px rgba(22,119,255,0.4); }
+  .back-to-top:hover { background: var(--accent-dark); text-decoration: none; }
+
+  @media (max-width: 900px) {
+    .sidebar { display: none; }
+    .main { padding: 20px; }
+    .topbar { padding: 12px 20px; }
+  }
+  @media print {
+    .sidebar, .back-to-top, .topbar { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo"><div class="mark">VKJ</div><div class="name">Support Centre</div></div>
+      <div class="sub">DPR · Measurement Book · Billing System</div>
+    </div>
+    <nav>
+      <div class="toc-group"><a href="#welcome">Welcome</a></div>
+      <div class="toc-group"><a href="#getting-started">Getting Started</a></div>
+      <div class="toc-group"><a href="#nav-map">Navigation Map</a></div>
+      <div class="toc-group"><a href="#roles">Roles &amp; Permissions</a></div>
+      <div class="toc-group">
+        <a href="#field-ops">Field Operations</a>
+        <div class="toc-sub">
+          <a href="#field-dpr-today">Today's DPR</a>
+          <a href="#field-materials">Materials Used</a>
+          <a href="#field-machinery">Machinery Used</a>
+          <a href="#field-attendance">Attendance</a>
+          <a href="#field-measurements">Measurement Entry</a>
+          <a href="#field-my-measurements">My Measurements</a>
+          <a href="#field-my-indents">My Material Indents</a>
+        </div>
+      </div>
+      <div class="toc-group">
+        <a href="#project-mgmt">Project &amp; Commercial Management</a>
+        <div class="toc-sub">
+          <a href="#pm-projects">Projects</a>
+          <a href="#pm-boq">BOQ &amp; Templates</a>
+          <a href="#pm-measurements">Measurement Book</a>
+          <a href="#pm-indents">Material Indents</a>
+          <a href="#pm-workers">Workers &amp; Attendance</a>
+          <a href="#pm-expenses">Expenses</a>
+          <a href="#pm-billing">Running Bills</a>
+        </div>
+      </div>
+      <div class="toc-group">
+        <a href="#reports">Reporting &amp; Analytics</a>
+        <div class="toc-sub">
+          <a href="#rep-dashboard">Dashboard</a>
+          <a href="#rep-analytics">Analytics</a>
+          <a href="#rep-progress">Production Progress</a>
+          <a href="#rep-profitability">Profitability</a>
+          <a href="#rep-dpr-history">DPR History</a>
+          <a href="#rep-monthly">Monthly DPR Report</a>
+          <a href="#rep-earnings">Worker Earnings</a>
+          <a href="#rep-labour-log">Daily Labour Log</a>
+          <a href="#rep-audit">Audit Logs</a>
+        </div>
+      </div>
+      <div class="toc-group"><a href="#notifications">Notifications &amp; Approvals</a></div>
+      <div class="toc-group">
+        <a href="#admin">Administration</a>
+        <div class="toc-sub">
+          <a href="#admin-masters">Master Data</a>
+          <a href="#admin-users">Users &amp; Roles</a>
+          <a href="#admin-settings">Settings</a>
+          <a href="#admin-profile">Profile</a>
+        </div>
+      </div>
+      <div class="toc-group"><a href="#glossary">Glossary</a></div>
+      <div class="toc-group"><a href="#faq">Troubleshooting &amp; FAQ</a></div>
+    </nav>
+  </aside>
+
+  <div class="content">
+    <div class="topbar">
+      <div class="title">Support Centre</div>
+      <div class="meta">End-User Guide</div>
+    </div>
+
+    <div class="main">
+
+      <!-- ════════════════════════════════════════ WELCOME ════════════════════════════════════════ -->
+      <section class="guide-section" id="welcome">
+        <h2><span class="num">·</span> Welcome</h2>
+        <p class="section-intro">
+          This guide explains every screen in the system, what each field is for, who can do what, and how data flows
+          from a worker's attendance mark on a job site all the way through to a billed running bill. It is written
+          directly against how the system actually behaves today — if a feature described elsewhere (a workflow step,
+          a button) doesn't exist yet, this guide says so rather than guessing.
+        </p>
+        <p>
+          This is a <strong>Daily Progress Report (DPR), Measurement Book (MB), and Billing system</strong> for
+          construction project execution and commercial tracking. In short, it lets field staff record what happened
+          on site each day — work executed, materials and machinery consumed, worker attendance, and measurements
+          against the Bill of Quantities (BOQ) — and lets project management/QS/finance staff review, approve, and
+          turn that into running bills, while admins keep the reference data (materials, rates, users) and the
+          organization's settings up to date.
+        </p>
+        <div class="card-tip">
+          <strong>How to use this guide:</strong> use the sidebar to jump to any screen. Each screen's section states
+          its route, which roles can open it, its purpose, every field/button you'll see, and what happens when you
+          submit. Workflow sections include diagrams showing exactly how a record moves between statuses.
+        </div>
+      </section>
+
+      <!-- ════════════════════════════════════════ GETTING STARTED ════════════════════════════════════════ -->
+      <section class="guide-section" id="getting-started">
+        <h2><span class="num">1</span> Getting Started</h2>
+
+        <h4 class="sub-title">Signing in</h4>
+        <p>You'll be given a Login ID and password by your administrator. There is no self-service sign-up — every
+        account is created by an Admin on the Users screen (see <a href="#admin-users">Users &amp; Roles</a>).</p>
+
+        <h4 class="sub-title">The sidebar</h4>
+        <p>
+          The left sidebar groups every screen you have access to under five headings — Project, Resources, Finance,
+          Reports, and Administration — plus a Dashboard link on its own. You only see the groups/items your role is
+          allowed to open; the rest are simply not shown (see <a href="#roles">Roles &amp; Permissions</a> for the
+          full breakdown). On a phone, the sidebar becomes a slide-out drawer opened with the menu icon at the top
+          left.
+        </p>
+
+        <h4 class="sub-title">Light / Dark theme</h4>
+        <p>Click your avatar (top right) → choose Light, Dark, or System under the Theme section. "System" follows
+        your device's own light/dark setting automatically.</p>
+
+        <h4 class="sub-title">Notifications</h4>
+        <p>The bell icon (top right) shows your unread count and opens your notification list — a dropdown on desktop,
+        a full-screen panel on mobile. See <a href="#notifications">Notifications &amp; Approvals</a> for exactly what
+        triggers a notification and who receives it.</p>
+
+        <h4 class="sub-title">Installing as an app</h4>
+        <p>
+          A banner may appear inviting you to install this as an app on your device (a Progressive Web App) so it
+          behaves like a native app with its own icon, no browser address bar, and works offline for already-loaded
+          pages. On Android/desktop Chrome, the banner has an Install button that does this directly. On iPhone/iPad
+          (Safari has no install button), it instead shows the manual steps: tap the Share icon, then "Add to Home
+          Screen." Dismissing the banner only hides it for that browsing session.
+        </p>
+
+        <h4 class="sub-title">Allowing push notifications</h4>
+        <p>
+          Shortly after you sign in, your browser may ask "Allow notifications?" — this lets a notification reach you
+          even when the app isn't open in front of you, similar to a phone's native notifications. This prompt appears
+          automatically; there's no separate in-app switch for it. Allow it if you want background alerts; declining
+          is harmless — you'll still see everything in the in-app bell.
+        </p>
+
+        <h4 class="sub-title">Your profile</h4>
+        <p>Click your avatar → <strong>My Profile</strong> to view your details, change your name/photo, change your
+        password, or review your recent activity. See <a href="#admin-profile">Profile</a> for details.</p>
+      </section>
+
+      <!-- ════════════════════════════════════════ NAVIGATION MAP ════════════════════════════════════════ -->
+      <section class="guide-section" id="nav-map">
+        <h2><span class="num">2</span> Navigation Map</h2>
+        <p class="section-intro">Every screen in the system, grouped exactly as they appear in the sidebar.</p>
+
+        <div class="navmap">
+          <div class="group-card">
+            <h4>📊 Dashboard</h4>
+            <ul><li>Dashboard — role-specific home screen (everyone)</li></ul>
+          </div>
+          <div class="group-card">
+            <h4>🏗️ Project</h4>
+            <ul>
+              <li>Projects</li>
+              <li>BOQ <span class="pill draft">+ Templates</span></li>
+              <li>Measurements (MB)</li>
+              <li>DPR History</li>
+              <li>Monthly DPR Report</li>
+            </ul>
+          </div>
+          <div class="group-card">
+            <h4>🧰 Resources</h4>
+            <ul>
+              <li>Material Indents</li>
+              <li>Workers &amp; Attendance</li>
+              <li>Expenses</li>
+            </ul>
+          </div>
+          <div class="group-card">
+            <h4>💰 Finance</h4>
+            <ul><li>Running Bills</li></ul>
+          </div>
+          <div class="group-card">
+            <h4>📈 Reports</h4>
+            <ul>
+              <li>Production Progress</li>
+              <li>Profitability</li>
+              <li>Analytics</li>
+              <li>Worker Earnings</li>
+              <li>Daily Labour Log</li>
+            </ul>
+          </div>
+          <div class="group-card">
+            <h4>⚙️ Administration <span class="pill role">Admin only</span></h4>
+            <ul>
+              <li>Master Data</li>
+              <li>Users</li>
+              <li>Settings</li>
+              <li>Audit Logs</li>
+            </ul>
+          </div>
+          <div class="group-card" style="grid-column: 1 / -1;">
+            <h4>📱 Field (mobile-oriented, Site Engineer / Project Manager / Admin)</h4>
+            <ul>
+              <li>Today's DPR · Materials Used · Machinery Used · Attendance · Measurements · My Measurements · My Material Indents</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ════════════════════════════════════════ ROLES ════════════════════════════════════════ -->
+      <section class="guide-section" id="roles">
+        <h2><span class="num">3</span> Roles &amp; Permissions</h2>
+        <p class="section-intro">There are five roles. Every screen and every approval action is gated by role — this
+        table is the quick reference; exact gates are repeated in each screen's own section below.</p>
+
+        <table>
+          <tr><th>Role</th><th>What they're generally for</th></tr>
+          <tr>
+            <td><span class="pill role">Site Engineer</span></td>
+            <td>The on-site field role. Logs Today's DPR, materials/machinery used, worker attendance, records
+            measurements, and requests material indents. Has no access to BOQ setup, billing, or admin screens.</td>
+          </tr>
+          <tr>
+            <td><span class="pill role">Project Manager</span></td>
+            <td>Sets up and manages projects (BOQ, assignments, geofence/verification settings), gives the first stage
+            of measurement approval, approves material indents, and views every report.</td>
+          </tr>
+          <tr>
+            <td><span class="pill role">Quantity Surveyor</span></td>
+            <td>Gives the final measurement approval and locks measurements (making them billable), and generates
+            running bills.</td>
+          </tr>
+          <tr>
+            <td><span class="pill role">Store Keeper</span></td>
+            <td>Approves and issues material indents, manages stock locations, and logs expenses.</td>
+          </tr>
+          <tr>
+            <td><span class="pill role">Administrator</span></td>
+            <td>Everything — every screen above, plus Master Data, Users, Settings, and Audit Logs. Can also perform
+            any other role's approval actions.</td>
+          </tr>
+        </table>
+
+        <div class="card-note">
+          <strong>Note:</strong> the two "My ..." field screens — My Measurements and My Material Indents — have no
+          role restriction at all in the system; any signed-in user can open them, though in practice there's nothing
+          of "yours" to see there unless you've actually recorded a measurement or raised an indent yourself.
+        </div>
+      </section>
+
+      <!-- ════════════════════════════════════════ FIELD OPERATIONS ════════════════════════════════════════ -->
+      <section class="guide-section" id="field-ops">
+        <h2><span class="num">4</span> Field Operations</h2>
+        <p class="section-intro">
+          These are the mobile-oriented screens under the "Field" area, available to
+          <span class="pill role">Site Engineer</span><span class="pill role">Project Manager</span><span class="pill role">Admin</span>
+          (the My Measurements / My Material Indents screens are open to any role).
+        </p>
+
+        <h4 class="sub-title">Shared mechanics across every Field screen</h4>
+        <ul>
+          <li><strong>Project selector</strong> — nothing works until you pick a project at the top; your choice is
+          remembered across screens and even after you close the browser.</li>
+          <li><strong>One shared entry date</strong> — Today's DPR is the only screen with a date picker. Whatever
+          date you pick there is the date Materials Used, Machinery Used, and Measurement Entry all silently use too
+          (shown as a read-only "Entry date: ..." line on those screens) — you never have to pick the date twice.</li>
+          <li><strong>Attendance gate</strong> — Today's DPR, Materials Used, Machinery Used, and Measurement Entry
+          are all locked behind one rule: you must mark at least one worker present <em>today</em> (the real calendar
+          date — this check is not affected by back-dating your entry date) before any of their content appears. If
+          you haven't yet, you'll see "Mark attendance first" with a button straight to the Attendance screen.</li>
+        </ul>
+
+        <div class="flow-wrap">
+          <p style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:4px;">A typical field day, in order:</p>
+          <div class="flow">
+            <div class="flow-col"><div class="flow-step">Mark Attendance</div></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-col"><div class="flow-step">Start Today's DPR</div></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-col"><div class="flow-step">Log Production / Materials / Machinery / Measurements</div></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-col"><div class="flow-step terminal">Submit Today's DPR</div></div>
+          </div>
+        </div>
+
+        <h3 class="screen-title" id="field-dpr-today">Today's DPR <span><span class="pill route">/field/dpr-today</span><span class="pill role">Site Engineer</span><span class="pill role">PM</span><span class="pill role">Admin</span></span></h3>
+        <p><strong>Purpose:</strong> the daily report for a project — one record per project per calendar date,
+        covering work executed, a daily activity summary, and any issues. "DPR" = Daily Progress Report.</p>
+        <p>If no DPR exists yet for the selected date, you'll see a small form: <strong>Supervisor Name</strong>
+        (pre-filled with your name, editable), and a <strong>"No work today (rain / holiday / shutdown)"</strong>
+        toggle — switching it on reveals a reason dropdown (Rain / Holiday / Sunday / Other, with a free-text box for
+        Other). Button: <strong>Start Today's DPR</strong> (reads "Start DPR for {date}" if you've picked a past
+        date). The date picker next to the page title only allows dates from the project's start date up to today.</p>
+        <p>Once a DPR exists, the title shows a status tag — <span class="pill draft">DRAFT</span> or
+        <span class="pill green">SUBMITTED</span>. While DRAFT:</p>
+        <ul>
+          <li>Supervisor Name and the no-work toggle/reason stay editable. If you try to flip a day to "no work" after
+          already logging production/material/machinery entries, you'll get: <em>"Cannot mark as a no-work day: this
+          DPR already has production, material, or machinery entries."</em></li>
+          <li>If "no work" is on, the rest of the page collapses to one line stating the reason.</li>
+          <li>Otherwise you get three tabs:
+            <ul>
+              <li><strong>Production</strong> — every BOQ item for the project, with a <strong>Today's Qty</strong>
+              input and a <strong>Chainage</strong> text field (e.g. "2/130–2/390") per row; Amount is computed
+              automatically as qty × rate. An optional "Today's Activity" text box above the table becomes the
+              report's daily summary. Button: <strong>Save Production Entries</strong> (saves every row you've
+              touched).</li>
+              <li><strong>Other Tasks</strong> — just quick links to the other Field screens.</li>
+              <li><strong>Issues</strong> — log a problem: Description (required), Severity (Low/Medium/High/
+              Critical), optional photo. Button: <strong>Log Issue</strong>. Issues are append-only — no edit/delete.</li>
+            </ul>
+          </li>
+        </ul>
+        <p>Bottom actions (hidden once submitted): <strong>Submit Today's DPR</strong> (irreversible — flips status to
+        SUBMITTED; there is no further approval stage on the DPR header itself) and <strong>Delete this DPR</strong>
+        (only while DRAFT — deletes every production/material/machinery/issue entry logged for that date too).</p>
+        <div class="card-warn"><strong>Validation:</strong> the report date must be on or after the project's start
+        date and not in the future — the system checks this even though the date picker also blocks it.</div>
+
+        <h3 class="screen-title" id="field-materials">Materials Used <span><span class="pill route">/field/materials</span></span></h3>
+        <p><strong>Purpose:</strong> record material consumption for the selected entry date — opening this screen
+        creates that day's DPR header automatically if it doesn't exist yet.</p>
+        <p>Pick a <strong>Material</strong> (searchable) — its <strong>Unit</strong> and <strong>Rate</strong> auto-fill
+        from the Material master record but both stay editable. Enter <strong>Quantity</strong>. Button: <strong>Add
+        Entry</strong>. The rate you save is <em>locked to that entry</em> — if someone later changes the material's
+        master rate, your already-logged entries keep the rate that was true on the day you logged them.</p>
+        <p>Each entry below shows as "{material} — {qty} {unit} @ ₹{rate}/{unit}" with Edit/Delete — available only
+        while that day's DPR is still DRAFT.</p>
+
+        <h3 class="screen-title" id="field-machinery">Machinery Used <span><span class="pill route">/field/machinery</span></span></h3>
+        <p>Same pattern as Materials Used: pick a <strong>Machine</strong> (auto-fills Hire Rate, editable), enter
+        <strong>Hours Used</strong> (must be more than 0 and at most 24). Same locked-rate behaviour, same Edit/Delete-
+        while-DRAFT rule.</p>
+
+        <h3 class="screen-title" id="field-attendance">Attendance <span><span class="pill route">/field/workers</span></span></h3>
+        <p><strong>Purpose:</strong> mark which workers are on site today. This is the one Field screen never blocked
+        by the attendance gate (it's how you satisfy that gate in the first place).</p>
+        <p>A <strong>Your Location</strong> card auto-captures your GPS and — if the project has a site boundary
+        configured — tells you whether you're inside or outside it (outside is flagged, not blocked).</p>
+        <p><strong>+ Add New Worker</strong> expands a small form (Full Name, Category, Phone). Whether saving it
+        marks them present immediately depends on the project's verification settings (see below).</p>
+        <p>Which check-in flow you see depends on the <strong>project's own</strong> Photo/GPS verification settings
+        (configured per-project under Projects → Settings, not on the global org Settings page):</p>
+        <ul>
+          <li><strong>Verification required</strong> (photo and/or GPS on): pick a worker, capture a photo if
+          required, tap <strong>Check In</strong>. Already-checked-in workers are greyed out. A second check-in
+          attempt for the same worker/day is rejected: <em>"This worker is already checked in for today."</em></li>
+          <li><strong>Verification off</strong>: a simpler <strong>Bulk Mark Present</strong> card — multi-select any
+          number of workers, tap <strong>Mark Present</strong>.</li>
+        </ul>
+        <p>A "Today's attendance" list at the bottom shows everyone marked present, tagged In/Out of boundary (if
+        verified) or Auto-marked (if bulk-marked).</p>
+
+        <h3 class="screen-title" id="field-measurements">Measurement Entry <span><span class="pill route">/field/measurements</span></span></h3>
+        <p><strong>Purpose:</strong> record a Measurement Book entry against a BOQ item by entering physical
+        dimensions rather than typing a quantity directly.</p>
+        <p>Pick a <strong>BOQ Item</strong> — its Work Type determines which dimension fields appear (Length, Width,
+        Depth, Breadth, Height, Thickness, or Diameter, in metres/mm as labelled) and how they combine into a
+        quantity:</p>
+        <table>
+          <tr><th>Formula</th><th>Computes quantity as</th></tr>
+          <tr><td><code>PRODUCT</code></td><td>every dimension field multiplied together</td></tr>
+          <tr><td><code>AREA_LH</code></td><td>Length × Height specifically</td></tr>
+          <tr><td><code>LENGTH_ONLY</code></td><td>just the length (billed by running length)</td></tr>
+        </table>
+        <p>A live <strong>Computed Quantity</strong> box updates as you type. Add an optional <strong>Chainage /
+        Location</strong> and an optional evidence photo (which also captures GPS at the moment you submit). Button:
+        <strong>Submit Measurement</strong> (becomes "Save &amp; Add Another" after your first one). New measurements
+        start as <span class="pill draft">DRAFT</span>.</p>
+        <div class="card-warn"><strong>Validation:</strong> quantity must be greater than 0, and your running total
+        against that BOQ item (existing + this entry) can't exceed the tendered quantity by more than the
+        organization's allowed tolerance percentage (set on the Settings screen) — you'll see "Could not save
+        measurement — check it does not exceed the BOQ tolerance" if it does.</div>
+
+        <h3 class="screen-title" id="field-my-measurements">My Measurements <span><span class="pill route">/field/my-measurements</span></span></h3>
+        <p>Every measurement <em>you personally</em> recorded on this project, searchable by item/description/
+        chainage. Only <span class="pill draft">DRAFT</span> rows get action buttons: <strong>Submit</strong> (enters
+        the approval chain — see <a href="#pm-measurements">Measurement Book</a> for the full workflow),
+        <strong>Edit</strong>, and <strong>Delete</strong>. Anything past DRAFT is view-only here — approval itself
+        happens on the desktop Measurements screen, not in the field view.</p>
+
+        <h3 class="screen-title" id="field-my-indents">My Material Indents <span><span class="pill route">/field/my-indents</span></span></h3>
+        <p><strong>Purpose:</strong> request materials, rather than log what you've already consumed. <strong>New
+        Indent</strong>: Source Type (Head Office Store or Site-to-Site Transfer), Source Location, and one or more
+        material lines (Material, Unit, Requested Qty).</p>
+        <p>From here you can only <strong>Submit</strong> a draft, <strong>Cancel</strong> your own draft/submitted
+        indent, and <strong>Receive</strong> against line items once it's been issued. Approving, rejecting, or
+        issuing happen on the management side — see <a href="#pm-indents">Material Indents</a> below for the full
+        lifecycle.</p>
+      </section>
+
+      <!-- ════════════════════════════════════════ PROJECT & COMMERCIAL MANAGEMENT ════════════════════════════════════════ -->
+      <section class="guide-section" id="project-mgmt">
+        <h2><span class="num">5</span> Project &amp; Commercial Management</h2>
+
+        <h3 class="screen-title" id="pm-projects">Projects <span><span class="pill route">/projects</span><span class="pill role">PM</span><span class="pill role">Admin</span></span></h3>
+        <p>The master list of projects. <strong>New Project</strong>: Department, Project Name, Tender No, Agreement
+        No (optional), Contract Value, Start Date, Completion Date, and two toggles — "Require photo for attendance" /
+        "Require GPS for attendance" (both default on). The table shows Tender No, Name, Contract Value, dates, and
+        Status (<span class="pill green">ACTIVE</span> <span class="pill blue">COMPLETED</span> <span class="pill gold">SUSPENDED</span>), searchable by tender no/name/agreement no.</p>
+        <p>Row actions: <strong>Edit</strong> (name, agreement no, contract value, completion date, status — tender
+        no/department/start date can't be changed after creation), <strong>Settings</strong>, <strong>Assign</strong>,
+        and <strong>Delete</strong> (Admin only, and only possible if the project has no BOQ/DPR/measurement data yet
+        — otherwise you'll get "Cannot delete — this project has related data").</p>
+        <div class="grid-2">
+          <div class="card">
+            <h4 style="margin-top:0;">Settings</h4>
+            <p style="margin-bottom:6px;"><strong>Attendance:</strong> the Require-photo / Require-GPS switches —
+            this is exactly what decides which check-in flow workers see on the Field Attendance screen.</p>
+            <p style="margin-bottom:0;"><strong>Site Boundary (Geofence):</strong> an interactive map to set the
+            site's centre point and radius (metres) — by click, drag, or "Use My Location". Check-ins outside the
+            radius are flagged, never blocked.</p>
+          </div>
+          <div class="card">
+            <h4 style="margin-top:0;">Assign</h4>
+            <p style="margin-bottom:0;">Set the Primary Project Manager and Primary Site Engineer (single dropdowns),
+            plus any number of Additional Assignments (role + user). This is also how Quantity Surveyors and Store
+            Keepers get linked to a project at all — and it's exactly how the system decides who gets notified for
+            approvals on that project (see <a href="#notifications">Notifications</a>).</p>
+          </div>
+        </div>
+
+        <h3 class="screen-title" id="pm-boq">BOQ &amp; Templates <span><span class="pill route">/boq</span><span class="pill role">PM</span><span class="pill role">QS</span><span class="pill role">Admin</span></span></h3>
+        <p>Two tabs: <strong>BOQ</strong> and <strong>Templates</strong>.</p>
+        <p><strong>BOQ tab:</strong> sections (each a colored banner row with an item count, with its own Add
+        Item/Edit/Delete) containing items — Item No, Description, Work Type, Unit, Tendered Qty, Consumed Qty, Rate,
+        Tendered Value — followed by a Section Total row. Toolbar: <strong>Add Section</strong> /
+        <strong>Add BOQ Item</strong> (Section, Item No, Description, Work Type, Unit, Tendered Qty, Rate), and a
+        second row — <strong>Download Template</strong> (blank .xlsx), <strong>Import</strong> (validates work
+        type/unit lookups before committing, shows per-row errors), <strong>Export</strong>, <strong>Apply
+        Template</strong>, <strong>Save as Template</strong>.</p>
+        <p><strong>Templates tab:</strong> org-wide, reusable BOQ sets (not tied to one project). Saving snapshots the
+        <em>current</em> project's full BOQ including its quantities and rates; applying a template to a different
+        project imports all its items (skipping any item number that already exists, auto-creating new sections) —
+        because the rate/quantity came from whichever project the template was made from, you should review and
+        adjust them after applying to a different project.</p>
+        <div class="card-warn">
+          <strong>Deleting:</strong> a section must have its items reassigned elsewhere first; an item can't be
+          deleted once it has any recorded measurements against it ("Only items with no recorded measurements can be
+          deleted").
+        </div>
+        <div class="card-note">
+          <strong>Variation Orders</strong> (extra quantity allowance beyond the normal tolerance limit) exist as a
+          concept in the underlying data model, but there is currently no screen anywhere to create or view one —
+          so in practice, the tolerance percentage on the Settings screen is the only ceiling that applies; there's no
+          in-app way to raise it for a specific item today.
+        </div>
+
+        <h3 class="screen-title" id="pm-measurements">Measurement Book (MB) <span><span class="pill route">/measurements</span><span class="pill role">PM</span><span class="pill role">QS</span><span class="pill role">Admin</span></span></h3>
+        <p>This is where every measurement recorded in the field gets reviewed, approved twice, and finally locked.
+        Locking is the single moment a measurement becomes billable and counts against the BOQ item's Consumed
+        Quantity.</p>
+
+        <div class="flow-wrap">
+          <p style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:4px;">Measurement approval workflow</p>
+          <div class="flow">
+            <div class="flow-col">
+              <div class="flow-step draft">DRAFT</div>
+              <div class="flow-label">Recorded in the field. Editable/deletable only by its recorder.</div>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-col">
+              <div class="flow-step">SUBMITTED</div>
+              <div class="flow-label">Recorder submits. PM is notified.</div>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-col">
+              <div class="flow-step gold">PM_APPROVED</div>
+              <div class="flow-label">PM approves. QS is notified.</div>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-col">
+              <div class="flow-step gold">QS_APPROVED</div>
+              <div class="flow-label">QS gives final approval.</div>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-col">
+              <div class="flow-step terminal">LOCKED</div>
+              <div class="flow-label">QS locks it. Now billable; counts against Consumed Qty. No further changes.</div>
+            </div>
+          </div>
+          <div style="margin-top:10px;">
+            <span class="branch-note">✗ Rejected by PM or QS at either stage → REJECTED → recorder can edit and resubmit (back to DRAFT)</span>
+          </div>
+        </div>
+
+        <table>
+          <tr><th>Action</th><th>Who</th><th>Effect</th></tr>
+          <tr><td>Submit</td><td>The recorder (or Admin)</td><td>DRAFT → SUBMITTED</td></tr>
+          <tr><td>Approve (1st stage)</td><td>PM or Admin</td><td>SUBMITTED → PM_APPROVED</td></tr>
+          <tr><td>Approve (final)</td><td>QS or Admin</td><td>PM_APPROVED → QS_APPROVED</td></tr>
+          <tr><td>Reject</td><td>PM, QS, or Admin</td><td>SUBMITTED or PM_APPROVED → REJECTED (resubmittable)</td></tr>
+          <tr><td><strong>Lock</strong></td><td>QS or Admin only</td><td>QS_APPROVED → LOCKED — the only step that increases Consumed Qty and makes it billable</td></tr>
+        </table>
+        <p>Every edit or new entry is checked against the same BOQ tolerance rule described under
+        <a href="#field-measurements">Measurement Entry</a>.</p>
+
+        <h3 class="screen-title" id="pm-indents">Material Indents <span><span class="pill route">/material-indents</span><span class="pill role">PM</span><span class="pill role">Store Keeper</span><span class="pill role">Admin</span></span></h3>
+        <p>This is the management-side view of indents raised on the Field "My Material Indents" screen — approving,
+        issuing, and receiving all happen here (or, for receiving, back on the field side once goods are in hand).</p>
+
+        <div class="flow-wrap">
+          <p style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:4px;">Material indent lifecycle</p>
+          <div class="flow">
+            <div class="flow-col"><div class="flow-step draft">DRAFT</div></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-col"><div class="flow-step">SUBMITTED</div></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-col"><div class="flow-step gold">APPROVED</div></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-col"><div class="flow-step purple">ISSUED</div></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-col">
+              <div class="flow-step cyan">PARTIALLY_RECEIVED</div>
+              <div class="flow-label">some items still short</div>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-col"><div class="flow-step terminal">RECEIVED</div></div>
+          </div>
+          <div style="margin-top:10px;">
+            <span class="branch-note">✗ Rejected at SUBMITTED → REJECTED (dead end)</span>
+            <span class="branch-note gray">⊘ Cancelled from DRAFT or SUBMITTED only → CANCELLED (can't cancel once approved)</span>
+          </div>
+        </div>
+
+        <table>
+          <tr><th>Action</th><th>Who</th><th>Notes</th></tr>
+          <tr><td>Submit</td><td>Requester or Admin</td><td>Notifies the project's PMs and Store Keepers</td></tr>
+          <tr><td>Approve / Reject</td><td>Store Keeper, PM, or Admin</td><td>Notifies the requester either way</td></tr>
+          <tr><td>Cancel</td><td>Requester or Admin</td><td>Only if still DRAFT/SUBMITTED; notifies approvers if it had already been submitted</td></tr>
+          <tr><td>Issue (per line item)</td><td>Store Keeper, PM, or Admin</td><td>Can issue partially; first issue flips APPROVED → ISSUED; notifies requester + Site Engineers</td></tr>
+          <tr><td>Receive (per line item)</td><td>Site Engineer, PM, or Admin</td><td>Auto-decides PARTIALLY_RECEIVED vs RECEIVED based on whether every line is fully received</td></tr>
+        </table>
+        <p>The admin view's expandable rows show Requested/Issued/Received quantities per item with Issue/Receive
+        buttons appropriate to the indent's current status. Source Location is a Stock Location, which must match the
+        chosen Source Type (Head Office Store or a specific project's Site store).</p>
+
+        <h3 class="screen-title" id="pm-workers">Workers &amp; Attendance <span><span class="pill route">/workers</span><span class="pill role">PM</span><span class="pill role">Admin</span></span></h3>
+        <p>Two tabs. <strong>Worker Master:</strong> add/edit workers (Full Name, Worker Category, Phone, Contractor —
+        explicitly reference-only text, not linked to any billing) with an Active/Inactive toggle, searchable by
+        name/phone/contractor. <strong>Attendance Log:</strong> a read-only history of check-ins — Date, Worker,
+        Check-in Time, and a Within/Outside-boundary tag — searchable by worker name.</p>
+
+        <h3 class="screen-title" id="pm-expenses">Expenses <span><span class="pill route">/expenses</span><span class="pill role">PM</span><span class="pill role">Store Keeper</span><span class="pill role">Admin</span></span></h3>
+        <p>Simple local/petty expense logging — <strong>there is no approval workflow here at all</strong>. Fields:
+        Category, Amount, Date, Vendor Name (reference-only — no vendor master or payment tracking), Remarks. Every
+        row can be edited or deleted regardless of age, searchable by category/vendor/remarks.</p>
+
+        <h3 class="screen-title" id="pm-billing">Running Bills <span><span class="pill route">/billing</span><span class="pill role">QS</span><span class="pill role">PM</span><span class="pill role">Admin</span></span></h3>
+        <p><strong>Generate Running Bill:</strong> Bill Number, Bill Date, Period From/To, and a checkbox-selectable
+        table of <strong>locked, not-yet-billed measurements only</strong>. Each selected measurement's value (qty ×
+        BOQ rate) is summed into the bill total, and every measurement you select is marked billed so it can't be
+        pulled into a second bill.</p>
+        <p><strong>Record Payment</strong> (hidden once a bill is fully paid): Amount Received, Received Date,
+        Reference No — checked against the remaining balance.</p>
+        <div class="card-note">
+          <strong>In practice, a bill only ever has two states: DRAFT and PAID.</strong> The data model defines
+          SUBMITTED and APPROVED states too, and you may see tag colours defined for them, but there is currently no
+          button or workflow step anywhere that sets a bill to either of those — a bill is created directly as DRAFT
+          and jumps straight to PAID once payments received equal the total amount.
+        </div>
+        <p>When a bill becomes fully paid, the project's PMs and whoever generated the bill are notified.</p>
+      </section>
+
+      <!-- ════════════════════════════════════════ REPORTING & ANALYTICS ════════════════════════════════════════ -->
+      <section class="guide-section" id="reports">
+        <h2><span class="num">6</span> Reporting &amp; Analytics</h2>
+
+        <h3 class="screen-title" id="rep-dashboard">Dashboard <span><span class="pill route">/dashboard</span></span></h3>
+        <p>The home screen — its content changes entirely depending on your role and whether a project is selected.</p>
+        <p><strong>No project selected:</strong> Admins see a Portfolio Overview — KPIs (Total/Active Projects,
+        Portfolio Contract, Total Outstanding), a Project Status donut, a Top-10 "Contract vs Billed vs Received"
+        chart (click a bar to drill into that project), and a searchable, sortable All Projects table with totals.
+        Every other role just sees "Select a project."</p>
+        <p><strong>Project selected:</strong></p>
+        <ul>
+          <li><strong>Admin / PM</strong> — KPIs (Contract Value, Total Billed, Payment Received, Outstanding), plus
+          a Daily P&amp;L Trend chart, Cost Breakdown donut, Expenses by Category, Measurement Status donut, BOQ
+          Progress by Section, Attendance Trend, Issues by Severity, Material Indents status donut, and a Bills
+          Pipeline chart.</li>
+          <li><strong>Quantity Surveyor</strong> — KPIs (Tendered Value, Consumed Value, BOQ Completion %, Unbilled
+          Measurements), plus BOQ Progress by Section, Measurement Status, and Bills Pipeline.</li>
+          <li><strong>Site Engineer</strong> — KPIs (DPR Entries, Work Days, No-Work Days, Open Issues), plus Issues
+          by Severity, Attendance Trend, and a Production Progress summary card.</li>
+          <li><strong>Store Keeper</strong> — KPIs (Total Indents, Pending Approval, Issued, Received), plus a
+          Material Indent status donut and a Pending Approvals mini-table.</li>
+        </ul>
+        <p>Most charts have their own date-range filter (7 days / 30 days / This month / Year-to-date / Project to
+        date).</p>
+
+        <h3 class="screen-title" id="rep-analytics">Analytics <span><span class="pill route">/analytics</span><span class="pill role">PM</span><span class="pill role">QS</span><span class="pill role">Admin</span></span></h3>
+        <p>A portfolio-wide view across every project at once (no project selector). KPIs, a sortable "by contract /
+        billed / outstanding" Top-10 chart (bars drill into that project's Dashboard), a Billing &amp; Collection
+        Efficiency chart (Billed % and Collected % per project), top-3 project cards, and a fully sortable, searchable
+        All Projects table with a totals row.</p>
+
+        <h3 class="screen-title" id="rep-progress">Production Progress <span><span class="pill route">/production-progress</span><span class="pill role">PM</span><span class="pill role">QS</span><span class="pill role">Admin</span></span></h3>
+        <p>One project, one <strong>as-of date</strong> (defaults to today, can't be set in the future). Grouped by
+        BOQ section: Item No, Description, Unit, Rate, Agreed Qty/Amt, <strong>Executed</strong> Qty/Amt, Remaining
+        Qty, % Done — then a Section Total row, then a Grand Total at the very bottom.</p>
+        <div class="card-tip"><strong>What "Executed" means precisely:</strong> it's the running total of whatever has
+        landed in DPR production entries up to that date — which happens either because someone typed it directly
+        into Today's DPR's Production tab, or because a measurement was Locked (locking automatically feeds that
+        quantity into the day's DPR production entry).</div>
+
+        <h3 class="screen-title" id="rep-profitability">Profitability <span><span class="pill route">/profitability</span><span class="pill role">PM</span><span class="pill role">Admin</span></span></h3>
+        <p>One project, a date range (This Week / This Month / Project to Date, or pick your own). Four stat cards —
+        Production Value, Total Cost, Net P&amp;L, Margin % — a Cost Breakdown bar, and a Daily Breakdown table.</p>
+        <div class="card-warn">
+          <strong>Exact formulas — read carefully, this report's cost basis is narrower than the Monthly DPR
+          Report's:</strong>
+          <ul style="margin:8px 0 0;">
+            <li><strong>Production Value</strong> = the same DPR production value used everywhere (qty × BOQ rate, summed per day)</li>
+            <li><strong>Total Cost</strong> = Machinery + Materials + Expenses <strong>only — Labour/attendance cost
+            is not included here</strong></li>
+            <li><strong>Net P&amp;L</strong> = Production Value − Total Cost</li>
+            <li><strong>Margin %</strong> = Net P&amp;L ÷ <strong>Production Value</strong> × 100</li>
+          </ul>
+        </div>
+
+        <h3 class="screen-title" id="rep-dpr-history">DPR History <span><span class="pill route">/dpr-history</span><span class="pill role">PM</span><span class="pill role">QS</span><span class="pill role">Admin</span></span></h3>
+        <p>Every day's DPR for a project, searchable by supervisor/activity text. Each row is classified as:</p>
+        <table>
+          <tr><th>Day Type</th><th>When it applies</th></tr>
+          <tr><td><span class="pill draft">No Work</span></td><td>the day was explicitly marked no-work</td></tr>
+          <tr><td><span class="pill gold">Pre-work / Mobilization</span></td><td>no production work items logged, but at least one material or machinery entry exists</td></tr>
+          <tr><td><span class="pill cyan">Production Day</span></td><td>everything else</td></tr>
+        </table>
+        <p>Columns: Date, Status, Day Type, Supervisor, Today's Activity, and an Issues count tag (red if any were
+        logged).</p>
+
+        <h3 class="screen-title" id="rep-monthly">Monthly DPR Report <span><span class="pill route">/dpr-monthly-report</span><span class="pill role">PM</span><span class="pill role">QS</span><span class="pill role">Admin</span></span></h3>
+        <p>The most complete single report in the system — one project, one month — built as several sections:</p>
+        <ul>
+          <li><strong>A. Daily Production</strong> — every BOQ item, with Opening (as of month start), a Qty &amp;
+          Amount pair of columns for every single day in the month, and Closing (as of month end), frozen Item No/
+          Description columns so they stay visible while you scroll sideways through the days.</li>
+          <li><strong>B. Expenditure</strong> — four sub-tables, each day-by-day with its own Total row:
+            <ol style="margin:6px 0 0;">
+              <li>Material Consumption</li>
+              <li>Machinery</li>
+              <li>Labour — worker categories costed as attendance count × category daily rate</li>
+              <li>Expenses — grouped by category, amount only (no quantity)</li>
+            </ol>
+          </li>
+          <li><strong>C. Summary</strong> — per day: Total Income (= production value), Total Expense (= materials +
+          machinery + labour + expenses — <strong>this one does include labour</strong>, unlike Profitability above),
+          Net Profit/Loss, Profit/Loss % (= net profit ÷ <strong>total expense</strong> × 100 — note this is a
+          <em>different</em> denominator from Profitability's Margin %), and a running Cumulative Income/Expense since
+          the project's actual start date, shown only on week-boundary rows (every 7th day, and the month's last day).</li>
+        </ul>
+        <p>The <strong>Export</strong> button downloads a multi-section spreadsheet mirroring this exact layout,
+        scoped strictly to whichever month you have selected.</p>
+        <div class="card-note"><strong>Why this report's numbers can differ from Profitability's:</strong> they're
+        deliberately separate calculations — this report includes labour cost and divides by total expense; the
+        Profitability report excludes labour cost and divides by production value. Both are correct for what they're
+        named; they're just not directly comparable figures.</div>
+
+        <h3 class="screen-title" id="rep-earnings">Worker Earnings <span><span class="pill route">/worker-earnings</span><span class="pill role">PM</span><span class="pill role">QS</span><span class="pill role">Admin</span></span></h3>
+        <p>One project, a date range and an optional worker-category filter. One row per worker: Days Present (count
+        of attendance records in range) × that worker's category daily rate = Total Earnings.</p>
+        <div class="card-warn"><strong>This is explicitly not a payroll system</strong> — the report itself states
+        "informational costing only." It's an estimate for tracking labour cost, not a wage/payroll record.</div>
+
+        <h3 class="screen-title" id="rep-labour-log">Daily Labour Log <span><span class="pill route">/daily-labour-log</span><span class="pill role">PM</span><span class="pill role">QS</span><span class="pill role">Admin</span></span></h3>
+        <p>The same cost basis and the same "not a payroll system" disclaimer as Worker Earnings, but broken out
+        day-by-day instead of summarized per worker — one row per (date, worker) pair.</p>
+
+        <h3 class="screen-title" id="rep-audit">Audit Logs <span><span class="pill route">/audit-logs</span><span class="pill role">Admin only</span></span></h3>
+        <p>A searchable trail of every Create/Update/Delete/Status-Change action recorded in the system. Filters:
+        Entity Type (a live list of whatever entity types actually exist in the log — not a fixed list), Action,
+        Actor (any user), and a date range. Each row shows When/Actor/Action/Entity Type/Entity ID, with a
+        <strong>View</strong> button opening the full Before/After data side by side. Paging is Previous/Next only —
+        there's no total record count shown.</p>
+      </section>
+
+      <!-- ════════════════════════════════════════ NOTIFICATIONS ════════════════════════════════════════ -->
+      <section class="guide-section" id="notifications">
+        <h2><span class="num">7</span> Notifications &amp; Approvals</h2>
+        <p class="section-intro">Every approval-style workflow in the system funnels through the same notification
+        mechanism — this section explains exactly when you'll be notified, and brings together the three workflow
+        diagrams shown earlier for quick reference.</p>
+
+        <h4 class="sub-title">How a notification reaches you</h4>
+        <div class="flow-wrap">
+          <div class="fanout">
+            <div class="source">Something happens<br/>(e.g. measurement submitted)</div>
+            <div class="flow-arrow">→</div>
+            <div class="channels">
+              <div class="channel">🔔 In-app bell — always</div>
+              <div class="channel">✉️ Email — only if your organization has email notifications turned on</div>
+              <div class="channel">📲 Push — only if you allowed browser notifications</div>
+            </div>
+          </div>
+        </div>
+        <div class="card-note"><strong>Who actually gets notified is per-project, not per-role org-wide.</strong> The
+        system only notifies the people specifically assigned to that project (via Projects → Assign) in the relevant
+        role — not every Project Manager in the company, just the one(s) tied to that particular project.</div>
+
+        <h4 class="sub-title">Every notification trigger</h4>
+        <table>
+          <tr><th>Event</th><th>Who is notified</th><th>Takes you to</th></tr>
+          <tr><td>Measurement submitted</td><td>Project's PM(s)</td><td>Measurements</td></tr>
+          <tr><td>Measurement approved (1st stage, by PM)</td><td>Project's QS</td><td>Measurements</td></tr>
+          <tr><td>Measurement fully approved (by QS)</td><td>The recorder</td><td>My Measurements</td></tr>
+          <tr><td>Measurement rejected (either stage)</td><td>The recorder</td><td>My Measurements</td></tr>
+          <tr><td>Measurement locked</td><td>The recorder</td><td>My Measurements</td></tr>
+          <tr><td>DPR submitted</td><td>Project's PM(s)</td><td>DPR History</td></tr>
+          <tr><td>Material indent submitted</td><td>Project's PM(s) + Store Keeper(s)</td><td>Material Indents</td></tr>
+          <tr><td>Material indent approved / rejected</td><td>The requester</td><td>My Material Indents</td></tr>
+          <tr><td>Material indent cancelled (only if it had been submitted)</td><td>Project's PM(s) + Store Keeper(s)</td><td>Material Indents</td></tr>
+          <tr><td>Material issued</td><td>The requester + project's Site Engineer(s)</td><td>My Material Indents</td></tr>
+          <tr><td>Material receipt confirmed</td><td>Project's PM(s)</td><td>Material Indents</td></tr>
+          <tr><td>Running bill fully paid</td><td>Project's PM(s) + whoever generated the bill</td><td>Running Bills</td></tr>
+        </table>
+
+        <h4 class="sub-title">All three approval workflows, side by side</h4>
+        <div class="grid-3">
+          <div class="card">
+            <strong>Measurement</strong>
+            <p style="font-size:12.5px;margin:8px 0 0;">DRAFT → SUBMITTED → PM_APPROVED → QS_APPROVED → LOCKED<br/>
+            (rejectable at SUBMITTED/PM_APPROVED stage)</p>
+          </div>
+          <div class="card">
+            <strong>Material Indent</strong>
+            <p style="font-size:12.5px;margin:8px 0 0;">DRAFT → SUBMITTED → APPROVED → ISSUED → PARTIALLY_RECEIVED →
+            RECEIVED<br/>(rejectable at SUBMITTED; cancellable before APPROVED)</p>
+          </div>
+          <div class="card">
+            <strong>DPR Header</strong>
+            <p style="font-size:12.5px;margin:8px 0 0;">DRAFT → SUBMITTED only — no further approval stage at the
+            header level (approval happens at the measurement level instead).</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ════════════════════════════════════════ ADMINISTRATION ════════════════════════════════════════ -->
+      <section class="guide-section" id="admin">
+        <h2><span class="num">8</span> Administration</h2>
+        <p class="section-intro">Every screen in this section is <span class="pill role">Admin only</span>, except
+        Profile.</p>
+
+        <h3 class="screen-title" id="admin-masters">Master Data <span><span class="pill route">/masters</span></span></h3>
+        <p>Eight reference-data types, each its own tab:</p>
+        <table>
+          <tr><th>Master</th><th>Fields</th><th>Drives</th></tr>
+          <tr><td>Departments</td><td>Name, Code</td><td>Tagging a project to a department</td></tr>
+          <tr><td>Units of Measure</td><td>Code, Name, Decimal Places</td><td>Display precision for every quantity in that unit, everywhere</td></tr>
+          <tr><td>Work Types</td><td>Code, Name, Dimension Fields, Formula</td><td>Which dimension inputs appear on Measurement Entry, and how quantity is calculated (PRODUCT / AREA_LH / LENGTH_ONLY)</td></tr>
+          <tr><td>Materials</td><td>Code, Name, Default Unit, Category, Cost Rate</td><td>Auto-filled (and snapshotted) rate on Materials Used</td></tr>
+          <tr><td>Machinery</td><td>Code, Name, Hire Rate, Hire Unit</td><td>Auto-filled (and snapshotted) rate on Machinery Used</td></tr>
+          <tr><td>Worker Categories</td><td>Code, Name, Daily Rate</td><td>Labour costing in Worker Earnings, Daily Labour Log, Monthly DPR Report</td></tr>
+          <tr><td>Expense Categories</td><td>Code, Name</td><td>Grouping on Expenses and the Monthly DPR Report</td></tr>
+          <tr><td>Stock Locations</td><td>Name, Type (Head Office or Site), Project (required for Site)</td><td>Fulfillment source for a Material Indent</td></tr>
+        </table>
+
+        <h3 class="screen-title" id="admin-users">Users &amp; Roles <span><span class="pill route">/users</span></span></h3>
+        <p>Create/edit users (Login ID, Full Name, Email, Phone, Role, Active toggle). Admins can force-reset any
+        user's password directly (no current password needed — unlike a user resetting their own). See
+        <a href="#roles">Roles &amp; Permissions</a> for what each role is for.</p>
+
+        <h3 class="screen-title" id="admin-settings">Settings <span><span class="pill route">/settings</span></span></h3>
+        <ul>
+          <li><strong>Company Branding</strong> — company name, four logo slots (light/dark theme variants, plus
+          compact "small" versions for the collapsed sidebar), and a favicon.</li>
+          <li><strong>Regional &amp; Financial Formats</strong> — currency code/symbol, date format, <strong>Timezone</strong>
+          (a real-world timezone picker — used both to display every timestamp across the app consistently, and,
+          behind the scenes, to decide "what calendar day is it" for attendance and DPR date checks, so it's not just
+          a display preference), decimal places, thousands separator, and fiscal year start month.</li>
+          <li><strong>Notifications</strong> — the org-wide email on/off switch (email only actually sends if the
+          server's email system is also configured).</li>
+          <li><strong>Measurement Defaults</strong> — the default tolerance percentage beyond tendered quantity that
+          triggers a rejection on measurement save.</li>
+        </ul>
+
+        <h3 class="screen-title" id="admin-profile">Profile <span><span class="pill route">/profile</span><span class="pill role">Everyone</span></span></h3>
+        <p>A hero card with your avatar/name/role/login ID/email, and three tabs: <strong>Edit Profile</strong> (name
+        and photo only — phone/email aren't self-editable), <strong>Change Password</strong> (requires your current
+        password), and <strong>My Activity</strong> (a feed of your own recent actions — click any entry to jump
+        straight to it).</p>
+      </section>
+
+      <!-- ════════════════════════════════════════ GLOSSARY ════════════════════════════════════════ -->
+      <section class="guide-section" id="glossary">
+        <h2><span class="num">9</span> Glossary</h2>
+        <dl class="glossary">
+          <dt>BOQ (Bill of Quantities)</dt>
+          <dd>The contracted list of work items for a project — each with a tendered quantity and rate. Everything
+          else (measurements, billing, progress) is tracked against it.</dd>
+          <dt>MB (Measurement Book)</dt>
+          <dd>The traditional construction-industry term for the record of measured, verified work quantities — this
+          system's digital equivalent is the Measurements screen.</dd>
+          <dt>DPR (Daily Progress Report)</dt>
+          <dd>The single daily record per project covering production, materials, machinery, and issues.</dd>
+          <dt>Tendered Qty / Consumed Qty</dt>
+          <dd>Tendered = the contracted quantity for a BOQ item. Consumed = the cumulative quantity locked against it
+          so far via approved measurements.</dd>
+          <dt>Tolerance %</dt>
+          <dd>How far (as a percentage above the tendered quantity) a measurement is still allowed to go before being
+          rejected — set on the Settings screen.</dd>
+          <dt>Chainage</dt>
+          <dd>A free-text location reference along a linear work stretch (e.g. road/drain), e.g. "2/130–2/390".</dd>
+          <dt>Geofence</dt>
+          <dd>The site boundary (centre point + radius) used to flag whether a worker's attendance check-in happened
+          inside or outside the actual job site.</dd>
+          <dt>Snapshotted rate</dt>
+          <dd>When you log a material or machinery entry, the current master rate is copied onto that entry
+          permanently — later changes to the master rate never retroactively change already-logged costs.</dd>
+        </dl>
+      </section>
+
+      <!-- ════════════════════════════════════════ FAQ ════════════════════════════════════════ -->
+      <section class="guide-section" id="faq">
+        <h2><span class="num">10</span> Troubleshooting &amp; FAQ</h2>
+
+        <h4 class="sub-title">"Mark attendance first" is blocking a Field screen</h4>
+        <p>You haven't yet marked any worker present today on this project. Go to Attendance, mark at least one
+        worker present, then the screen you wanted unlocks.</p>
+
+        <h4 class="sub-title">"This worker is already checked in for today"</h4>
+        <p>Attendance allows one check-in per worker per calendar day — they're already marked, no further action
+        needed.</p>
+
+        <h4 class="sub-title">"Could not save measurement — check it does not exceed the BOQ tolerance"</h4>
+        <p>Your recorded quantity would push that BOQ item's total consumed quantity past the allowed tolerance
+        percentage above its tendered quantity. Double-check the dimensions you entered, or speak to your Project
+        Manager/Admin about the item's tendered quantity.</p>
+
+        <h4 class="sub-title">"Cannot delete — this project has related data"</h4>
+        <p>A project can only be deleted while it has zero BOQ items, DPRs, or measurements recorded against it.
+        This is a safety guard, not a bug — there is no way around it from the UI.</p>
+
+        <h4 class="sub-title">Why don't I see a screen/menu item that a colleague has?</h4>
+        <p>Every screen is gated by role — see <a href="#roles">Roles &amp; Permissions</a>. If you believe you need
+        access, ask your Administrator to either change your role or assign you to the relevant project.</p>
+
+        <h4 class="sub-title">I changed a project's attendance verification settings but nothing changed</h4>
+        <p>Those toggles live on <em>that specific project's</em> Settings drawer (Projects → Settings), not the
+        global Administration → Settings screen — double check you edited the right one.</p>
+
+        <h4 class="sub-title">Why do Profitability and the Monthly DPR Report show different profit numbers for the same period?</h4>
+        <p>They use deliberately different formulas — see the note under <a href="#rep-monthly">Monthly DPR
+        Report</a>. Profitability excludes labour cost and measures margin against production value; the Monthly DPR
+        Report includes labour cost and measures it against total expense.</p>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<a href="#welcome" class="back-to-top" title="Back to top">↑</a>
+
+</body>
+</html>
