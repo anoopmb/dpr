@@ -1,14 +1,22 @@
 import { useMemo, useState } from 'react';
-import { Button, DatePicker, Empty, Table, Typography } from 'antd';
+import { Button, Card, DatePicker, Empty, Table, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
-import { PrinterOutlined } from '@ant-design/icons';
+import { DownloadOutlined } from '@ant-design/icons';
+import * as XLSX from 'xlsx';
 import dayjs, { type Dayjs } from 'dayjs';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
+import { useProjects } from '@/api/hooks/useProjects';
 import {
   useDprMonthlyReport,
+  type DailySummaryCell,
+  type DprMonthlyReportRead,
   type DprReportItemRead,
   type DprReportSectionRead,
+  type ExpenseCategoryRow,
+  type LabourRow,
+  type MachineryUsageRow,
+  type MaterialConsumptionRow,
 } from '@/api/hooks/useDpr';
 import { useThemeMode } from '@/theme/theme-context';
 import { useNumberFormat } from '@/utils/format';
@@ -53,9 +61,342 @@ type ReportRow =
   | { _type: 'item'; item: DprReportItemRead; key: string }
   | { _type: 'subtotal'; section: DprReportSectionRead; subtotal: SectionSubtotal; key: string };
 
+/** Materials/Machinery/Labour share an identical shape (name, unit, daily
+ * qty+amount, totals) — one generic table renderer for all three instead of
+ * three near-identical copies. */
+function QtyAmtSection({
+  title,
+  rows,
+  daysInMonth,
+  fmtQty,
+  fmtAmt,
+}: {
+  title: string;
+  rows: { key: string; name: string; unit: string; daily: { day: number; qty: string; amount: string }[]; total_qty: string; total_amount: string }[];
+  daysInMonth: number;
+  fmtQty: (v: string | number | null | undefined, dec?: number) => string;
+  fmtAmt: (v: string | number | null | undefined) => string;
+}) {
+  if (rows.length === 0) return null;
+
+  const columns: TableColumnsType<typeof rows[number]> = [
+    { title: 'Description', key: 'name', fixed: 'left', width: 200, ellipsis: true, render: (_, row) => row.name },
+    { title: 'Unit', key: 'unit', width: 70, render: (_, row) => row.unit },
+    ...Array.from({ length: daysInMonth }, (_, i) => {
+      const day = i + 1;
+      return {
+        title: `Day ${day}`,
+        children: [
+          { title: 'Qty', key: `d${day}q`, width: 65, align: 'right' as const, render: (_: unknown, row: typeof rows[number]) => fmtQty(row.daily[i]?.qty) },
+          { title: 'Amt', key: `d${day}a`, width: 75, align: 'right' as const, render: (_: unknown, row: typeof rows[number]) => fmtAmt(row.daily[i]?.amount) },
+        ],
+      };
+    }),
+    { title: 'Total Qty', key: 'total_qty', width: 85, align: 'right' as const, render: (_, row) => fmtQty(row.total_qty) },
+    { title: 'Total Amt', key: 'total_amount', width: 100, align: 'right' as const, render: (_, row) => fmtAmt(row.total_amount) },
+  ];
+
+  const totalQty = rows.reduce((s, r) => s + parseFloat(r.total_qty), 0);
+  const totalAmount = rows.reduce((s, r) => s + parseFloat(r.total_amount), 0);
+  const dailyTotals = Array.from({ length: daysInMonth }, (_, i) =>
+    rows.reduce((s, r) => s + parseFloat(r.daily[i]?.amount ?? '0'), 0),
+  );
+
+  return (
+    <Card title={title} style={{ marginBottom: 16, borderRadius: 14 }} styles={{ body: { padding: 0 } }}>
+      <Table
+        rowKey="key"
+        dataSource={rows}
+        columns={columns}
+        pagination={false}
+        size="small"
+        bordered
+        scroll={{ x: 'max-content' }}
+        summary={() => (
+          <Table.Summary fixed>
+            <Table.Summary.Row style={{ fontWeight: 700 }}>
+              <Table.Summary.Cell index={0}>Total</Table.Summary.Cell>
+              <Table.Summary.Cell index={1} />
+              {dailyTotals.map((amt, i) => (
+                <Table.Summary.Cell index={i + 2} colSpan={2} align="right" key={i}>
+                  {fmtAmt(amt)}
+                </Table.Summary.Cell>
+              ))}
+              <Table.Summary.Cell index={daysInMonth + 2}>{fmtQty(totalQty)}</Table.Summary.Cell>
+              <Table.Summary.Cell index={daysInMonth + 3} align="right">
+                {fmtAmt(totalAmount)}
+              </Table.Summary.Cell>
+            </Table.Summary.Row>
+          </Table.Summary>
+        )}
+      />
+    </Card>
+  );
+}
+
+function ExpensesSection({
+  rows,
+  daysInMonth,
+  fmtAmt,
+}: {
+  rows: ExpenseCategoryRow[];
+  daysInMonth: number;
+  fmtAmt: (v: string | number | null | undefined) => string;
+}) {
+  if (rows.length === 0) return null;
+
+  const columns: TableColumnsType<ExpenseCategoryRow> = [
+    { title: 'Description', key: 'name', fixed: 'left', width: 220, ellipsis: true, render: (_, row) => row.name },
+    ...Array.from({ length: daysInMonth }, (_, i) => ({
+      title: `Day ${i + 1}`,
+      key: `d${i + 1}`,
+      width: 90,
+      align: 'right' as const,
+      render: (_: unknown, row: ExpenseCategoryRow) => fmtAmt(row.daily[i]?.amount),
+    })),
+    { title: 'Total', key: 'total_amount', width: 110, align: 'right' as const, render: (_, row) => fmtAmt(row.total_amount) },
+  ];
+
+  const totalAmount = rows.reduce((s, r) => s + parseFloat(r.total_amount), 0);
+  const dailyTotals = Array.from({ length: daysInMonth }, (_, i) =>
+    rows.reduce((s, r) => s + parseFloat(r.daily[i]?.amount ?? '0'), 0),
+  );
+
+  return (
+    <Card title="Expenses" style={{ marginBottom: 16, borderRadius: 14 }} styles={{ body: { padding: 0 } }}>
+      <Table
+        rowKey="expense_category_id"
+        dataSource={rows}
+        columns={columns}
+        pagination={false}
+        size="small"
+        bordered
+        scroll={{ x: 'max-content' }}
+        summary={() => (
+          <Table.Summary fixed>
+            <Table.Summary.Row style={{ fontWeight: 700 }}>
+              <Table.Summary.Cell index={0}>Total</Table.Summary.Cell>
+              {dailyTotals.map((amt, i) => (
+                <Table.Summary.Cell index={i + 1} align="right" key={i}>
+                  {fmtAmt(amt)}
+                </Table.Summary.Cell>
+              ))}
+              <Table.Summary.Cell index={daysInMonth + 1} align="right">
+                {fmtAmt(totalAmount)}
+              </Table.Summary.Cell>
+            </Table.Summary.Row>
+          </Table.Summary>
+        )}
+      />
+    </Card>
+  );
+}
+
+function SummarySection({
+  summary,
+  fmtDate,
+  fmtAmt,
+}: {
+  summary: DailySummaryCell[];
+  fmtDate: (day: number) => string;
+  fmtAmt: (v: string | number | null | undefined) => string;
+}) {
+  if (summary.length === 0) return null;
+
+  const isWeekBoundary = (cell: DailySummaryCell) => cell.day % 7 === 0 || cell.day === summary.length;
+
+  const columns: TableColumnsType<DailySummaryCell> = [
+    { title: 'Date', key: 'date', width: 110, render: (_, row) => fmtDate(row.day) },
+    { title: 'Total Income', key: 'income', width: 130, align: 'right' as const, render: (_, row) => fmtAmt(row.income) },
+    { title: 'Total Expense', key: 'expense', width: 130, align: 'right' as const, render: (_, row) => fmtAmt(row.expense) },
+    { title: 'Net Profit/Loss', key: 'profit_loss', width: 130, align: 'right' as const, render: (_, row) => fmtAmt(row.profit_loss) },
+    {
+      title: 'Profit/Loss %',
+      key: 'profit_loss_pct',
+      width: 110,
+      align: 'right' as const,
+      render: (_, row) => (row.profit_loss_pct === null ? '—' : `${parseFloat(row.profit_loss_pct).toFixed(2)}%`),
+    },
+    {
+      title: 'Cumulative Income (since project start)',
+      key: 'cumulative_income',
+      width: 180,
+      align: 'right' as const,
+      render: (_, row) => (isWeekBoundary(row) ? fmtAmt(row.cumulative_income) : ''),
+    },
+    {
+      title: 'Cumulative Expense (since project start)',
+      key: 'cumulative_expense',
+      width: 180,
+      align: 'right' as const,
+      render: (_, row) => (isWeekBoundary(row) ? fmtAmt(row.cumulative_expense) : ''),
+    },
+  ];
+
+  return (
+    <Card title="Summary" style={{ marginBottom: 16, borderRadius: 14 }} styles={{ body: { padding: 0 } }}>
+      <Table
+        rowKey="day"
+        dataSource={summary}
+        columns={columns}
+        pagination={false}
+        size="small"
+        bordered
+        scroll={{ x: 'max-content' }}
+        onRow={(row) => ({ style: isWeekBoundary(row) ? { fontWeight: 600 } : undefined })}
+      />
+    </Card>
+  );
+}
+
+/** Builds the full multi-section workbook for the selected month, mirroring
+ * the page's section order and column structure (Production, Materials,
+ * Machinery, Labour, Expenses, Summary). */
+function exportMonthlyReportToExcel(
+  report: DprMonthlyReportRead,
+  projectName: string,
+  monthLabel: string,
+  fmtQtyRaw: (v: string) => number,
+  fmtAmtRaw: (v: string) => number,
+) {
+  const rows: (string | number)[][] = [];
+  const merges: { s: { r: number; c: number }; e: { r: number; c: number } }[] = [];
+  const daysInMonth = report.days_in_month;
+
+  const pushMerge = (rowIdx: number, startCol: number, endCol: number) => {
+    if (endCol > startCol) merges.push({ s: { r: rowIdx, c: startCol }, e: { r: rowIdx, c: endCol } });
+  };
+
+  rows.push([`Work Name: ${projectName}`]);
+  rows.push([`Month: ${monthLabel}`]);
+  rows.push([]);
+
+  // ── A. Daily Production ───────────────────────────────────────────────
+  rows.push(['A', 'Daily Production']);
+  const prodHeader = ['Item No', 'Description', 'Unit', 'Rate', 'Agreed Qty', 'Opening Qty', 'Opening Amt'];
+  for (let d = 1; d <= daysInMonth; d++) prodHeader.push(`Day ${d} Qty`, `Day ${d} Amt`);
+  prodHeader.push('Closing Qty', 'Closing Amt');
+  rows.push(prodHeader);
+
+  for (const section of report.sections) {
+    const sectionRowIdx = rows.length;
+    rows.push([`${section.section_no ? section.section_no + '. ' : ''}${section.section_name.toUpperCase()}`]);
+    pushMerge(sectionRowIdx, 0, prodHeader.length - 1);
+    for (const item of section.items) {
+      const row: (string | number)[] = [item.item_no, item.description, item.unit, fmtQtyRaw(item.rate), fmtQtyRaw(item.agreed_qty), fmtQtyRaw(item.opening_qty), fmtAmtRaw(item.opening_amount)];
+      for (const cell of item.daily) row.push(fmtQtyRaw(cell.qty), fmtAmtRaw(cell.amount));
+      row.push(fmtQtyRaw(item.closing_qty), fmtAmtRaw(item.closing_amount));
+      rows.push(row);
+    }
+    const subtotal = computeSubtotal(section, daysInMonth);
+    const subtotalRowIdx = rows.length;
+    const subtotalRow: (string | number)[] = ['', 'Section Total', '', '', '', fmtQtyRaw(String(subtotal.opening_qty)), fmtAmtRaw(String(subtotal.opening_amount))];
+    for (const cell of subtotal.daily) subtotalRow.push(fmtQtyRaw(String(cell.qty)), fmtAmtRaw(String(cell.amount)));
+    subtotalRow.push(fmtQtyRaw(String(subtotal.closing_qty)), fmtAmtRaw(String(subtotal.closing_amount)));
+    rows.push(subtotalRow);
+    pushMerge(subtotalRowIdx, 0, 1);
+  }
+  rows.push([]);
+
+  // ── B. Expenditure ─────────────────────────────────────────────────────
+  rows.push(['B', 'Expenditure']);
+
+  function pushQtyAmtSection(
+    label: string,
+    sectionRows: { name: string; unit: string; daily: { day: number; qty: string; amount: string }[]; total_qty: string; total_amount: string }[],
+  ) {
+    const labelRowIdx = rows.length;
+    rows.push([label]);
+    const headerRowIdx = rows.length;
+    const header = ['Description', 'Unit'];
+    for (let d = 1; d <= daysInMonth; d++) header.push(`Day ${d} Qty`, `Day ${d} Amt`);
+    header.push('Total Qty', 'Total Amt');
+    rows.push(header);
+    pushMerge(labelRowIdx, 0, header.length - 1);
+    for (const r of sectionRows) {
+      const row: (string | number)[] = [r.name, r.unit];
+      for (const cell of r.daily) row.push(fmtQtyRaw(cell.qty), fmtAmtRaw(cell.amount));
+      row.push(fmtQtyRaw(r.total_qty), fmtAmtRaw(r.total_amount));
+      rows.push(row);
+    }
+    const totalRowIdx = rows.length;
+    const totalRow: (string | number)[] = ['Total', ''];
+    for (let i = 0; i < daysInMonth; i++) {
+      const qty = sectionRows.reduce((s, r) => s + parseFloat(r.daily[i]?.qty ?? '0'), 0);
+      const amt = sectionRows.reduce((s, r) => s + parseFloat(r.daily[i]?.amount ?? '0'), 0);
+      totalRow.push(fmtQtyRaw(String(qty)), fmtAmtRaw(String(amt)));
+    }
+    const totalQty = sectionRows.reduce((s, r) => s + parseFloat(r.total_qty), 0);
+    const totalAmt = sectionRows.reduce((s, r) => s + parseFloat(r.total_amount), 0);
+    totalRow.push(fmtQtyRaw(String(totalQty)), fmtAmtRaw(String(totalAmt)));
+    rows.push(totalRow);
+    pushMerge(totalRowIdx, 0, 1);
+    rows.push([]);
+    void headerRowIdx;
+  }
+
+  pushQtyAmtSection('1) Material Consumption', report.materials);
+  pushQtyAmtSection('2) Machinery', report.machinery);
+  pushQtyAmtSection(
+    '3) Labour',
+    report.labour.map((l) => ({ name: l.name, unit: 'Nos', daily: l.daily, total_qty: l.total_qty, total_amount: l.total_amount })),
+  );
+
+  // Expenses (amount-only, no qty)
+  const expLabelRowIdx = rows.length;
+  rows.push(['4) Expenses']);
+  const expHeader = ['Description'];
+  for (let d = 1; d <= daysInMonth; d++) expHeader.push(`Day ${d}`);
+  expHeader.push('Total');
+  rows.push(expHeader);
+  pushMerge(expLabelRowIdx, 0, expHeader.length - 1);
+  for (const e of report.expenses) {
+    const row: (string | number)[] = [e.name];
+    for (const cell of e.daily) row.push(fmtAmtRaw(cell.amount));
+    row.push(fmtAmtRaw(e.total_amount));
+    rows.push(row);
+  }
+  const expTotalRowIdx = rows.length;
+  const expTotalRow: (string | number)[] = ['Total'];
+  for (let i = 0; i < daysInMonth; i++) {
+    const amt = report.expenses.reduce((s, r) => s + parseFloat(r.daily[i]?.amount ?? '0'), 0);
+    expTotalRow.push(fmtAmtRaw(String(amt)));
+  }
+  expTotalRow.push(fmtAmtRaw(String(report.expenses.reduce((s, r) => s + parseFloat(r.total_amount), 0))));
+  rows.push(expTotalRow);
+  rows.push([]);
+  void expTotalRowIdx;
+
+  // ── C. Summary ──────────────────────────────────────────────────────────
+  rows.push(['C', 'Summary']);
+  rows.push(['Date', 'Total Income', 'Total Expense', 'Net Profit/Loss', 'Profit/Loss %', 'Cumulative Income (since start)', 'Cumulative Expense (since start)']);
+  for (const cell of report.summary) {
+    const isWeekBoundary = cell.day % 7 === 0 || cell.day === report.summary.length;
+    rows.push([
+      cell.day,
+      fmtAmtRaw(cell.income),
+      fmtAmtRaw(cell.expense),
+      fmtAmtRaw(cell.profit_loss),
+      cell.profit_loss_pct === null ? '' : `${parseFloat(cell.profit_loss_pct).toFixed(2)}%`,
+      isWeekBoundary ? fmtAmtRaw(cell.cumulative_income) : '',
+      isWeekBoundary ? fmtAmtRaw(cell.cumulative_expense) : '',
+    ]);
+  }
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!merges'] = merges;
+  ws['!cols'] = [{ wch: 28 }, { wch: 14 }];
+  const sheetName = monthLabel.replace(/[^a-zA-Z0-9 ]/g, '').slice(0, 31) || 'DPR Report';
+  wb.SheetNames.push(sheetName);
+  wb.Sheets[sheetName] = ws;
+  const filename = `DPR_${projectName.replace(/\s+/g, '_')}_${monthLabel.replace(/\s+/g, '_')}.xlsx`;
+  XLSX.writeFile(wb, filename);
+}
 
 export function DprMonthlyReportPage() {
   const selectedProjectId = useProjectContextStore((s) => s.selectedProjectId);
+  const { data: projects } = useProjects();
   const [month, setMonth] = useState<Dayjs>(dayjs());
   const monthStr = month.format('YYYY-MM');
   const { resolvedMode } = useThemeMode();
@@ -263,23 +604,37 @@ export function DprMonthlyReportPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [daysInMonth, fmtAmt, fmtQty]);
 
+  const materialRows = (report?.materials ?? []).map((m: MaterialConsumptionRow) => ({ key: m.material_id, ...m }));
+  const machineryRows = (report?.machinery ?? []).map((m: MachineryUsageRow) => ({ key: m.machinery_id, ...m }));
+  const labourRows = (report?.labour ?? []).map((l: LabourRow) => ({ key: l.worker_category_id, name: l.name, unit: 'Nos', daily: l.daily, total_qty: l.total_qty, total_amount: l.total_amount }));
+
+  const fmtDateForDay = (day: number) => month.date(day).format('DD/MM/YYYY');
+
+  const handleExport = () => {
+    if (!report) return;
+    const project = (projects ?? []).find((p) => p.id === selectedProjectId);
+    // Pass through as real numbers (not formatted/localized strings) so
+    // Excel treats every figure as numeric data — sortable, summable, and
+    // formattable with its own number format — rather than plain text.
+    const toNum = (v: string) => parseFloat(v) || 0;
+    exportMonthlyReportToExcel(report, project?.name ?? 'Project', month.format('MMMM YYYY'), toNum, toNum);
+  };
+
   return (
     <div>
-      <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>
           Monthly DPR Report
         </Typography.Title>
         <div style={{ display: 'flex', gap: 12 }}>
           <DatePicker picker="month" value={month} onChange={(d) => { if (d) setMonth(d); }} allowClear={false} />
-          <Button icon={<PrinterOutlined />} onClick={() => window.print()} disabled={!report}>
-            Print
+          <Button icon={<DownloadOutlined />} onClick={handleExport} disabled={!report}>
+            Export
           </Button>
         </div>
       </div>
 
-      <div className="no-print">
-        <ProjectSelector style={{ marginBottom: 16, width: 320 }} />
-      </div>
+      <ProjectSelector style={{ marginBottom: 16, width: 320 }} />
 
       {!selectedProjectId && <Empty description="Select a project to view the monthly DPR report." />}
 
@@ -288,19 +643,31 @@ export function DprMonthlyReportPage() {
           <Typography.Title level={5} style={{ marginBottom: 12 }}>
             {month.format('MMMM YYYY')}
           </Typography.Title>
-          <Table
-            rowKey="key"
-            dataSource={rows}
-            columns={columns}
-            loading={isLoading}
-            pagination={false}
-            size="small"
-            bordered
-            scroll={{ x: 'max-content', y: 600 }}
-            onRow={(row) => ({
-              style: { background: row._type === 'header' ? HDR_BG : row._type === 'subtotal' ? SUB_BG : undefined },
-            })}
-          />
+          <Card title="A. Daily Production" style={{ marginBottom: 16, borderRadius: 14 }} styles={{ body: { padding: 0 } }}>
+            <Table
+              rowKey="key"
+              dataSource={rows}
+              columns={columns}
+              loading={isLoading}
+              pagination={false}
+              size="small"
+              bordered
+              scroll={{ x: 'max-content', y: 600 }}
+              onRow={(row) => ({
+                style: { background: row._type === 'header' ? HDR_BG : row._type === 'subtotal' ? SUB_BG : undefined },
+              })}
+            />
+          </Card>
+
+          <Typography.Title level={5} style={{ marginBottom: 12 }}>
+            B. Expenditure
+          </Typography.Title>
+          <QtyAmtSection title="1) Material Consumption" rows={materialRows} daysInMonth={daysInMonth} fmtQty={fmtQty} fmtAmt={fmtAmt} />
+          <QtyAmtSection title="2) Machinery" rows={machineryRows} daysInMonth={daysInMonth} fmtQty={fmtQty} fmtAmt={fmtAmt} />
+          <QtyAmtSection title="3) Labour" rows={labourRows} daysInMonth={daysInMonth} fmtQty={fmtQty} fmtAmt={fmtAmt} />
+          <ExpensesSection rows={report?.expenses ?? []} daysInMonth={daysInMonth} fmtAmt={fmtAmt} />
+
+          <SummarySection summary={report?.summary ?? []} fmtDate={fmtDateForDay} fmtAmt={fmtAmt} />
         </>
       )}
     </div>

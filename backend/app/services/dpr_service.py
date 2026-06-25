@@ -4,16 +4,26 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import BackgroundTasks
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import DomainError, NotFoundError, PermissionDeniedError
 from app.core.timezone import get_org_today
 from app.domain.dpr.validators import validate_report_date
+from app.models.attendance import AttendanceRecord
 from app.models.audit import AuditAction
 from app.models.dpr import DprHeader, DprIssue, DprMachinery, DprMaterial, DprProductionEntry, DprStatus, DprWorkItem
-from app.models.master_data import MachineryMaster, MaterialMaster, UomMaster
+from app.models.expense import Expense
+from app.models.master_data import (
+    ExpenseCategoryMaster,
+    MachineryMaster,
+    MaterialMaster,
+    UomMaster,
+    WorkerCategoryMaster,
+)
 from app.models.project import Project
 from app.models.user import UserRole
+from app.models.worker import Worker
 from app.repositories.boq_repo import BoqRepository, BoqSectionRepository
 from app.repositories.dpr_repo import DprProductionRepository, DprRepository
 from app.repositories.measurement_repo import MeasurementRepository
@@ -32,10 +42,16 @@ from app.schemas.dpr import (
     SectionProgressRead,
 )
 from app.schemas.dpr_report import (
+    DailyAmountCell,
     DailyProductionCell,
+    DailySummaryCell,
     DprMonthlyReportRead,
     DprReportItemRead,
     DprReportSectionRead,
+    ExpenseCategoryRow,
+    LabourRow,
+    MachineryUsageRow,
+    MaterialConsumptionRow,
 )
 from app.services.audit_service import AuditService, serialize_model
 from app.services.notification_service import NotificationService
@@ -711,6 +727,269 @@ class DprProductionService:
             total_agreed += sec_agreed
             total_closing += sec_closing
 
+        # ── Materials / Machinery / Labour / Expenses, and the Income vs
+        # Expense summary — real data only: whatever was actually recorded
+        # this month. Categories with zero activity simply don't appear
+        # (no padding with unused master-data rows).
+        material_rows = (
+            await self.session.execute(
+                select(
+                    DprMaterial.material_id,
+                    MaterialMaster.name,
+                    DprMaterial.uom_id,
+                    DprHeader.report_date,
+                    func.sum(DprMaterial.qty_consumed).label("qty"),
+                    func.sum(DprMaterial.qty_consumed * func.coalesce(DprMaterial.rate, 0)).label("amount"),
+                )
+                .join(DprHeader, DprMaterial.dpr_header_id == DprHeader.id)
+                .join(MaterialMaster, DprMaterial.material_id == MaterialMaster.id)
+                .where(DprHeader.project_id == project_id)
+                .where(DprHeader.report_date >= month_start)
+                .where(DprHeader.report_date <= month_end)
+                .group_by(DprMaterial.material_id, MaterialMaster.name, DprMaterial.uom_id, DprHeader.report_date)
+            )
+        ).all()
+        for row in material_rows:
+            if row.uom_id not in uom_map:
+                uom = await self.session.get(UomMaster, row.uom_id)
+                if uom is not None:
+                    uom_map[row.uom_id] = uom.code
+
+        machinery_rows = (
+            await self.session.execute(
+                select(
+                    DprMachinery.machinery_id,
+                    MachineryMaster.name,
+                    MachineryMaster.hire_unit,
+                    DprHeader.report_date,
+                    func.sum(DprMachinery.hours_used).label("qty"),
+                    func.sum(DprMachinery.hours_used * func.coalesce(DprMachinery.hire_rate, 0)).label("amount"),
+                )
+                .join(DprHeader, DprMachinery.dpr_header_id == DprHeader.id)
+                .join(MachineryMaster, DprMachinery.machinery_id == MachineryMaster.id)
+                .where(DprHeader.project_id == project_id)
+                .where(DprHeader.report_date >= month_start)
+                .where(DprHeader.report_date <= month_end)
+                .group_by(DprMachinery.machinery_id, MachineryMaster.name, MachineryMaster.hire_unit, DprHeader.report_date)
+            )
+        ).all()
+
+        labour_rows = (
+            await self.session.execute(
+                select(
+                    Worker.worker_category_id,
+                    WorkerCategoryMaster.name,
+                    WorkerCategoryMaster.daily_rate,
+                    AttendanceRecord.attendance_date,
+                    func.count(func.distinct(AttendanceRecord.worker_id)).label("qty"),
+                )
+                .join(Worker, AttendanceRecord.worker_id == Worker.id)
+                .join(WorkerCategoryMaster, Worker.worker_category_id == WorkerCategoryMaster.id)
+                .where(AttendanceRecord.project_id == project_id)
+                .where(AttendanceRecord.attendance_date >= month_start)
+                .where(AttendanceRecord.attendance_date <= month_end)
+                .group_by(
+                    Worker.worker_category_id,
+                    WorkerCategoryMaster.name,
+                    WorkerCategoryMaster.daily_rate,
+                    AttendanceRecord.attendance_date,
+                )
+            )
+        ).all()
+
+        expense_rows = (
+            await self.session.execute(
+                select(
+                    Expense.expense_category_id,
+                    ExpenseCategoryMaster.name,
+                    Expense.expense_date,
+                    func.sum(Expense.amount).label("amount"),
+                )
+                .join(ExpenseCategoryMaster, Expense.expense_category_id == ExpenseCategoryMaster.id)
+                .where(Expense.project_id == project_id)
+                .where(Expense.expense_date >= month_start)
+                .where(Expense.expense_date <= month_end)
+                .group_by(Expense.expense_category_id, ExpenseCategoryMaster.name, Expense.expense_date)
+            )
+        ).all()
+
+        def build_grouped_rows(rows, id_field: str, name_field: str = "name"):
+            grouped: dict[uuid.UUID, dict] = {}
+            for row in rows:
+                key = getattr(row, id_field)
+                grouped.setdefault(key, {"name": getattr(row, name_field), "by_day": {}, "row": row})
+                grouped[key]["by_day"][row.report_date if hasattr(row, "report_date") else row.attendance_date if hasattr(row, "attendance_date") else row.expense_date] = row
+            return grouped
+
+        material_groups = build_grouped_rows(material_rows, "material_id")
+        machinery_groups = build_grouped_rows(machinery_rows, "machinery_id")
+        labour_groups = build_grouped_rows(labour_rows, "worker_category_id")
+        expense_groups = build_grouped_rows(expense_rows, "expense_category_id")
+
+        materials: list[MaterialConsumptionRow] = []
+        for material_id, group in material_groups.items():
+            daily_cells: list[DailyProductionCell] = []
+            total_qty = Decimal(0)
+            total_amount = Decimal(0)
+            sample_uom_id = None
+            for day_num in range(1, days_in_month + 1):
+                day_date = date(year, month_num, day_num)
+                row = group["by_day"].get(day_date)
+                qty = Decimal(str(row.qty)) if row else Decimal(0)
+                amount = Decimal(str(row.amount)) if row else Decimal(0)
+                if row is not None:
+                    sample_uom_id = row.uom_id
+                daily_cells.append(DailyProductionCell(day=day_num, qty=qty.quantize(Decimal("0.001")), amount=amount.quantize(Decimal("0.01"))))
+                total_qty += qty
+                total_amount += amount
+            materials.append(
+                MaterialConsumptionRow(
+                    material_id=material_id,
+                    name=group["name"],
+                    unit=uom_map.get(sample_uom_id, "") if sample_uom_id else "",
+                    daily=daily_cells,
+                    total_qty=total_qty.quantize(Decimal("0.001")),
+                    total_amount=total_amount.quantize(Decimal("0.01")),
+                )
+            )
+
+        machinery: list[MachineryUsageRow] = []
+        for machinery_id, group in machinery_groups.items():
+            daily_cells = []
+            total_qty = Decimal(0)
+            total_amount = Decimal(0)
+            for day_num in range(1, days_in_month + 1):
+                day_date = date(year, month_num, day_num)
+                row = group["by_day"].get(day_date)
+                qty = Decimal(str(row.qty)) if row else Decimal(0)
+                amount = Decimal(str(row.amount)) if row else Decimal(0)
+                daily_cells.append(DailyProductionCell(day=day_num, qty=qty.quantize(Decimal("0.001")), amount=amount.quantize(Decimal("0.01"))))
+                total_qty += qty
+                total_amount += amount
+            machinery.append(
+                MachineryUsageRow(
+                    machinery_id=machinery_id,
+                    name=group["name"],
+                    unit=group["row"].hire_unit or "",
+                    daily=daily_cells,
+                    total_qty=total_qty.quantize(Decimal("0.001")),
+                    total_amount=total_amount.quantize(Decimal("0.01")),
+                )
+            )
+
+        labour: list[LabourRow] = []
+        for category_id, group in labour_groups.items():
+            daily_cells = []
+            total_qty = Decimal(0)
+            total_amount = Decimal(0)
+            daily_rate = group["row"].daily_rate
+            for day_num in range(1, days_in_month + 1):
+                day_date = date(year, month_num, day_num)
+                row = group["by_day"].get(day_date)
+                qty = Decimal(str(row.qty)) if row else Decimal(0)
+                amount = (qty * daily_rate) if (row and daily_rate) else Decimal(0)
+                daily_cells.append(DailyProductionCell(day=day_num, qty=qty.quantize(Decimal("0.001")), amount=amount.quantize(Decimal("0.01"))))
+                total_qty += qty
+                total_amount += amount
+            labour.append(
+                LabourRow(
+                    worker_category_id=category_id,
+                    name=group["name"],
+                    daily_rate=daily_rate,
+                    daily=daily_cells,
+                    total_qty=total_qty.quantize(Decimal("0.001")),
+                    total_amount=total_amount.quantize(Decimal("0.01")),
+                )
+            )
+
+        expenses: list[ExpenseCategoryRow] = []
+        for category_id, group in expense_groups.items():
+            daily_cells_amt: list[DailyAmountCell] = []
+            total_amount = Decimal(0)
+            for day_num in range(1, days_in_month + 1):
+                day_date = date(year, month_num, day_num)
+                row = group["by_day"].get(day_date)
+                amount = Decimal(str(row.amount)) if row else Decimal(0)
+                daily_cells_amt.append(DailyAmountCell(day=day_num, amount=amount.quantize(Decimal("0.01"))))
+                total_amount += amount
+            expenses.append(
+                ExpenseCategoryRow(
+                    expense_category_id=category_id,
+                    name=group["name"],
+                    daily=daily_cells_amt,
+                    total_amount=total_amount.quantize(Decimal("0.01")),
+                )
+            )
+
+        # ── Income vs Expense summary, with a running cumulative total
+        # from the project's own start_date through each day (not just
+        # within the selected month).
+        opening_income = sum((amt for _, amt in opening_cumulative.values()), Decimal(0))
+        opening_material = await self.session.scalar(
+            select(func.coalesce(func.sum(DprMaterial.qty_consumed * func.coalesce(DprMaterial.rate, 0)), 0))
+            .join(DprHeader, DprMaterial.dpr_header_id == DprHeader.id)
+            .where(DprHeader.project_id == project_id, DprHeader.report_date <= opening_as_of)
+        )
+        opening_machinery = await self.session.scalar(
+            select(func.coalesce(func.sum(DprMachinery.hours_used * func.coalesce(DprMachinery.hire_rate, 0)), 0))
+            .join(DprHeader, DprMachinery.dpr_header_id == DprHeader.id)
+            .where(DprHeader.project_id == project_id, DprHeader.report_date <= opening_as_of)
+        )
+        opening_labour = await self.session.scalar(
+            select(func.coalesce(func.sum(func.coalesce(WorkerCategoryMaster.daily_rate, 0)), 0))
+            .select_from(AttendanceRecord)
+            .join(Worker, AttendanceRecord.worker_id == Worker.id)
+            .join(WorkerCategoryMaster, Worker.worker_category_id == WorkerCategoryMaster.id)
+            .where(AttendanceRecord.project_id == project_id, AttendanceRecord.attendance_date <= opening_as_of)
+        )
+        opening_expense_other = await self.session.scalar(
+            select(func.coalesce(func.sum(Expense.amount), 0))
+            .where(Expense.project_id == project_id, Expense.expense_date <= opening_as_of)
+        )
+        opening_expense = (
+            Decimal(str(opening_material)) + Decimal(str(opening_machinery)) + Decimal(str(opening_labour)) + Decimal(str(opening_expense_other))
+        )
+
+        daily_income_totals: dict[int, Decimal] = {d: Decimal(0) for d in range(1, days_in_month + 1)}
+        for (_item_id, day_date), (_qty, amount) in daily_entries.items():
+            daily_income_totals[day_date.day] += Decimal(str(amount))
+
+        daily_expense_totals: dict[int, Decimal] = {d: Decimal(0) for d in range(1, days_in_month + 1)}
+        for m in materials:
+            for cell in m.daily:
+                daily_expense_totals[cell.day] += cell.amount
+        for mc in machinery:
+            for cell in mc.daily:
+                daily_expense_totals[cell.day] += cell.amount
+        for lb in labour:
+            for cell in lb.daily:
+                daily_expense_totals[cell.day] += cell.amount
+        for ex in expenses:
+            for cell in ex.daily:
+                daily_expense_totals[cell.day] += cell.amount
+
+        summary: list[DailySummaryCell] = []
+        running_income = opening_income
+        running_expense = opening_expense
+        for day_num in range(1, days_in_month + 1):
+            income = daily_income_totals[day_num].quantize(Decimal("0.01"))
+            expense = daily_expense_totals[day_num].quantize(Decimal("0.01"))
+            running_income += income
+            running_expense += expense
+            profit_loss = income - expense
+            profit_loss_pct = (profit_loss / expense * 100).quantize(Decimal("0.001")) if expense != 0 else None
+            summary.append(
+                DailySummaryCell(
+                    day=day_num,
+                    income=income,
+                    expense=expense,
+                    profit_loss=profit_loss,
+                    profit_loss_pct=profit_loss_pct,
+                    cumulative_income=running_income.quantize(Decimal("0.01")),
+                    cumulative_expense=running_expense.quantize(Decimal("0.01")),
+                )
+            )
+
         return DprMonthlyReportRead(
             project_id=project_id,
             month=month,
@@ -718,4 +997,9 @@ class DprProductionService:
             sections=report_sections,
             total_agreed_amount=total_agreed,
             total_closing_amount=total_closing,
+            materials=materials,
+            machinery=machinery,
+            labour=labour,
+            expenses=expenses,
+            summary=summary,
         )

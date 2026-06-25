@@ -132,6 +132,55 @@ export interface DprReportSectionRead {
   section_closing_amount: string;
 }
 
+export interface DailyAmountCell {
+  day: number;
+  amount: string;
+}
+
+export interface MaterialConsumptionRow {
+  material_id: string;
+  name: string;
+  unit: string;
+  daily: DailyProductionCell[];
+  total_qty: string;
+  total_amount: string;
+}
+
+export interface MachineryUsageRow {
+  machinery_id: string;
+  name: string;
+  unit: string;
+  daily: DailyProductionCell[];
+  total_qty: string;
+  total_amount: string;
+}
+
+export interface LabourRow {
+  worker_category_id: string;
+  name: string;
+  daily_rate: string | null;
+  daily: DailyProductionCell[];
+  total_qty: string;
+  total_amount: string;
+}
+
+export interface ExpenseCategoryRow {
+  expense_category_id: string;
+  name: string;
+  daily: DailyAmountCell[];
+  total_amount: string;
+}
+
+export interface DailySummaryCell {
+  day: number;
+  income: string;
+  expense: string;
+  profit_loss: string;
+  profit_loss_pct: string | null;
+  cumulative_income: string;
+  cumulative_expense: string;
+}
+
 export interface DprMonthlyReportRead {
   project_id: string;
   month: string;
@@ -139,6 +188,11 @@ export interface DprMonthlyReportRead {
   sections: DprReportSectionRead[];
   total_agreed_amount: string;
   total_closing_amount: string;
+  materials: MaterialConsumptionRow[];
+  machinery: MachineryUsageRow[];
+  labour: LabourRow[];
+  expenses: ExpenseCategoryRow[];
+  summary: DailySummaryCell[];
 }
 
 export function useDprList(projectId: string | null) {
