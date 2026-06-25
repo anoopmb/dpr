@@ -20,6 +20,7 @@ dependencies = [
     "boto3>=1.35",
     "aiosmtplib>=3.0",
     "pywebpush>=2.0",
+    "tzdata>=2024.1",
 ]
 
 [project.optional-dependencies]
