@@ -2188,7 +2188,7 @@ export function DprTodayPage() {
             }
           }}
           items={tabItems.map((tab) =>
-            tab.key === 'attendance'
+            tab.key === 'attendance' || isSubmitted
               ? tab
               : {
                   ...tab,
