@@ -29,6 +29,12 @@ export const useProjectContextStore = create<ProjectContextState>()(
       selectedEntryDate: dayjs().format('YYYY-MM-DD'),
       setSelectedEntryDate: (date) => set({ selectedEntryDate: date }),
     }),
-    { name: 'dpr-project-context' },
+    {
+      name: 'dpr-project-context',
+      partialize: (state) => ({
+        selectedProjectId: state.selectedProjectId,
+        currentDprHeaderId: state.currentDprHeaderId,
+      }),
+    },
   ),
 );
