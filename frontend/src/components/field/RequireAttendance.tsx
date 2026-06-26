@@ -9,9 +9,9 @@ import { useAttendanceGate } from '@/hooks/useAttendanceGate';
  * selected project today. The Attendance screen itself is never wrapped in
  * this — it's the escape hatch.
  */
-export function RequireAttendance({ projectId, children }: { projectId: string | null; children: ReactNode }) {
+export function RequireAttendance({ projectId, date, children }: { projectId: string | null; date?: string; children: ReactNode }) {
   const navigate = useNavigate();
-  const { hasMarkedToday, isLoading } = useAttendanceGate(projectId);
+  const { hasMarkedToday, isLoading } = useAttendanceGate(projectId, date);
 
   if (!projectId) return <>{children}</>;
   if (isLoading) return <Skeleton active />;

@@ -2188,12 +2188,12 @@ export function DprTodayPage() {
             }
           }}
           items={tabItems.map((tab) =>
-            tab.key === 'attendance' || isSubmitted
+            tab.key === 'attendance'
               ? tab
               : {
                   ...tab,
                   children: tab.children ? (
-                    <RequireAttendance projectId={selectedProjectId}>{tab.children}</RequireAttendance>
+                    <RequireAttendance projectId={selectedProjectId} date={entryDateStr}>{tab.children}</RequireAttendance>
                   ) : null,
                 },
           )}
