@@ -34,7 +34,16 @@ export const useProjectContextStore = create<ProjectContextState>()(
       partialize: (state) => ({
         selectedProjectId: state.selectedProjectId,
         currentDprHeaderId: state.currentDprHeaderId,
+        selectedEntryDate: state.selectedEntryDate,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          const today = dayjs().format('YYYY-MM-DD');
+          if (state.selectedEntryDate < today) {
+            state.selectedEntryDate = today;
+          }
+        }
+      },
     },
   ),
 );

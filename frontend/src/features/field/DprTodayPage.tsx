@@ -2041,34 +2041,32 @@ export function DprTodayPage() {
           {entryDatePicker}
         </div>
         <ProjectSelector style={{ marginBottom: 16, width: '100%' }} />
-        <RequireAttendance projectId={selectedProjectId}>
-          <Card>
-            <Form.Item label="Supervisor Name" style={{ marginBottom: 16 }}>
-              <Input size="large" value={supervisorName} onChange={(e) => setSupervisorName(e.target.value)} placeholder="Name of supervisor" />
-            </Form.Item>
-            <Form.Item label="No work today (rain / holiday / shutdown)" style={{ marginBottom: 16 }}>
-              <Switch checked={noWork} onChange={setNoWork} />
-            </Form.Item>
-            {noWork && (
-              <Space direction="vertical" style={{ width: '100%', marginBottom: 16 }}>
-                <Select
-                  style={{ width: '100%' }}
-                  value={noWorkReasonKind}
-                  onChange={setNoWorkReasonKind}
-                  options={NO_WORK_REASONS.map((r) => ({ value: r, label: r }))}
-                />
-                {noWorkReasonKind === 'Other' && (
-                  <Input placeholder="Reason for no work" value={noWorkReasonCustom} onChange={(e) => setNoWorkReasonCustom(e.target.value)} />
-                )}
-              </Space>
-            )}
-            <Empty description={`No DPR started for ${fmtDate(entryDateStr)} yet`}>
-              <Button type="primary" size="large" loading={createHeader.isPending} onClick={handleStart}>
-                {isToday ? "Start Today's DPR" : `Start DPR for ${fmtDate(entryDateStr)}`}
-              </Button>
-            </Empty>
-          </Card>
-        </RequireAttendance>
+        <Card>
+          <Form.Item label="Supervisor Name" style={{ marginBottom: 16 }}>
+            <Input size="large" value={supervisorName} onChange={(e) => setSupervisorName(e.target.value)} placeholder="Name of supervisor" />
+          </Form.Item>
+          <Form.Item label="No work today (rain / holiday / shutdown)" style={{ marginBottom: 16 }}>
+            <Switch checked={noWork} onChange={setNoWork} />
+          </Form.Item>
+          {noWork && (
+            <Space direction="vertical" style={{ width: '100%', marginBottom: 16 }}>
+              <Select
+                style={{ width: '100%' }}
+                value={noWorkReasonKind}
+                onChange={setNoWorkReasonKind}
+                options={NO_WORK_REASONS.map((r) => ({ value: r, label: r }))}
+              />
+              {noWorkReasonKind === 'Other' && (
+                <Input placeholder="Reason for no work" value={noWorkReasonCustom} onChange={(e) => setNoWorkReasonCustom(e.target.value)} />
+              )}
+            </Space>
+          )}
+          <Empty description={`No DPR started for ${fmtDate(entryDateStr)} yet`}>
+            <Button type="primary" size="large" loading={createHeader.isPending} onClick={handleStart}>
+              {isToday ? "Start Today's DPR" : `Start DPR for ${fmtDate(entryDateStr)}`}
+            </Button>
+          </Empty>
+        </Card>
       </div>
     );
   }
