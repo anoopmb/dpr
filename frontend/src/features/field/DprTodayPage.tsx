@@ -1521,7 +1521,7 @@ function MeasurementsTab({
           dataSource={rows}
           columns={columns}
           pagination={false}
-          style={{ width: '100%' }}
+          tableLayout="fixed"
           locale={{ emptyText: `No measurements for ${fmtDate(entryDate)}` }}
           summary={totalQty > 0 ? () => (
             <Table.Summary>
