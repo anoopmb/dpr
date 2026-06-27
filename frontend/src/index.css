@@ -184,8 +184,14 @@ body.ant-scrolling-effect {
 }
 
 /* Hide increment/decrement spinners on all number inputs system-wide */
-.ant-input-number-handler-wrap {
+.ant-input-number-handler-wrap,
+.ant-input-number:hover .ant-input-number-handler-wrap,
+.ant-input-number-focused .ant-input-number-handler-wrap,
+.ant-input-number:focus-within .ant-input-number-handler-wrap {
   display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 /* Right-align numeric input text in table cells (qty, rate, amount columns) */
