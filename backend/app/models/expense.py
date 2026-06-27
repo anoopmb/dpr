@@ -28,5 +28,8 @@ class Expense(TimestampedBase):
     paid_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
+    dpr_header_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dpr_headers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     bill_photo_url: Mapped[str | None] = mapped_column(String(500))
     remarks: Mapped[str | None] = mapped_column(String(500))

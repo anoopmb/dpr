@@ -66,6 +66,9 @@ class ExpenseService:
     async def list_for_project(self, project_id: uuid.UUID) -> list[Expense]:
         return await self.repo.list_for_project(project_id)
 
+    async def list_for_header(self, dpr_header_id: uuid.UUID) -> list[Expense]:
+        return await self.repo.list_for_header(dpr_header_id)
+
     async def get(self, expense_id: uuid.UUID) -> Expense:
         expense = await self.repo.get(expense_id)
         if expense is None:

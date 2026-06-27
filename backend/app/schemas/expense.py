@@ -10,6 +10,7 @@ class ExpenseCreate(BaseModel):
     expense_category_id: uuid.UUID
     amount: Decimal = Field(gt=0)
     expense_date: date
+    dpr_header_id: uuid.UUID | None = None
     vendor_name: str | None = Field(default=None, max_length=255)
     bill_photo_url: str | None = Field(default=None, max_length=500)
     remarks: str | None = Field(default=None, max_length=500)
@@ -29,3 +30,4 @@ class ExpenseRead(ExpenseCreate):
 
     id: uuid.UUID
     paid_by: uuid.UUID
+    dpr_header_id: uuid.UUID | None = None

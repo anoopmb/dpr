@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { AimOutlined, CameraOutlined, CheckCircleOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, EditOutlined, PlusOutlined, WarningOutlined } from '@ant-design/icons';
+import { AimOutlined, CameraOutlined, CheckCircleOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, EditOutlined, EyeOutlined, PlusOutlined, WarningOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
   Card,
   DatePicker,
+  Descriptions,
+  Divider,
   Empty,
   Form,
   Image,
@@ -53,10 +55,13 @@ import {
   type DprMaterialRead,
   type DprMachineryRead,
   type DprIssueRead,
+  type DprHeaderRead,
 } from '@/api/hooks/useDpr';
 import {
   useDprLabour,
+  useAddDprLabour,
   useUpdateDprLabour,
+  useDeleteDprLabour,
   type DprLabourRead,
 } from '@/api/hooks/useDprLabour';
 import {
@@ -68,7 +73,14 @@ import {
   type AttendanceRecordRead,
 } from '@/api/hooks/useAttendance';
 import { useBoqSections, useBoqItems, type BoqItemRead, type BoqSectionRead } from '@/api/hooks/useBoq';
-import { useMaterials, useMachinery, useUoms, useWorkTypes, MACHINERY_HIRE_UNIT_LABELS } from '@/api/hooks/useMasters';
+import { useMaterials, useMachinery, useUoms, useWorkTypes, useExpenseCategories, MACHINERY_HIRE_UNIT_LABELS } from '@/api/hooks/useMasters';
+import {
+  useExpensesByHeader,
+  useCreateExpense,
+  useUpdateExpense,
+  useDeleteExpense,
+  type ExpenseRead,
+} from '@/api/hooks/useExpenses';
 import {
   useCreateMeasurement,
   useMeasurements,
@@ -472,121 +484,253 @@ function AttendanceTab({
 
 function LabourTab({
   headerId,
+  projectId,
   isSubmitted,
 }: {
   headerId: string;
+  projectId: string;
   isSubmitted: boolean;
 }) {
   const { data: entries, isLoading } = useDprLabour(headerId);
+  const { data: workers } = useWorkers(projectId);
   const updateLabour = useUpdateDprLabour();
-  const { fmtAmt } = useNumberFormat();
+  const addLabour = useAddDprLabour();
+  const deleteLabour = useDeleteDprLabour();
+  const { fmtAmt, symbol } = useNumberFormat();
+  const { token } = theme.useToken();
+
+  const [drafts, setDrafts] = useState<LabourDraftRow[]>([]);
+  const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
+
+  const existingWorkerIds = new Set((entries ?? []).map((e) => e.worker_id));
+  const workerById = new Map((workers ?? []).map((w) => [w.id, w]));
+  const availableWorkers = (workers ?? []).filter((w) => !existingWorkerIds.has(w.id));
+
+  const totalAmount = (entries ?? []).reduce((s, e) => s + parseFloat(e.amount || '0'), 0);
+
+  const patchDraft = (key: string, patch: Partial<LabourDraftRow>) =>
+    setDrafts((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
+  const removeDraft = (key: string) => setDrafts((prev) => prev.filter((d) => d.key !== key));
+
+  const saveDraft = async (draft: LabourDraftRow) => {
+    if (!draft.worker_id || draft.quantity == null || draft.rate == null) {
+      message.warning('Worker, quantity and rate are required');
+      return;
+    }
+    setSavingKeys((p) => new Set(p).add(draft.key));
+    try {
+      await addLabour.mutateAsync({
+        headerId,
+        data: { worker_id: draft.worker_id, quantity: String(draft.quantity), rate: String(draft.rate) },
+      });
+      removeDraft(draft.key);
+    } catch {
+      message.error('Could not add labour entry');
+    } finally {
+      setSavingKeys((p) => { const s = new Set(p); s.delete(draft.key); return s; });
+    }
+  };
 
   const handleQtyChange = async (entry: DprLabourRead, qty: number | null) => {
     if (qty == null) return;
     try {
       await updateLabour.mutateAsync({ itemId: entry.id, data: { quantity: String(qty), rate: entry.rate } });
-    } catch {
-      message.error('Could not update');
-    }
+    } catch { message.error('Could not update'); }
   };
 
   const handleRateChange = async (entry: DprLabourRead, rate: number | null) => {
     if (rate == null) return;
     try {
       await updateLabour.mutateAsync({ itemId: entry.id, data: { quantity: entry.quantity, rate: String(rate) } });
-    } catch {
-      message.error('Could not update rate');
-    }
+    } catch { message.error('Could not update rate'); }
   };
 
-  const totalAmount = (entries ?? []).reduce((s, e) => s + parseFloat(e.amount || '0'), 0);
+  const handleDelete = async (entry: DprLabourRead) => {
+    try { await deleteLabour.mutateAsync({ itemId: entry.id, headerId }); }
+    catch { message.error('Could not delete labour entry'); }
+  };
+
+  const rows: LabourRow[] = [
+    ...(entries ?? []).map((e): LabourRow => ({ _kind: 'existing', entry: e })),
+    ...drafts.map((d): LabourRow => ({ _kind: 'draft', draft: d })),
+  ];
+
+  const inp = { width: '100%' };
+
+  const columns: TableColumnsType<LabourRow> = [
+    {
+      title: 'Worker', key: 'worker',
+      render: (_: unknown, row: LabourRow) =>
+        row._kind === 'existing' ? (
+          <Typography.Text>{row.entry.worker_name}</Typography.Text>
+        ) : (
+          <Select
+            size="small" showSearch optionFilterProp="label" style={inp}
+            placeholder="Select worker…"
+            value={row.draft.worker_id ?? undefined}
+            onChange={(v) => {
+              const w = workerById.get(v);
+              patchDraft(row.draft.key, {
+                worker_id: v,
+                quantity: row.draft.quantity ?? 1,
+                rate: w?.default_rate != null ? parseFloat(w.default_rate) : row.draft.rate,
+              });
+            }}
+            options={availableWorkers.map((w) => ({ value: w.id, label: w.full_name }))}
+          />
+        ),
+    },
+    {
+      title: 'Type', key: 'type', width: 110,
+      render: (_: unknown, row: LabourRow) => {
+        const t = row._kind === 'existing'
+          ? row.entry.worker_type
+          : (row.draft.worker_id ? workerById.get(row.draft.worker_id)?.worker_type : null);
+        return t
+          ? <Tag color={t === 'NORMAL' ? 'blue' : t === 'CONTRACTOR' ? 'orange' : 'purple'}>{t}</Tag>
+          : null;
+      },
+    },
+    {
+      title: 'Unit', key: 'unit', width: 60,
+      render: (_: unknown, row: LabourRow) =>
+        row._kind === 'existing'
+          ? (row.entry.wage_unit ?? 'DAY')
+          : (row.draft.worker_id ? (workerById.get(row.draft.worker_id)?.wage_unit ?? 'DAY') : null),
+    },
+    {
+      title: 'Qty', key: 'qty', width: 100,
+      render: (_: unknown, row: LabourRow) =>
+        row._kind === 'existing' ? (
+          isSubmitted ? (
+            <span>{row.entry.quantity}</span>
+          ) : (
+            <InputNumber
+              size="small" min={0} step={row.entry.wage_unit === 'HOUR' ? 0.5 : 1}
+              value={parseFloat(row.entry.quantity)} style={{ width: 80 }}
+              onChange={(v) => handleQtyChange(row.entry, v)}
+            />
+          )
+        ) : (
+          <InputNumber
+            size="small" min={0} step={1} style={inp} placeholder="1"
+            value={row.draft.quantity ?? undefined}
+            onChange={(v) => patchDraft(row.draft.key, { quantity: v })}
+          />
+        ),
+    },
+    {
+      title: `Rate (${symbol})`, key: 'rate', width: 110, align: 'right' as const,
+      render: (_: unknown, row: LabourRow) =>
+        row._kind === 'existing' ? (
+          isSubmitted ? (
+            <span>{fmtAmt(row.entry.rate)}</span>
+          ) : (
+            <InputNumber
+              size="small" min={0} precision={2} value={parseFloat(row.entry.rate)} style={{ width: 90 }}
+              onBlur={(e) => handleRateChange(row.entry, parseFloat(e.target.value))}
+              onPressEnter={(e) => handleRateChange(row.entry, parseFloat((e.target as HTMLInputElement).value))}
+            />
+          )
+        ) : (
+          <InputNumber
+            size="small" min={0} precision={2} style={inp} placeholder="Rate"
+            value={row.draft.rate ?? undefined}
+            onChange={(v) => patchDraft(row.draft.key, { rate: v })}
+          />
+        ),
+    },
+    {
+      title: `Amount (${symbol})`, key: 'amount', width: 110, align: 'right' as const,
+      render: (_: unknown, row: LabourRow) => {
+        if (row._kind === 'existing') return fmtAmt(row.entry.amount);
+        const amt = (row.draft.quantity ?? 0) * (row.draft.rate ?? 0);
+        return row.draft.quantity != null && row.draft.rate != null
+          ? <Typography.Text type="secondary">{fmtAmt(amt)}</Typography.Text>
+          : <Typography.Text type="secondary">—</Typography.Text>;
+      },
+    },
+    {
+      title: 'Contractor Workers', key: 'cw', width: 130,
+      render: (_: unknown, row: LabourRow) => {
+        if (row._kind === 'draft') return null;
+        return isSubmitted ? (
+          <span>{row.entry.contractor_workers_count ?? '—'}</span>
+        ) : (
+          <InputNumber
+            size="small" min={0} value={row.entry.contractor_workers_count ?? undefined}
+            style={{ width: 80 }} placeholder="0"
+            onChange={async (v) => {
+              try {
+                await updateLabour.mutateAsync({ itemId: row.entry.id, data: { contractor_workers_count: v ?? null } });
+              } catch { /* silent */ }
+            }}
+          />
+        );
+      },
+    },
+    {
+      title: '', key: 'actions', width: 68,
+      render: (_: unknown, row: LabourRow) => {
+        if (row._kind === 'existing') {
+          if (isSubmitted) return null;
+          return (
+            <Popconfirm
+              title="Delete this labour entry?"
+              onConfirm={() => handleDelete(row.entry)}
+              okText="Delete"
+              okButtonProps={{ danger: true }}
+            >
+              <Button size="small" type="text" danger icon={<DeleteOutlined />} loading={deleteLabour.isPending} />
+            </Popconfirm>
+          );
+        }
+        return (
+          <span style={{ display: 'flex', gap: 2 }}>
+            <Button size="small" type="text" icon={<CheckOutlined />} style={{ color: token.colorSuccess }}
+              loading={savingKeys.has(row.draft.key)} onClick={() => saveDraft(row.draft)} />
+            <Button size="small" type="text" danger icon={<CloseOutlined />} onClick={() => removeDraft(row.draft.key)} />
+          </span>
+        );
+      },
+    },
+  ];
 
   return (
-    <div>
-      <Table
-        rowKey="id"
+    <div style={{ border: `1px solid ${token.colorBorderSecondary}`, borderRadius: token.borderRadiusLG, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: token.colorFillAlter, borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Typography.Text strong style={{ fontSize: 14 }}>Labour</Typography.Text>
+          <Tag style={{ margin: 0, fontSize: 11 }}>{(entries ?? []).length} worker{(entries ?? []).length !== 1 ? 's' : ''}</Tag>
+        </span>
+        {!isSubmitted && (
+          <Button
+            size="small" icon={<PlusOutlined />}
+            onClick={() => setDrafts((p) => [...p, { key: nextLabourKey(), worker_id: null, quantity: null, rate: null }])}>
+            Add Labour
+          </Button>
+        )}
+      </div>
+      {isSubmitted && <Alert type="info" showIcon style={{ margin: 12 }} message="DPR is submitted — labour entries are locked." />}
+      <Table<LabourRow>
+        rowKey={(row) => row._kind === 'existing' ? row.entry.id : row.draft.key}
         size="small"
         loading={isLoading}
-        dataSource={entries ?? []}
+        dataSource={rows}
+        columns={columns}
         pagination={false}
-        scroll={{ x: 600 }}
-        locale={{ emptyText: 'No workers checked in yet — check in workers from the Attendance tab' }}
-        columns={[
-          { title: 'Worker', dataIndex: 'worker_name' },
-          {
-            title: 'Type',
-            dataIndex: 'worker_type',
-            width: 110,
-            render: (t: string) => <Tag color={t === 'NORMAL' ? 'blue' : t === 'CONTRACTOR' ? 'orange' : 'purple'}>{t}</Tag>,
-          },
-          { title: 'Unit', dataIndex: 'wage_unit', width: 60, render: (v: string | null) => v ?? 'DAY' },
-          {
-            title: 'Qty',
-            key: 'qty',
-            width: 100,
-            render: (_: unknown, entry: DprLabourRead) =>
-              isSubmitted ? (
-                <span>{entry.quantity}</span>
-              ) : (
-                <InputNumber
-                  size="small" min={0} step={entry.wage_unit === 'HOUR' ? 0.5 : 1}
-                  value={parseFloat(entry.quantity)} style={{ width: 80 }}
-                  onChange={(v) => handleQtyChange(entry, v)}
-                />
-              ),
-          },
-          {
-            title: 'Rate',
-            key: 'rate',
-            width: 110,
-            align: 'right' as const,
-            render: (_: unknown, entry: DprLabourRead) =>
-              isSubmitted ? (
-                <span>{fmtAmt(entry.rate)}</span>
-              ) : (
-                <InputNumber
-                  size="small" min={0} precision={2} value={parseFloat(entry.rate)} style={{ width: 90 }}
-                  onBlur={(e) => handleRateChange(entry, parseFloat(e.target.value))}
-                  onPressEnter={(e) => handleRateChange(entry, parseFloat((e.target as HTMLInputElement).value))}
-                />
-              ),
-          },
-          {
-            title: 'Amount',
-            dataIndex: 'amount',
-            width: 100,
-            align: 'right' as const,
-            render: fmtAmt,
-          },
-          {
-            title: 'Their Workers',
-            key: 'cw',
-            width: 100,
-            render: (_: unknown, e: DprLabourRead) =>
-              isSubmitted ? (
-                <span>{e.contractor_workers_count ?? '—'}</span>
-              ) : (
-                <InputNumber
-                  size="small" min={0} value={e.contractor_workers_count ?? undefined}
-                  style={{ width: 80 }} placeholder="0"
-                  onChange={async (v) => {
-                    try {
-                      await updateLabour.mutateAsync({ itemId: e.id, data: { contractor_workers_count: v ?? null } });
-                    } catch { /* silent */ }
-                  }}
-                />
-              ),
-          },
-        ]}
-        summary={() => (
+        scroll={{ x: 700 }}
+        locale={{ emptyText: 'No entries yet — check in workers from the Attendance tab or click "Add Labour" above' }}
+        summary={totalAmount > 0 ? () => (
           <Table.Summary>
             <Table.Summary.Row style={{ fontWeight: 700 }}>
               <Table.Summary.Cell index={0} colSpan={5}>Total Labour Cost</Table.Summary.Cell>
               <Table.Summary.Cell index={5} align="right">{fmtAmt(totalAmount)}</Table.Summary.Cell>
               <Table.Summary.Cell index={6} />
+              {!isSubmitted && <Table.Summary.Cell index={7} />}
             </Table.Summary.Row>
           </Table.Summary>
-        )}
+        ) : undefined}
       />
     </div>
   );
@@ -594,6 +738,8 @@ function LabourTab({
 
 // ─── Draft row types / key counters for inline editing ───────────────────────
 
+let _labourSeq = 0;
+const nextLabourKey = () => `lab-${++_labourSeq}`;
 let _matSeq = 0;
 const nextMatKey = () => `mt-${++_matSeq}`;
 let _machSeq = 0;
@@ -603,10 +749,12 @@ const nextMeasKey = () => `ms-${++_measSeq}`;
 let _issueSeq = 0;
 const nextIssueKey = () => `iss-${++_issueSeq}`;
 
+interface LabourDraftRow { key: string; worker_id: string | null; quantity: number | null; rate: number | null; }
 interface MatDraftRow { key: string; material_id: string | null; qty: number | null; uom_id: string | null; rate: number | null; }
 interface MachDraftRow { key: string; machinery_id: string | null; qty: number | null; hire_rate: number | null; hire_unit: string | null; }
 interface MeasDraftRow { key: string; boq_item_id: string | null; dimensions: Record<string, number>; chainage: string; qty: number | null; rate: number | null; }
 interface IssueDraftRow { key: string; description: string; severity: IssueSeverity | null; }
+type LabourRow = { _kind: 'existing'; entry: DprLabourRead } | { _kind: 'draft'; draft: LabourDraftRow };
 type MatRow = { _kind: 'existing'; entry: DprMaterialRead } | { _kind: 'draft'; draft: MatDraftRow };
 type MachRow = { _kind: 'existing'; entry: DprMachineryRead } | { _kind: 'draft'; draft: MachDraftRow };
 type MeasRow = { _kind: 'existing'; entry: MeasurementRead } | { _kind: 'draft'; draft: MeasDraftRow };
@@ -1154,6 +1302,278 @@ function IssuesTab({
   );
 }
 
+// ─── Expenses Tab ─────────────────────────────────────────────────────────────
+
+let _expenseSeq = 0;
+const nextExpenseKey = () => `exp-${++_expenseSeq}`;
+
+interface ExpenseDraft {
+  key: string;
+  expense_category_id: string | null;
+  amount: number | null;
+  vendor_name: string;
+  remarks: string;
+}
+
+type ExpRow =
+  | { _kind: 'existing'; entry: ExpenseRead }
+  | { _kind: 'draft'; draft: ExpenseDraft };
+
+interface ExpenseEditValues {
+  expense_category_id: string;
+  amount: number;
+  vendor_name?: string;
+  remarks?: string;
+}
+
+function ExpensesTab({ projectId, headerId, entryDate }: { projectId: string; headerId: string; entryDate: string }) {
+  const { token } = theme.useToken();
+  const { data: expenses, isLoading } = useExpensesByHeader(headerId);
+  const { data: categories } = useExpenseCategories();
+  const createExpense = useCreateExpense();
+  const updateExpense = useUpdateExpense();
+  const deleteExpense = useDeleteExpense();
+  const { fmtAmt, symbol } = useNumberFormat();
+  const { fmtDate } = useDateFormat();
+
+  const [drafts, setDrafts] = useState<ExpenseDraft[]>([]);
+  const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
+  const [editingExpense, setEditingExpense] = useState<ExpenseRead | null>(null);
+  const [editForm] = Form.useForm<ExpenseEditValues>();
+
+  const forDate = expenses ?? [];
+  const categoryById = new Map((categories ?? []).map((c) => [c.id, c.name]));
+  const totalAmount = forDate.reduce((s, e) => s + parseFloat(e.amount || '0'), 0);
+
+  const patchDraft = (key: string, patch: Partial<ExpenseDraft>) =>
+    setDrafts((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
+  const removeDraft = (key: string) => setDrafts((prev) => prev.filter((d) => d.key !== key));
+
+  const saveDraft = async (draft: ExpenseDraft) => {
+    if (!draft.expense_category_id || draft.amount == null) {
+      message.warning('Category and amount are required');
+      return;
+    }
+    setSavingKeys((p) => new Set(p).add(draft.key));
+    try {
+      await createExpense.mutateAsync({
+        project_id: projectId,
+        expense_category_id: draft.expense_category_id,
+        amount: String(draft.amount),
+        expense_date: entryDate,
+        dpr_header_id: headerId,
+        vendor_name: draft.vendor_name.trim() || undefined,
+        remarks: draft.remarks.trim() || undefined,
+      });
+      removeDraft(draft.key);
+    } catch {
+      message.error('Could not save expense');
+    } finally {
+      setSavingKeys((p) => { const s = new Set(p); s.delete(draft.key); return s; });
+    }
+  };
+
+  const openEdit = (expense: ExpenseRead) => {
+    editForm.setFieldsValue({
+      expense_category_id: expense.expense_category_id,
+      amount: parseFloat(expense.amount),
+      vendor_name: expense.vendor_name ?? undefined,
+      remarks: expense.remarks ?? undefined,
+    });
+    setEditingExpense(expense);
+  };
+
+  const handleEditSave = async (values: ExpenseEditValues) => {
+    if (!editingExpense) return;
+    try {
+      await updateExpense.mutateAsync({
+        id: editingExpense.id,
+        data: {
+          expense_category_id: values.expense_category_id,
+          amount: String(values.amount),
+          vendor_name: values.vendor_name?.trim() || undefined,
+          remarks: values.remarks?.trim() || undefined,
+        },
+      });
+      message.success('Updated');
+      setEditingExpense(null);
+    } catch {
+      message.error('Could not update expense');
+    }
+  };
+
+  const handleDelete = async (expense: ExpenseRead) => {
+    try {
+      await deleteExpense.mutateAsync({ id: expense.id, projectId: expense.project_id, headerId });
+      message.success('Deleted');
+    } catch {
+      message.error('Could not delete expense');
+    }
+  };
+
+  const rows: ExpRow[] = [
+    ...forDate.map((e): ExpRow => ({ _kind: 'existing', entry: e })),
+    ...drafts.map((d): ExpRow => ({ _kind: 'draft', draft: d })),
+  ];
+
+  const inp = { width: '100%' };
+
+  const columns: TableColumnsType<ExpRow> = [
+    {
+      title: 'Category',
+      key: 'category',
+      render: (_: unknown, row: ExpRow) =>
+        row._kind === 'existing' ? (
+          <Typography.Text>{categoryById.get(row.entry.expense_category_id) ?? row.entry.expense_category_id}</Typography.Text>
+        ) : (
+          <Select
+            size="small" style={inp} showSearch optionFilterProp="label" placeholder="Select category…"
+            value={row.draft.expense_category_id ?? undefined}
+            onChange={(v) => patchDraft(row.draft.key, { expense_category_id: v })}
+            options={(categories ?? []).map((c) => ({ value: c.id, label: c.name }))}
+          />
+        ),
+    },
+    {
+      title: `Amount (${symbol})`,
+      key: 'amount',
+      width: 130,
+      align: 'right' as const,
+      render: (_: unknown, row: ExpRow) =>
+        row._kind === 'existing' ? (
+          <Typography.Text strong style={{ fontSize: 12 }}>{fmtAmt(parseFloat(row.entry.amount))}</Typography.Text>
+        ) : (
+          <InputNumber
+            size="small" style={inp} min={0} precision={2} placeholder="0.00"
+            value={row.draft.amount ?? undefined}
+            onChange={(v) => patchDraft(row.draft.key, { amount: v })}
+          />
+        ),
+    },
+    {
+      title: 'Vendor',
+      key: 'vendor',
+      width: 160,
+      render: (_: unknown, row: ExpRow) =>
+        row._kind === 'existing' ? (
+          <Typography.Text style={{ fontSize: 12 }}>{row.entry.vendor_name || '—'}</Typography.Text>
+        ) : (
+          <Input
+            size="small" style={inp} placeholder="Vendor (optional)"
+            value={row.draft.vendor_name}
+            onChange={(e) => patchDraft(row.draft.key, { vendor_name: e.target.value })}
+          />
+        ),
+    },
+    {
+      title: 'Remarks',
+      key: 'remarks',
+      render: (_: unknown, row: ExpRow) =>
+        row._kind === 'existing' ? (
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>{row.entry.remarks || '—'}</Typography.Text>
+        ) : (
+          <Input
+            size="small" style={inp} placeholder="Remarks (optional)"
+            value={row.draft.remarks}
+            onChange={(e) => patchDraft(row.draft.key, { remarks: e.target.value })}
+          />
+        ),
+    },
+    {
+      title: '',
+      key: 'actions',
+      width: 80,
+      render: (_: unknown, row: ExpRow) => {
+        if (row._kind === 'existing') {
+          return (
+            <Space size={4}>
+              <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(row.entry)} />
+              <Popconfirm
+                title="Delete this expense?"
+                onConfirm={() => handleDelete(row.entry)}
+                okText="Delete" okButtonProps={{ danger: true }}
+              >
+                <Button size="small" danger icon={<DeleteOutlined />} loading={deleteExpense.isPending} />
+              </Popconfirm>
+            </Space>
+          );
+        }
+        return (
+          <span style={{ display: 'flex', gap: 2 }}>
+            <Button size="small" type="text" icon={<CheckOutlined />} style={{ color: token.colorSuccess }}
+              loading={savingKeys.has(row.draft.key)} onClick={() => saveDraft(row.draft)} />
+            <Button size="small" type="text" danger icon={<CloseOutlined />} onClick={() => removeDraft(row.draft.key)} />
+          </span>
+        );
+      },
+    },
+  ];
+
+  return (
+    <>
+      <div style={{ border: `1px solid ${token.colorBorderSecondary}`, borderRadius: token.borderRadiusLG, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: token.colorFillAlter, borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Typography.Text strong style={{ fontSize: 14 }}>Expenses</Typography.Text>
+            <Tag style={{ margin: 0, fontSize: 11 }}>{forDate.length} item{forDate.length !== 1 ? 's' : ''}</Tag>
+          </span>
+          <Button
+            size="small" icon={<PlusOutlined />}
+            onClick={() => setDrafts((p) => [...p, { key: nextExpenseKey(), expense_category_id: null, amount: null, vendor_name: '', remarks: '' }])}
+          >
+            Add Expense
+          </Button>
+        </div>
+        <Table<ExpRow>
+          rowKey={(row) => row._kind === 'existing' ? row.entry.id : row.draft.key}
+          size="small"
+          loading={isLoading}
+          dataSource={rows}
+          columns={columns}
+          pagination={false}
+          scroll={{ x: 600 }}
+          locale={{ emptyText: 'No expenses recorded for this DPR' }}
+          summary={totalAmount > 0 ? () => (
+            <Table.Summary>
+              <Table.Summary.Row style={{ fontWeight: 700 }}>
+                <Table.Summary.Cell index={0}>Total</Table.Summary.Cell>
+                <Table.Summary.Cell index={1} align="right">{fmtAmt(totalAmount)}</Table.Summary.Cell>
+                <Table.Summary.Cell index={2} />
+                <Table.Summary.Cell index={3} />
+                <Table.Summary.Cell index={4} />
+              </Table.Summary.Row>
+            </Table.Summary>
+          ) : undefined}
+        />
+      </div>
+
+      <Modal
+        title="Edit Expense"
+        open={!!editingExpense}
+        onCancel={() => setEditingExpense(null)}
+        onOk={() => editForm.submit()}
+        confirmLoading={updateExpense.isPending}
+        destroyOnHidden
+      >
+        <Form form={editForm} layout="vertical" onFinish={handleEditSave}>
+          <Form.Item name="expense_category_id" label="Category" rules={[{ required: true }]}>
+            <Select showSearch optionFilterProp="label" options={(categories ?? []).map((c) => ({ value: c.id, label: c.name }))} />
+          </Form.Item>
+          <Form.Item name="amount" label={`Amount (${symbol})`} rules={[{ required: true }]}>
+            <InputNumber min={0} precision={2} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="vendor_name" label="Vendor">
+            <Input />
+          </Form.Item>
+          <Form.Item name="remarks" label="Remarks">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </>
+  );
+}
+
 // ─── Measurements Tab ─────────────────────────────────────────────────────────
 
 function MeasurementsTab({
@@ -1521,7 +1941,7 @@ function MeasurementsTab({
           dataSource={rows}
           columns={columns}
           pagination={false}
-          tableLayout="fixed"
+          scroll={{ x: 1000 }}
           locale={{ emptyText: `No measurements for ${fmtDate(entryDate)}` }}
           summary={totalQty > 0 ? () => (
             <Table.Summary>
@@ -1531,7 +1951,6 @@ function MeasurementsTab({
                 <Table.Summary.Cell index={10} />
                 <Table.Summary.Cell index={11} align="right">{fmtAmt(totalAmount)}</Table.Summary.Cell>
                 <Table.Summary.Cell index={12} />
-                <Table.Summary.Cell index={13} />
               </Table.Summary.Row>
             </Table.Summary>
           ) : undefined}
@@ -1808,6 +2227,413 @@ function ProductionTab({
   );
 }
 
+// ─── DPR Preview Modal ────────────────────────────────────────────────────────
+
+function DprPreviewModal({
+  open,
+  onClose,
+  onSubmit,
+  onDelete,
+  projectId,
+  headerId,
+  entryDate,
+  header,
+  isSubmitted,
+  submitLoading,
+  deleteLoading,
+  projectName,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: () => void;
+  onDelete: () => void;
+  projectId: string;
+  headerId: string;
+  entryDate: string;
+  header: DprHeaderRead | undefined;
+  isSubmitted: boolean;
+  submitLoading: boolean;
+  deleteLoading: boolean;
+  projectName: string;
+}) {
+  const { fmtDate } = useDateFormat();
+  const { fmtAmt, symbol } = useNumberFormat();
+  const { token } = theme.useToken();
+  const { resolvedMode } = useThemeMode();
+
+  const { data: labour } = useDprLabour(headerId);
+  const { data: attendance } = useAttendanceRecords(projectId, entryDate);
+  const { data: workers } = useWorkers(projectId);
+  const { data: expenses } = useExpensesByHeader(headerId);
+  const { data: production } = useDprProduction(headerId);
+  const { data: boqItems } = useBoqItems(projectId);
+  const { data: measurements } = useMeasurements(projectId);
+  const { data: materials } = useMaterials();
+  const { data: machinery } = useMachinery();
+  const { data: uoms } = useUoms();
+  const { data: categories } = useExpenseCategories();
+
+  const workerById = new Map((workers ?? []).map((w) => [w.id, w.full_name]));
+  const materialById = new Map((materials ?? []).map((m) => [m.id, m.name]));
+  const machineryById = new Map((machinery ?? []).map((m) => [m.id, m.name]));
+  const uomById = new Map((uoms ?? []).map((u) => [u.id, u.code]));
+  const categoryById = new Map((categories ?? []).map((c) => [c.id, c.name]));
+  const boqById = new Map((boqItems ?? []).map((b) => [b.id, b]));
+
+  const forDateMeasurements = (measurements ?? []).filter((m) => m.measurement_date === entryDate);
+  const productionWithQty = (production ?? []).filter((p) => parseFloat(p.qty_today) > 0);
+
+  const totalLabour = (labour ?? []).reduce((s, e) => s + parseFloat(e.amount || '0'), 0);
+  const totalMaterial = (header?.materials ?? []).reduce(
+    (s, e) => s + (e.rate ? parseFloat(e.rate) * parseFloat(e.qty_consumed) : 0), 0,
+  );
+  const totalMachinery = (header?.machinery_entries ?? []).reduce(
+    (s, e) => s + (e.hire_rate ? parseFloat(e.hire_rate) * parseFloat(e.quantity_used) : 0), 0,
+  );
+  const totalExpense = (expenses ?? []).reduce((s, e) => s + parseFloat(e.amount || '0'), 0);
+  const grandTotal = totalLabour + totalMaterial + totalMachinery + totalExpense;
+
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+
+  const modalFooter = !isSubmitted ? (
+    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+      <Popconfirm
+        title="Delete this DPR?"
+        description="All entries for this date will be permanently deleted."
+        open={deleteConfirmOpen}
+        onConfirm={() => { setDeleteConfirmOpen(false); onClose(); onDelete(); }}
+        onCancel={() => setDeleteConfirmOpen(false)}
+        okText="Delete"
+        okButtonProps={{ danger: true }}
+      >
+        <Button danger loading={deleteLoading} onClick={() => setDeleteConfirmOpen(true)}>
+          Delete DPR
+        </Button>
+      </Popconfirm>
+      <Space>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button type="primary" loading={submitLoading} onClick={onSubmit}>
+          Submit DPR
+        </Button>
+      </Space>
+    </div>
+  ) : (
+    <div style={{ textAlign: 'right' }}>
+      <Button onClick={onClose}>Close</Button>
+    </div>
+  );
+
+  const isDark = resolvedMode === 'dark';
+  const thumbColor = isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.2)';
+  const thumbHover = isDark ? 'rgba(255,255,255,0.42)' : 'rgba(0,0,0,0.38)';
+  const trackColor = token.colorFillSecondary;
+
+  return (
+    <>
+      <style>{`
+        .dpr-preview-modal-body::-webkit-scrollbar { width: 6px; }
+        .dpr-preview-modal-body::-webkit-scrollbar-track { background: ${trackColor}; border-radius: 3px; }
+        .dpr-preview-modal-body::-webkit-scrollbar-thumb { background: ${thumbColor}; border-radius: 3px; }
+        .dpr-preview-modal-body::-webkit-scrollbar-thumb:hover { background: ${thumbHover}; }
+        .dpr-preview-modal-body { scrollbar-width: thin; scrollbar-color: ${thumbColor} ${trackColor}; }
+      `}</style>
+      <Modal
+        title={`DPR Preview — ${fmtDate(entryDate)}`}
+        open={open}
+        onCancel={onClose}
+        footer={modalFooter}
+        width="min(1200px, 95vw)"
+        destroyOnHidden
+        classNames={{ body: 'dpr-preview-modal-body' }}
+        styles={{ body: { maxHeight: '72vh', overflowY: 'auto', padding: '16px 24px' } }}
+      >
+      {/* Report Info */}
+      <Descriptions size="small" bordered column={2} style={{ marginBottom: 16 }}>
+        <Descriptions.Item label="Project">{projectName}</Descriptions.Item>
+        <Descriptions.Item label="Date">{fmtDate(entryDate)}</Descriptions.Item>
+        <Descriptions.Item label="Supervisor">{header?.supervisor_name || '—'}</Descriptions.Item>
+        <Descriptions.Item label="Status">
+          <Tag color={header?.status === 'APPROVED' ? 'green' : header?.status === 'SUBMITTED' ? 'blue' : 'default'}>
+            {header?.status ?? 'DRAFT'}
+          </Tag>
+        </Descriptions.Item>
+        {header?.no_work && (
+          <Descriptions.Item label="No Work" span={2}>
+            <Tag color="orange">NO WORK — {header.no_work_reason}</Tag>
+          </Descriptions.Item>
+        )}
+        {header?.daily_work_summary && (
+          <Descriptions.Item label="Activity Summary" span={2}>{header.daily_work_summary}</Descriptions.Item>
+        )}
+      </Descriptions>
+
+      {/* Cost Summary */}
+      <Descriptions size="small" bordered column={2} title="Cost Summary" style={{ marginBottom: 16 }}>
+        <Descriptions.Item label={`Labour (${symbol})`}>{fmtAmt(totalLabour)}</Descriptions.Item>
+        <Descriptions.Item label={`Materials (${symbol})`}>{fmtAmt(totalMaterial)}</Descriptions.Item>
+        <Descriptions.Item label={`Machinery (${symbol})`}>{fmtAmt(totalMachinery)}</Descriptions.Item>
+        <Descriptions.Item label={`Expenses (${symbol})`}>{fmtAmt(totalExpense)}</Descriptions.Item>
+        <Descriptions.Item label={`Grand Total (${symbol})`} span={2}>
+          <Typography.Text strong style={{ fontSize: 15 }}>{fmtAmt(grandTotal)}</Typography.Text>
+        </Descriptions.Item>
+      </Descriptions>
+
+      {/* Attendance */}
+      {(attendance ?? []).length > 0 && (
+        <>
+          <Divider orientation="left" style={{ margin: '12px 0 8px' }}>
+            Attendance — {(attendance ?? []).length} present
+          </Divider>
+          <Table
+            size="small" rowKey="id" dataSource={attendance ?? []} pagination={false}
+            columns={[
+              {
+                title: 'Worker', dataIndex: 'worker_id',
+                render: (id: string) => workerById.get(id) ?? id,
+              },
+              {
+                title: 'Status', width: 140,
+                render: (_: unknown, row: AttendanceRecordRead) =>
+                  row.photo_url
+                    ? <Tag color={row.within_geofence ? 'green' : 'orange'}>{row.within_geofence ? 'In boundary' : 'Out of boundary'}</Tag>
+                    : <Tag>Auto-marked</Tag>,
+              },
+              {
+                title: 'Location', dataIndex: 'location_name', ellipsis: true,
+                render: (v: string | null) => v
+                  ? <Typography.Text type="secondary" style={{ fontSize: 12 }}>{v}</Typography.Text>
+                  : '—',
+              },
+            ]}
+          />
+        </>
+      )}
+
+      {/* Labour */}
+      {(labour ?? []).length > 0 && (
+        <>
+          <Divider orientation="left" style={{ margin: '12px 0 8px' }}>Labour</Divider>
+          <Table
+            size="small" rowKey="id" dataSource={labour ?? []} pagination={false} scroll={{ x: 560 }}
+            summary={() => (
+              <Table.Summary>
+                <Table.Summary.Row style={{ fontWeight: 700 }}>
+                  <Table.Summary.Cell index={0} colSpan={4}>Total Labour</Table.Summary.Cell>
+                  <Table.Summary.Cell index={4} align="right">{fmtAmt(totalLabour)}</Table.Summary.Cell>
+                  <Table.Summary.Cell index={5} />
+                </Table.Summary.Row>
+              </Table.Summary>
+            )}
+            columns={[
+              { title: 'Worker', dataIndex: 'worker_name' },
+              {
+                title: 'Type', dataIndex: 'worker_type', width: 110,
+                render: (t: string) => <Tag color={t === 'NORMAL' ? 'blue' : t === 'CONTRACTOR' ? 'orange' : 'purple'}>{t}</Tag>,
+              },
+              { title: 'Unit', dataIndex: 'wage_unit', width: 60, render: (v: string | null) => v ?? 'DAY' },
+              { title: 'Qty', dataIndex: 'quantity', width: 70, align: 'right' as const },
+              {
+                title: `Amount (${symbol})`, dataIndex: 'amount', width: 110, align: 'right' as const,
+                render: (v: string) => fmtAmt(parseFloat(v || '0')),
+              },
+              {
+                title: 'Contractor Workers', dataIndex: 'contractor_workers_count', width: 140, align: 'right' as const,
+                render: (v: number | null) => v ?? '—',
+              },
+            ]}
+          />
+        </>
+      )}
+
+      {/* Materials */}
+      {(header?.materials ?? []).length > 0 && (
+        <>
+          <Divider orientation="left" style={{ margin: '12px 0 8px' }}>Materials</Divider>
+          <Table
+            size="small" rowKey="id" dataSource={header?.materials ?? []} pagination={false} scroll={{ x: 500 }}
+            summary={() => (
+              <Table.Summary>
+                <Table.Summary.Row style={{ fontWeight: 700 }}>
+                  <Table.Summary.Cell index={0} colSpan={4}>Total Materials</Table.Summary.Cell>
+                  <Table.Summary.Cell index={4} align="right">{fmtAmt(totalMaterial)}</Table.Summary.Cell>
+                </Table.Summary.Row>
+              </Table.Summary>
+            )}
+            columns={[
+              { title: 'Material', dataIndex: 'material_id', render: (id: string) => materialById.get(id) ?? id },
+              { title: 'Qty', dataIndex: 'qty_consumed', width: 80, align: 'right' as const },
+              { title: 'Unit', dataIndex: 'uom_id', width: 80, render: (id: string) => uomById.get(id) ?? id },
+              {
+                title: `Rate (${symbol})`, dataIndex: 'rate', width: 100, align: 'right' as const,
+                render: (v: string | null) => v ? fmtAmt(parseFloat(v)) : '—',
+              },
+              {
+                title: `Amount (${symbol})`, key: 'amount', width: 110, align: 'right' as const,
+                render: (_: unknown, e: DprMaterialRead) => e.rate ? fmtAmt(parseFloat(e.rate) * parseFloat(e.qty_consumed)) : '—',
+              },
+            ]}
+          />
+        </>
+      )}
+
+      {/* Machinery */}
+      {(header?.machinery_entries ?? []).length > 0 && (
+        <>
+          <Divider orientation="left" style={{ margin: '12px 0 8px' }}>Machinery</Divider>
+          <Table
+            size="small" rowKey="id" dataSource={header?.machinery_entries ?? []} pagination={false} scroll={{ x: 520 }}
+            summary={() => (
+              <Table.Summary>
+                <Table.Summary.Row style={{ fontWeight: 700 }}>
+                  <Table.Summary.Cell index={0} colSpan={4}>Total Machinery</Table.Summary.Cell>
+                  <Table.Summary.Cell index={4} align="right">{fmtAmt(totalMachinery)}</Table.Summary.Cell>
+                </Table.Summary.Row>
+              </Table.Summary>
+            )}
+            columns={[
+              { title: 'Machine', dataIndex: 'machinery_id', render: (id: string) => machineryById.get(id) ?? id },
+              {
+                title: 'Billing Unit', dataIndex: 'hire_unit', width: 110,
+                render: (u: string) => (
+                  <Tag color={u === 'OWNED' ? 'purple' : 'blue'} style={{ margin: 0 }}>
+                    {MACHINERY_HIRE_UNIT_LABELS[u as keyof typeof MACHINERY_HIRE_UNIT_LABELS] ?? u}
+                  </Tag>
+                ),
+              },
+              { title: 'Qty', dataIndex: 'quantity_used', width: 70, align: 'right' as const },
+              {
+                title: `Hire Rate (${symbol})`, dataIndex: 'hire_rate', width: 120, align: 'right' as const,
+                render: (v: string | null, e: DprMachineryRead) =>
+                  e.hire_unit === 'OWNED'
+                    ? <Typography.Text type="secondary">Owned</Typography.Text>
+                    : (v ? fmtAmt(parseFloat(v)) : '—'),
+              },
+              {
+                title: `Cost (${symbol})`, key: 'cost', width: 110, align: 'right' as const,
+                render: (_: unknown, e: DprMachineryRead) =>
+                  e.hire_rate ? fmtAmt(parseFloat(e.hire_rate) * parseFloat(e.quantity_used)) : '—',
+              },
+            ]}
+          />
+        </>
+      )}
+
+      {/* Production */}
+      {productionWithQty.length > 0 && (
+        <>
+          <Divider orientation="left" style={{ margin: '12px 0 8px' }}>Production</Divider>
+          <Table
+            size="small" rowKey="id" dataSource={productionWithQty} pagination={false} scroll={{ x: 560 }}
+            columns={[
+              {
+                title: 'BOQ Item', dataIndex: 'boq_item_id', ellipsis: true,
+                render: (id: string) => { const b = boqById.get(id); return b ? `${b.item_no} — ${b.description}` : id; },
+              },
+              { title: "Today's Qty", dataIndex: 'qty_today', width: 110, align: 'right' as const },
+              {
+                title: `Amount (${symbol})`, dataIndex: 'amount_today', width: 110, align: 'right' as const,
+                render: (v: string) => fmtAmt(parseFloat(v)),
+              },
+              { title: 'Chainage', dataIndex: 'chainage', width: 130, render: (v: string | null) => v ?? '—' },
+            ]}
+          />
+        </>
+      )}
+
+      {/* Measurements */}
+      {forDateMeasurements.length > 0 && (
+        <>
+          <Divider orientation="left" style={{ margin: '12px 0 8px' }}>
+            Measurements — {forDateMeasurements.length} record{forDateMeasurements.length !== 1 ? 's' : ''}
+          </Divider>
+          <Table
+            size="small" rowKey="id" dataSource={forDateMeasurements} pagination={false} scroll={{ x: 600 }}
+            columns={[
+              {
+                title: 'BOQ Item', key: 'boq', ellipsis: true,
+                render: (_: unknown, m: MeasurementRead) => {
+                  const b = boqById.get(m.boq_item_id);
+                  return b ? `${b.item_no} — ${b.description}` : m.boq_item_id;
+                },
+              },
+              {
+                title: 'Qty', dataIndex: 'computed_qty', width: 90, align: 'right' as const,
+                render: (v: string) => parseFloat(v).toFixed(3),
+              },
+              {
+                title: `Amount (${symbol})`, key: 'amount', width: 110, align: 'right' as const,
+                render: (_: unknown, m: MeasurementRead) => {
+                  const b = boqById.get(m.boq_item_id);
+                  const rate = m.rate != null ? parseFloat(m.rate) : (b?.rate != null ? parseFloat(b.rate) : null);
+                  return rate != null ? fmtAmt(parseFloat(m.computed_qty) * rate) : '—';
+                },
+              },
+              { title: 'Chainage', dataIndex: 'chainage', width: 120, render: (v: string | null) => v ?? '—' },
+              {
+                title: 'Status', dataIndex: 'status', width: 90,
+                render: (v: string) => (
+                  <Tag color={v === 'APPROVED' ? 'green' : v === 'SUBMITTED' ? 'blue' : 'default'} style={{ margin: 0 }}>{v}</Tag>
+                ),
+              },
+            ]}
+          />
+        </>
+      )}
+
+      {/* Expenses */}
+      {(expenses ?? []).length > 0 && (
+        <>
+          <Divider orientation="left" style={{ margin: '12px 0 8px' }}>Expenses</Divider>
+          <Table
+            size="small" rowKey="id" dataSource={expenses ?? []} pagination={false}
+            summary={() => (
+              <Table.Summary>
+                <Table.Summary.Row style={{ fontWeight: 700 }}>
+                  <Table.Summary.Cell index={0}>Total Expenses</Table.Summary.Cell>
+                  <Table.Summary.Cell index={1} align="right">{fmtAmt(totalExpense)}</Table.Summary.Cell>
+                  <Table.Summary.Cell index={2} />
+                  <Table.Summary.Cell index={3} />
+                </Table.Summary.Row>
+              </Table.Summary>
+            )}
+            columns={[
+              { title: 'Category', dataIndex: 'expense_category_id', render: (id: string) => categoryById.get(id) ?? id },
+              {
+                title: `Amount (${symbol})`, dataIndex: 'amount', width: 120, align: 'right' as const,
+                render: (v: string) => fmtAmt(parseFloat(v)),
+              },
+              { title: 'Vendor', dataIndex: 'vendor_name', width: 160, render: (v: string | null) => v ?? '—' },
+              { title: 'Remarks', dataIndex: 'remarks', render: (v: string | null) => v ?? '—' },
+            ]}
+          />
+        </>
+      )}
+
+      {/* Issues */}
+      {(header?.issues ?? []).length > 0 && (
+        <>
+          <Divider orientation="left" style={{ margin: '12px 0 8px' }}>Issues</Divider>
+          <Table
+            size="small" rowKey="id" dataSource={header?.issues ?? []} pagination={false}
+            columns={[
+              { title: 'Description', dataIndex: 'description' },
+              {
+                title: 'Severity', dataIndex: 'severity', width: 100,
+                render: (v: IssueSeverity) => <Tag color={SEVERITY_COLOR[v]} style={{ margin: 0 }}>{v}</Tag>,
+              },
+              {
+                title: 'Status', dataIndex: 'status', width: 90,
+                render: (v: string) => <Tag color={v === 'RESOLVED' ? 'green' : 'blue'} style={{ margin: 0 }}>{v}</Tag>,
+              },
+            ]}
+          />
+        </>
+      )}
+      </Modal>
+    </>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function DprTodayPage() {
@@ -1832,6 +2658,7 @@ export function DprTodayPage() {
   const deleteHeader = useDeleteDprHeader();
   const submitDpr = useSubmitDpr();
   const [supervisorName, setSupervisorName] = useState('');
+  const [previewOpen, setPreviewOpen] = useState(false);
   const initializedForHeaderId = useRef<string | null>(null);
   const [noWork, setNoWork] = useState(false);
   const [noWorkReasonKind, setNoWorkReasonKind] = useState<string>('Rain');
@@ -2021,7 +2848,7 @@ export function DprTodayPage() {
       key: 'labour',
       label: 'Labour',
       children: currentDprHeaderId && selectedProjectId
-        ? <LabourTab headerId={currentDprHeaderId} isSubmitted={isSubmitted} />
+        ? <LabourTab headerId={currentDprHeaderId} projectId={selectedProjectId} isSubmitted={isSubmitted} />
         : null,
     },
     {
@@ -2038,6 +2865,13 @@ export function DprTodayPage() {
       key: 'measurements',
       label: 'Measurements',
       children: selectedProjectId ? <MeasurementsTab projectId={selectedProjectId} entryDate={entryDateStr} isSubmitted={isSubmitted} /> : null,
+    },
+    {
+      key: 'expenses',
+      label: 'Expenses',
+      children: selectedProjectId && currentDprHeaderId
+        ? <ExpensesTab projectId={selectedProjectId} headerId={currentDprHeaderId} entryDate={entryDateStr} />
+        : null,
     },
     {
       key: 'issues',
@@ -2057,6 +2891,7 @@ export function DprTodayPage() {
           <Tag color={header?.status === 'APPROVED' ? 'green' : header?.status === 'SUBMITTED' ? 'blue' : 'default'}>
             {header?.status ?? 'DRAFT'}
           </Tag>
+          <Button icon={<EyeOutlined />} onClick={() => setPreviewOpen(true)}>Preview</Button>
         </Space>
       </div>
       <ProjectSelector style={{ marginBottom: 12, width: '100%' }} />
@@ -2133,24 +2968,20 @@ export function DprTodayPage() {
         />
       )}
 
-      {!isSubmitted && (
-        <Space direction="vertical" style={{ width: '100%', marginTop: 16 }}>
-          <Button danger block size="large" loading={submitDpr.isPending} onClick={handleSubmit}>
-            Submit Today's DPR
-          </Button>
-          <Popconfirm
-            title="Delete this DPR?"
-            description="All entries for this date will be permanently deleted."
-            onConfirm={handleDeleteDpr}
-            okText="Delete"
-            okButtonProps={{ danger: true }}
-          >
-            <Button block size="large" loading={deleteHeader.isPending}>
-              Delete this DPR
-            </Button>
-          </Popconfirm>
-        </Space>
-      )}
+      <DprPreviewModal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        onSubmit={handleSubmit}
+        onDelete={handleDeleteDpr}
+        projectId={selectedProjectId}
+        headerId={currentDprHeaderId ?? ''}
+        entryDate={entryDateStr}
+        header={header}
+        isSubmitted={isSubmitted}
+        submitLoading={submitDpr.isPending}
+        deleteLoading={deleteHeader.isPending}
+        projectName={project?.name ?? selectedProjectId}
+      />
     </div>
   );
 }

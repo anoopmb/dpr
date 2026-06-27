@@ -50,6 +50,12 @@ async def list_expenses_for_project(project_id: uuid.UUID, session: SessionDep, 
     return [ExpenseRead.model_validate(e) for e in expenses]
 
 
+@router.get("/by-header/{dpr_header_id}", response_model=list[ExpenseRead])
+async def list_expenses_for_header(dpr_header_id: uuid.UUID, session: SessionDep, _: CurrentUserDep) -> list[ExpenseRead]:
+    expenses = await ExpenseService(session).list_for_header(dpr_header_id)
+    return [ExpenseRead.model_validate(e) for e in expenses]
+
+
 @router.get("/{expense_id}", response_model=ExpenseRead)
 async def get_expense(expense_id: uuid.UUID, session: SessionDep, _: CurrentUserDep) -> ExpenseRead:
     expense = await ExpenseService(session).get(expense_id)

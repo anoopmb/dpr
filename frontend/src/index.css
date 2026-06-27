@@ -184,14 +184,26 @@ body.ant-scrolling-effect {
 }
 
 /* Hide increment/decrement spinners on all number inputs system-wide */
+/* antd v4/v5 class */
 .ant-input-number-handler-wrap,
 .ant-input-number:hover .ant-input-number-handler-wrap,
 .ant-input-number-focused .ant-input-number-handler-wrap,
-.ant-input-number:focus-within .ant-input-number-handler-wrap {
+.ant-input-number:focus-within .ant-input-number-handler-wrap,
+/* antd v6 class */
+.ant-input-number-actions,
+.ant-input-number:hover .ant-input-number-actions,
+.ant-input-number-focused .ant-input-number-actions,
+.ant-input-number:focus-within .ant-input-number-actions,
+.ant-input-number-mode-spinner .ant-input-number-action {
   display: none !important;
   opacity: 0 !important;
   visibility: hidden !important;
   pointer-events: none !important;
+}
+
+/* Remove the gap left by hidden controls in input mode */
+.ant-input-number-input-wrap {
+  width: 100% !important;
 }
 
 /* Right-align numeric input text in table cells (qty, rate, amount columns) */
