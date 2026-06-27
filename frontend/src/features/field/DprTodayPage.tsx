@@ -1314,7 +1314,6 @@ function MeasurementsTab({
     {
       title: 'BOQ Item',
       key: 'boq',
-      width: 200,
       ellipsis: true,
       render: (_: unknown, row: MeasRow) =>
         row._kind === 'existing' ? (
@@ -1522,7 +1521,7 @@ function MeasurementsTab({
           dataSource={rows}
           columns={columns}
           pagination={false}
-          scroll={{ x: 200 + ALL_DIM_FIELDS.length * 62 + 90 + 78 + 90 + 100 + 100 + 185 }}
+          scroll={{ x: 'max-content' }}
           locale={{ emptyText: `No measurements for ${fmtDate(entryDate)}` }}
           summary={totalQty > 0 ? () => (
             <Table.Summary>
