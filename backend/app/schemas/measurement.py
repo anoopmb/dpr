@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -20,10 +20,6 @@ class MeasurementUpdate(BaseModel):
     rate: Decimal | None = Field(default=None, ge=0)
 
 
-class MeasurementActionRequest(BaseModel):
-    remarks: str | None = Field(default=None, max_length=500)
-
-
 class MeasurementRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -42,16 +38,3 @@ class MeasurementRead(BaseModel):
     billed: bool
     chainage: str | None
     rate: Decimal | None
-
-
-class MeasurementApprovalRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    measurement_id: uuid.UUID
-    from_status: str
-    to_status: str
-    acted_by: uuid.UUID
-    actor_name: str
-    remarks: str | None
-    acted_at: datetime

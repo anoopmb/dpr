@@ -72,14 +72,10 @@ import { useMaterials, useMachinery, useUoms, useWorkTypes, MACHINERY_HIRE_UNIT_
 import {
   useCreateMeasurement,
   useMeasurements,
-  useSubmitMeasurement,
   useUpdateMeasurement,
   useDeleteMeasurement,
-  useRecallMeasurement,
   type MeasurementRead,
-  type MeasurementStatus,
 } from '@/api/hooks/useMeasurements';
-import { useEffectiveWorkflow, type WorkflowDefinitionRead } from '@/api/hooks/useWorkflowConfig';
 import { useAttachPhoto } from '@/api/hooks/usePhotos';
 import { useProjects } from '@/api/hooks/useProjects';
 import { useUploadPhoto } from '@/api/hooks/useUpload';
@@ -101,28 +97,6 @@ interface CapturedLocation {
 }
 
 const NO_WORK_REASONS = ['Rain', 'Holiday', 'Sunday', 'Other'] as const;
-
-// DRAFT/SUBMITTED/REJECTED/LOCKED are fixed bookends with a fixed color;
-// everything else is an admin-configured approval level — colored by
-// cycling a palette keyed on the level's position in the workflow.
-const FIXED_STATUS_COLOR: Record<string, string> = {
-  DRAFT: 'default',
-  SUBMITTED: 'blue',
-  REJECTED: 'red',
-  LOCKED: 'green',
-};
-const LEVEL_COLOR_PALETTE = ['gold', 'cyan', 'purple', 'geekblue', 'volcano', 'lime'];
-
-function measurementStatusColor(status: MeasurementStatus, workflow: WorkflowDefinitionRead | undefined): string {
-  if (FIXED_STATUS_COLOR[status]) return FIXED_STATUS_COLOR[status];
-  const idx = workflow?.levels.findIndex((l) => l.status_code === status) ?? -1;
-  return idx >= 0 ? LEVEL_COLOR_PALETTE[idx % LEVEL_COLOR_PALETTE.length] : 'default';
-}
-
-function measurementStatusLabel(status: MeasurementStatus, workflow: WorkflowDefinitionRead | undefined): string {
-  const level = workflow?.levels.find((l) => l.status_code === status);
-  return level ? level.label : status.replace(/_/g, ' ');
-}
 
 const FIELD_LABELS: Record<string, string> = {
   length: 'Length (m)',
@@ -1195,12 +1169,9 @@ function MeasurementsTab({
   const { data: measurements, isLoading } = useMeasurements(projectId);
   const { data: boqItems } = useBoqItems(projectId);
   const { data: workTypes } = useWorkTypes();
-  const { data: measurementWorkflow } = useEffectiveWorkflow('MEASUREMENT', projectId);
   const createMeasurement = useCreateMeasurement();
-  const submitMeasurement = useSubmitMeasurement();
   const updateMeasurement = useUpdateMeasurement();
   const deleteMeasurement = useDeleteMeasurement();
-  const recallMeasurement = useRecallMeasurement();
   const uploadPhoto = useUploadPhoto();
   const attachPhoto = useAttachPhoto();
   const { fmtDate } = useDateFormat();
@@ -1297,11 +1268,6 @@ function MeasurementsTab({
     }
   };
 
-  const handleSubmit = async (id: string) => {
-    try { await submitMeasurement.mutateAsync({ id }); message.success('Submitted for approval'); }
-    catch { message.error('Could not submit'); }
-  };
-
   const handleEditSave = async () => {
     if (!editingMeasurement || !editWorkType) return;
     try {
@@ -1323,11 +1289,6 @@ function MeasurementsTab({
     setEditChainage(record.chainage ?? '');
     setEditRate(record.rate != null ? parseFloat(record.rate) : null);
     setEditingMeasurement(record);
-  };
-
-  const handleRecall = async (record: MeasurementRead) => {
-    try { await recallMeasurement.mutateAsync({ id: record.id }); message.success('Recalled to Draft'); }
-    catch { message.error('Could not recall'); }
   };
 
   const handleDelete = async (record: MeasurementRead) => {
@@ -1488,47 +1449,24 @@ function MeasurementsTab({
       },
     },
     {
-      title: 'Status',
-      key: 'status',
-      width: 100,
-      render: (_: unknown, row: MeasRow) =>
-        row._kind === 'existing'
-          ? (
-            <Tag color={measurementStatusColor(row.entry.status, measurementWorkflow)}>
-              {measurementStatusLabel(row.entry.status, measurementWorkflow)}
-            </Tag>
-          )
-          : null,
-    },
-    {
       title: '',
       key: 'actions',
-      width: 185,
+      width: 120,
       render: (_: unknown, row: MeasRow) => {
         if (row._kind === 'existing') {
-          return (
+          return row.entry.recorded_by === user?.id ? (
             <Space size={4}>
-              {row.entry.status === 'DRAFT' && row.entry.recorded_by === user?.id && (
-                <>
-                  <Button size="small" type="primary" loading={submitMeasurement.isPending} onClick={() => handleSubmit(row.entry.id)}>Submit</Button>
-                  <Button size="small" icon={<EditOutlined />} onClick={() => openEditModal(row.entry)} />
-                  <Popconfirm
-                    title="Delete measurement?"
-                    description="Removes its contribution from DPR production."
-                    onConfirm={() => handleDelete(row.entry)}
-                    okText="Delete" okButtonProps={{ danger: true }}
-                  >
-                    <Button size="small" danger icon={<DeleteOutlined />} loading={deleteMeasurement.isPending} />
-                  </Popconfirm>
-                </>
-              )}
-              {row.entry.status === 'REJECTED' && row.entry.recorded_by === user?.id && (
-                <Popconfirm title="Recall to Draft?" description="You can edit and resubmit." onConfirm={() => handleRecall(row.entry)} okText="Recall">
-                  <Button size="small" loading={recallMeasurement.isPending}>Recall</Button>
-                </Popconfirm>
-              )}
+              <Button size="small" icon={<EditOutlined />} onClick={() => openEditModal(row.entry)} />
+              <Popconfirm
+                title="Delete measurement?"
+                description="Removes its contribution from DPR production."
+                onConfirm={() => handleDelete(row.entry)}
+                okText="Delete" okButtonProps={{ danger: true }}
+              >
+                <Button size="small" danger icon={<DeleteOutlined />} loading={deleteMeasurement.isPending} />
+              </Popconfirm>
             </Space>
-          );
+          ) : null;
         }
         return (
           <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
@@ -1660,12 +1598,8 @@ function ProductionTab({
   const { data: dprMeasurements } = useDprMeasurements(headerId);
   const bulkUpsert = useBulkUpsertProduction();
 
-  // Once a measurement exists for a BOQ item on this date — in any status —
-  // that item's quantity is owned by the Measurement Book, not manual entry.
-  // The displayed qty/amount still only reflect approved measurements (see
-  // sum_qty_and_amount_for_item_date), so a pending/rejected-only item shows
-  // 0 here rather than letting the engineer type a number that competes with
-  // whatever the MB eventually settles on.
+  // Once a measurement exists for a BOQ item on this date the item's qty
+  // is owned by the Measurement Book, not manual entry.
   const lockedByMeasurement = new Set((dprMeasurements ?? []).map((m) => m.boq_item_id));
   const entryByBoq = new Map((existingEntries ?? []).map((e) => [e.boq_item_id, e]));
   const { resolvedMode } = useThemeMode();

@@ -9,18 +9,13 @@ from app.domain.billing.validators import (
 )
 
 
-def test_locked_unbilled_measurement_passes():
-    validate_measurement_billable("LOCKED", billed=False)
-
-
-def test_non_locked_measurement_raises():
-    with pytest.raises(BillingValidationError):
-        validate_measurement_billable("QS_APPROVED", billed=False)
+def test_unbilled_measurement_passes():
+    validate_measurement_billable("DRAFT", billed=False)
 
 
 def test_already_billed_measurement_raises():
     with pytest.raises(BillingValidationError):
-        validate_measurement_billable("LOCKED", billed=True)
+        validate_measurement_billable("DRAFT", billed=True)
 
 
 def test_payment_within_remaining_balance_passes():

@@ -58,7 +58,7 @@ export function BillingPage() {
   const [paymentForm] = Form.useForm<PaymentFormValues>();
   const [searchText, setSearchText] = useState('');
 
-  const billableMeasurements = (measurements ?? []).filter((m) => m.status === 'LOCKED' && !m.billed);
+  const billableMeasurements = (measurements ?? []).filter((m) => !m.billed);
 
   const filteredBills = (bills ?? []).filter((b) => {
     const q = searchText.trim().toLowerCase();

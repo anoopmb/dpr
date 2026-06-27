@@ -1,5 +1,5 @@
-"""Billing business rules: only LOCKED, not-yet-billed measurements can be
-billed, and cumulative payments against a bill can never exceed its total."""
+"""Billing business rules: any not-yet-billed measurement can be billed;
+cumulative payments against a bill can never exceed its total."""
 
 from decimal import Decimal
 
@@ -11,10 +11,6 @@ class BillingValidationError(DomainError):
 
 
 def validate_measurement_billable(measurement_status: str, billed: bool) -> None:
-    if measurement_status != "LOCKED":
-        raise BillingValidationError(
-            f"Measurement is {measurement_status}; only LOCKED measurements can be billed."
-        )
     if billed:
         raise BillingValidationError("This measurement has already been billed.")
 

@@ -29,11 +29,8 @@ import {
   useCreateMeasurement,
   useDeleteMeasurement,
   useMeasurements,
-  useRecallMeasurement,
-  useSubmitMeasurement,
   useUpdateMeasurement,
   type MeasurementRead,
-  type MeasurementStatus,
 } from '@/api/hooks/useMeasurements';
 import { useBoqItems } from '@/api/hooks/useBoq';
 import { useWorkTypes } from '@/api/hooks/useMasters';
@@ -43,15 +40,6 @@ import { useUploadPhoto } from '@/api/hooks/useUpload';
 import { calculateQuantity } from '@/features/measurements/formulaEngine';
 import { getCurrentPosition } from '@/utils/geolocation';
 import { useDateFormat } from '@/utils/format';
-
-const STATUS_COLOR: Record<MeasurementStatus, string> = {
-  DRAFT: 'default',
-  SUBMITTED: 'blue',
-  PM_APPROVED: 'gold',
-  QS_APPROVED: 'cyan',
-  LOCKED: 'green',
-  REJECTED: 'red',
-};
 
 const FIELD_LABELS: Record<string, string> = {
   length: 'Length (m)',
@@ -78,10 +66,8 @@ export function MyMeasurementsPage() {
 
   // mutation hooks
   const createMeasurement = useCreateMeasurement();
-  const submitMeasurement = useSubmitMeasurement();
   const updateMeasurement = useUpdateMeasurement();
   const deleteMeasurement = useDeleteMeasurement();
-  const recallMeasurement = useRecallMeasurement();
   const uploadPhoto = useUploadPhoto();
   const attachPhoto = useAttachPhoto();
 
@@ -189,11 +175,6 @@ export function MyMeasurementsPage() {
     }
   };
 
-  const handleSubmit = async (id: string) => {
-    try { await submitMeasurement.mutateAsync({ id }); message.success('Submitted for approval'); }
-    catch { message.error('Could not submit'); }
-  };
-
   const handleEditOpen = (record: MeasurementRead) => {
     setEditDimensions(Object.fromEntries(Object.entries(record.dimensions).map(([k, v]) => [k, parseFloat(v) || 0])));
     setEditChainage(record.chainage ?? '');
@@ -213,11 +194,6 @@ export function MyMeasurementsPage() {
       message.success('Updated');
       setEditingMeasurement(null);
     } catch { message.error('Could not update — check it does not exceed the BOQ tolerance.'); }
-  };
-
-  const handleRecall = async (record: MeasurementRead) => {
-    try { await recallMeasurement.mutateAsync({ id: record.id }); message.success('Recalled to Draft'); }
-    catch { message.error('Could not recall'); }
   };
 
   const handleDelete = async (record: MeasurementRead) => {
@@ -241,49 +217,21 @@ export function MyMeasurementsPage() {
     { title: 'Chainage', dataIndex: 'chainage', width: 120, render: (v: string | null) => v ?? '—' },
     { title: 'Qty', dataIndex: 'computed_qty', width: 80, align: 'right' as const },
     {
-      title: 'Status',
-      dataIndex: 'status',
-      width: 110,
-      render: (s: MeasurementStatus) => <Tag color={STATUS_COLOR[s]}>{s.replace('_', ' ')}</Tag>,
-    },
-    {
       title: 'Actions',
       key: 'actions',
-      width: 200,
+      width: 120,
       render: (_: unknown, record: MeasurementRead) => (
         <Space size={4}>
-          {record.status === 'DRAFT' && (
-            <>
-              <Button
-                size="small"
-                type="primary"
-                loading={submitMeasurement.isPending}
-                onClick={() => handleSubmit(record.id)}
-              >
-                Submit
-              </Button>
-              <Button size="small" icon={<EditOutlined />} onClick={() => handleEditOpen(record)} />
-              <Popconfirm
-                title="Delete this measurement?"
-                description="Removes its contribution from DPR production."
-                onConfirm={() => handleDelete(record)}
-                okText="Delete"
-                okButtonProps={{ danger: true }}
-              >
-                <Button size="small" type="text" danger icon={<DeleteOutlined />} loading={deleteMeasurement.isPending} />
-              </Popconfirm>
-            </>
-          )}
-          {record.status === 'REJECTED' && (
-            <Popconfirm
-              title="Recall to Draft?"
-              description="You can then edit and resubmit."
-              onConfirm={() => handleRecall(record)}
-              okText="Recall"
-            >
-              <Button size="small" loading={recallMeasurement.isPending}>Recall</Button>
-            </Popconfirm>
-          )}
+          <Button size="small" icon={<EditOutlined />} onClick={() => handleEditOpen(record)} />
+          <Popconfirm
+            title="Delete this measurement?"
+            description="Removes its contribution from DPR production."
+            onConfirm={() => handleDelete(record)}
+            okText="Delete"
+            okButtonProps={{ danger: true }}
+          >
+            <Button size="small" type="text" danger icon={<DeleteOutlined />} loading={deleteMeasurement.isPending} />
+          </Popconfirm>
         </Space>
       ),
     },

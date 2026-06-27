@@ -113,32 +113,6 @@ async def test_full_workflow():
         assert measurement["computed_qty"] == "300.000"
         measurement_id = measurement["id"]
 
-        submit_resp = await client.post(f"/api/v1/measurements/{measurement_id}/submit", headers=_csrf(client))
-        assert submit_resp.status_code == 200, submit_resp.text
-        assert submit_resp.json()["status"] == "SUBMITTED"
-
-        # --- PM approval, then QS approval + lock ---
-        await _login(client, "PROJECT_MANAGER")
-        pm_approve = await client.post(
-            f"/api/v1/measurements/{measurement_id}/approve", json={}, headers=_csrf(client)
-        )
-        assert pm_approve.status_code == 200, pm_approve.text
-        assert pm_approve.json()["status"] == "PM_APPROVED"
-
-        await _login(client, "QUANTITY_SURVEYOR")
-        qs_approve = await client.post(
-            f"/api/v1/measurements/{measurement_id}/approve", json={}, headers=_csrf(client)
-        )
-        assert qs_approve.status_code == 200, qs_approve.text
-        assert qs_approve.json()["status"] == "QS_APPROVED"
-
-        lock_resp = await client.post(f"/api/v1/measurements/{measurement_id}/lock", json={}, headers=_csrf(client))
-        assert lock_resp.status_code == 200, lock_resp.text
-        assert lock_resp.json()["status"] == "LOCKED"
-
-        boq_after = (await client.get(f"/api/v1/boq-items/{boq_item_id}")).json()
-        assert boq_after["consumed_qty"] == "300.000"
-
         # --- Material indent: site engineer requests, store keeper fulfills ---
         await _login(client, "SITE_ENGINEER")
         indent_resp = await client.post(

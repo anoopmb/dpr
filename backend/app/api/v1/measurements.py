@@ -1,14 +1,12 @@
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 
 from app.api.deps import CurrentUserDep, SessionDep, require_role
-from app.models.measurement import Measurement, MeasurementApproval
+from app.models.measurement import Measurement
 from app.models.user import User, UserRole
 from app.schemas.measurement import (
-    MeasurementActionRequest,
-    MeasurementApprovalRead,
     MeasurementCreate,
     MeasurementRead,
     MeasurementUpdate,
@@ -42,8 +40,6 @@ async def _to_read(session: SessionDep, measurement: Measurement) -> Measurement
 
 
 async def _to_read_many(session: SessionDep, measurements: list[Measurement]) -> list[MeasurementRead]:
-    """Batches the recorded-by name lookup into one query instead of one
-    per row — list_for_project can return a large number of rows."""
     user_ids = {m.recorded_by for m in measurements}
     if not user_ids:
         return []
@@ -93,95 +89,6 @@ async def list_measurements_for_project(
 @router.get("/{measurement_id}", response_model=MeasurementRead)
 async def get_measurement(measurement_id: uuid.UUID, session: SessionDep, _: CurrentUserDep) -> MeasurementRead:
     measurement = await MeasurementService(session).get(measurement_id)
-    return await _to_read(session, measurement)
-
-
-@router.get("/{measurement_id}/approvals", response_model=list[MeasurementApprovalRead])
-async def list_measurement_approvals(
-    measurement_id: uuid.UUID, session: SessionDep, _: CurrentUserDep
-) -> list[MeasurementApprovalRead]:
-    """Full chronological status-transition history for one measurement —
-    who acted, what changed, and any remarks (e.g. a rejection reason)."""
-    result = await session.execute(
-        select(MeasurementApproval, User.full_name)
-        .join(User, MeasurementApproval.acted_by == User.id)
-        .where(MeasurementApproval.measurement_id == measurement_id)
-        .order_by(MeasurementApproval.acted_at)
-    )
-    return [
-        MeasurementApprovalRead(
-            id=approval.id,
-            measurement_id=approval.measurement_id,
-            from_status=approval.from_status,
-            to_status=approval.to_status,
-            acted_by=approval.acted_by,
-            actor_name=full_name,
-            remarks=approval.remarks,
-            acted_at=approval.acted_at,
-        )
-        for approval, full_name in result.all()
-    ]
-
-
-@router.post("/{measurement_id}/submit", response_model=MeasurementRead)
-async def submit_measurement(
-    measurement_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep, background_tasks: BackgroundTasks
-) -> MeasurementRead:
-    measurement = await MeasurementService(session, background_tasks).submit(
-        measurement_id, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role
-    )
-    return await _to_read(session, measurement)
-
-
-@router.post("/{measurement_id}/approve", response_model=MeasurementRead)
-async def approve_measurement(
-    measurement_id: uuid.UUID,
-    data: MeasurementActionRequest,
-    session: SessionDep,
-    current_user: CurrentUserDep,
-    background_tasks: BackgroundTasks,
-) -> MeasurementRead:
-    measurement = await MeasurementService(session, background_tasks).approve(
-        measurement_id, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role, data=data
-    )
-    return await _to_read(session, measurement)
-
-
-@router.post("/{measurement_id}/reject", response_model=MeasurementRead)
-async def reject_measurement(
-    measurement_id: uuid.UUID,
-    data: MeasurementActionRequest,
-    session: SessionDep,
-    current_user: CurrentUserDep,
-    background_tasks: BackgroundTasks,
-) -> MeasurementRead:
-    measurement = await MeasurementService(session, background_tasks).reject(
-        measurement_id, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role, data=data
-    )
-    return await _to_read(session, measurement)
-
-
-@router.post("/{measurement_id}/lock", response_model=MeasurementRead)
-async def lock_measurement(
-    measurement_id: uuid.UUID,
-    data: MeasurementActionRequest,
-    session: SessionDep,
-    current_user: CurrentUserDep,
-    background_tasks: BackgroundTasks,
-) -> MeasurementRead:
-    measurement = await MeasurementService(session, background_tasks).lock(
-        measurement_id, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role, data=data
-    )
-    return await _to_read(session, measurement)
-
-
-@router.post("/{measurement_id}/recall", response_model=MeasurementRead)
-async def recall_measurement(
-    measurement_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep
-) -> MeasurementRead:
-    measurement = await MeasurementService(session).recall(
-        measurement_id, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role
-    )
     return await _to_read(session, measurement)
 
 

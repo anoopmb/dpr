@@ -10,7 +10,6 @@ import {
   Space,
   Statistic,
   Table,
-  Tag,
   Typography,
   message,
 } from 'antd';
@@ -18,48 +17,17 @@ import type { TableColumnsType } from 'antd';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
 import {
-  useApproveMeasurement,
   useDeleteMeasurement,
-  useLockMeasurement,
-  useMeasurementApprovals,
   useMeasurements,
-  useRejectMeasurement,
-  useRecallMeasurement,
-  useSubmitMeasurement,
   useUpdateMeasurement,
-  type MeasurementApprovalRead,
   type MeasurementRead,
-  type MeasurementStatus,
 } from '@/api/hooks/useMeasurements';
 import { useAuthStore } from '@/store/auth-store';
 import { useBoqItems } from '@/api/hooks/useBoq';
 import { useWorkTypes } from '@/api/hooks/useMasters';
-import { useEffectiveWorkflow, type WorkflowDefinitionRead } from '@/api/hooks/useWorkflowConfig';
 import { calculateQuantity } from '@/features/measurements/formulaEngine';
 import { useThemeMode } from '@/theme/theme-context';
 import { useDateFormat } from '@/utils/format';
-
-// DRAFT/SUBMITTED/REJECTED/LOCKED are fixed bookends with a fixed color;
-// everything else is an admin-configured approval level — colored by
-// cycling a palette keyed on the level's position in the workflow.
-const FIXED_STATUS_COLOR: Record<string, string> = {
-  DRAFT: 'default',
-  SUBMITTED: 'blue',
-  REJECTED: 'red',
-  LOCKED: 'green',
-};
-const LEVEL_COLOR_PALETTE = ['gold', 'cyan', 'purple', 'geekblue', 'volcano', 'lime'];
-
-function statusColor(status: MeasurementStatus, workflow: WorkflowDefinitionRead | undefined): string {
-  if (FIXED_STATUS_COLOR[status]) return FIXED_STATUS_COLOR[status];
-  const idx = workflow?.levels.findIndex((l) => l.status_code === status) ?? -1;
-  return idx >= 0 ? LEVEL_COLOR_PALETTE[idx % LEVEL_COLOR_PALETTE.length] : 'default';
-}
-
-function statusLabel(status: MeasurementStatus, workflow: WorkflowDefinitionRead | undefined): string {
-  const level = workflow?.levels.find((l) => l.status_code === status);
-  return level ? level.label : status.replace(/_/g, ' ');
-}
 
 const FIELD_LABELS: Record<string, string> = {
   length: 'Length (m)',
@@ -71,8 +39,7 @@ const FIELD_LABELS: Record<string, string> = {
   diameter: 'Diameter (mm)',
 };
 
-// expand column + 7 data columns
-const NCOLS = 8;
+const NCOLS = 7;
 
 type MeasurementRow =
   | { _type: 'date-header'; date: string; count: number; key: string }
@@ -93,26 +60,6 @@ function buildDateGroupedRows(measurements: MeasurementRead[]): MeasurementRow[]
   return rows;
 }
 
-const APPROVAL_COLS: TableColumnsType<MeasurementApprovalRead> = [
-  { title: 'Actor', dataIndex: 'actor_name', key: 'actor_name', width: 150 },
-  {
-    title: 'Transition',
-    key: 'transition',
-    width: 220,
-    render: (_, r) => (
-      <span>
-        <Tag>{r.from_status}</Tag>→<Tag color={r.to_status === 'REJECTED' ? 'red' : 'green'}>{r.to_status}</Tag>
-      </span>
-    ),
-  },
-  {
-    title: 'Remarks',
-    dataIndex: 'remarks',
-    key: 'remarks',
-    render: (v: string | null) => v ?? <Typography.Text type="secondary">—</Typography.Text>,
-  },
-];
-
 function MeasurementDetailPanel({
   measurement,
   boqRate,
@@ -120,25 +67,13 @@ function MeasurementDetailPanel({
   measurement: MeasurementRead;
   boqRate: string | null;
 }) {
-  const { data: approvals, isLoading } = useMeasurementApprovals(measurement.id);
-  const { fmtDate, fmtDateTime } = useDateFormat();
-
-  const approvalCols: TableColumnsType<MeasurementApprovalRead> = [
-    ...APPROVAL_COLS,
-    {
-      title: 'When',
-      key: 'acted_at',
-      width: 160,
-      render: (_, r) => fmtDateTime(r.acted_at),
-    },
-  ];
-
+  const { fmtDate } = useDateFormat();
   const effectiveRate = measurement.rate ?? boqRate;
   const isOverride = measurement.rate != null && boqRate != null && parseFloat(measurement.rate) !== parseFloat(boqRate);
 
   return (
     <div style={{ padding: '8px 16px 16px' }}>
-      <Descriptions size="small" column={{ xs: 1, sm: 2, md: 3 }} bordered style={{ marginBottom: 16 }}>
+      <Descriptions size="small" column={{ xs: 1, sm: 2, md: 3 }} bordered>
         <Descriptions.Item label="Recorded By">{measurement.recorded_by_name}</Descriptions.Item>
         <Descriptions.Item label="Date">{fmtDate(measurement.measurement_date)}</Descriptions.Item>
         <Descriptions.Item label="Computed Qty">{measurement.computed_qty}</Descriptions.Item>
@@ -162,19 +97,6 @@ function MeasurementDetailPanel({
           </Descriptions.Item>
         ))}
       </Descriptions>
-      <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
-        Approval History
-      </Typography.Text>
-      <Table<MeasurementApprovalRead>
-        size="small"
-        dataSource={approvals ?? []}
-        columns={approvalCols}
-        rowKey="id"
-        loading={isLoading}
-        pagination={false}
-        bordered
-        locale={{ emptyText: 'No approval actions yet' }}
-      />
     </div>
   );
 }
@@ -184,28 +106,19 @@ export function MeasurementsPage() {
   const { data: measurements, isLoading } = useMeasurements(selectedProjectId);
   const { data: boqItems } = useBoqItems(selectedProjectId);
   const { data: workTypes } = useWorkTypes();
-  const { data: workflow } = useEffectiveWorkflow('MEASUREMENT', selectedProjectId);
   const user = useAuthStore((s) => s.user);
   const { resolvedMode } = useThemeMode();
   const { fmtDate } = useDateFormat();
 
   const DATE_HDR_BG = resolvedMode === 'dark' ? 'rgba(22, 119, 255, 0.10)' : '#f0f5ff';
 
-  const submit = useSubmitMeasurement();
-  const approve = useApproveMeasurement();
-  const reject = useRejectMeasurement();
-  const lock = useLockMeasurement();
   const updateMeasurement = useUpdateMeasurement();
   const deleteMeasurement = useDeleteMeasurement();
-  const recallMeasurement = useRecallMeasurement();
 
   const [editingMeasurement, setEditingMeasurement] = useState<MeasurementRead | null>(null);
   const [editDimensions, setEditDimensions] = useState<Record<string, number>>({});
   const [editChainage, setEditChainage] = useState('');
   const [editRate, setEditRate] = useState<number | null>(null);
-
-  const [rejectingMeasurement, setRejectingMeasurement] = useState<MeasurementRead | null>(null);
-  const [rejectRemarks, setRejectRemarks] = useState('');
 
   const openEditModal = (record: MeasurementRead) => {
     setEditDimensions(
@@ -216,11 +129,6 @@ export function MeasurementsPage() {
     setEditChainage(record.chainage ?? '');
     setEditRate(record.rate != null ? parseFloat(record.rate) : null);
     setEditingMeasurement(record);
-  };
-
-  const openRejectModal = (record: MeasurementRead) => {
-    setRejectRemarks('');
-    setRejectingMeasurement(record);
   };
 
   const editWorkType = useMemo(
@@ -251,36 +159,6 @@ export function MeasurementsPage() {
   }, [measurements, boqById, searchText]);
 
   const rows = useMemo(() => buildDateGroupedRows(filteredMeasurements), [filteredMeasurements]);
-
-  const runAction = async (action: typeof submit, id: string, label: string) => {
-    try {
-      await action.mutateAsync({ id });
-      message.success(`Measurement ${label}`);
-    } catch {
-      message.error(`Could not ${label.toLowerCase()} measurement`);
-    }
-  };
-
-  const handleRecall = async (record: MeasurementRead) => {
-    try {
-      await recallMeasurement.mutateAsync({ id: record.id });
-      message.success('Measurement recalled to draft — you can now edit and resubmit it');
-    } catch {
-      message.error('Could not recall measurement');
-    }
-  };
-
-  const handleReject = async () => {
-    if (!rejectingMeasurement || !rejectRemarks.trim()) return;
-    try {
-      await reject.mutateAsync({ id: rejectingMeasurement.id, remarks: rejectRemarks.trim() });
-      message.success('Measurement rejected');
-      setRejectingMeasurement(null);
-      setRejectRemarks('');
-    } catch {
-      message.error('Could not reject measurement');
-    }
-  };
 
   const handleEditSave = async () => {
     if (!editingMeasurement || !editWorkType) return;
@@ -313,92 +191,6 @@ export function MeasurementsPage() {
 
   const canEditOrDelete = (record: MeasurementRead) =>
     record.recorded_by === user?.id || user?.role === 'ADMIN';
-
-  const renderActions = (record: MeasurementRead) => {
-    const buttons: React.ReactNode[] = [];
-    if (record.status === 'DRAFT') {
-      buttons.push(
-        <Button key="submit" size="small" onClick={() => runAction(submit, record.id, 'submitted')}>
-          Submit
-        </Button>,
-      );
-      if (canEditOrDelete(record)) {
-        buttons.push(
-          <Button key="edit" size="small" onClick={() => openEditModal(record)}>
-            Edit
-          </Button>,
-          <Popconfirm
-            key="delete"
-            title="Delete this measurement?"
-            description="This will also remove its contribution from DPR production."
-            onConfirm={() => handleDelete(record)}
-            okText="Delete"
-            okButtonProps={{ danger: true }}
-          >
-            <Button size="small" danger loading={deleteMeasurement.isPending}>
-              Delete
-            </Button>
-          </Popconfirm>,
-        );
-      }
-    }
-    if (workflow) {
-      const codes = workflow.levels.map((l) => l.status_code);
-      let levelIndex = -1;
-      if (record.status === 'SUBMITTED' && workflow.levels.length > 0) {
-        levelIndex = 0;
-      } else {
-        const idx = codes.indexOf(record.status);
-        if (idx >= 0 && idx + 1 < workflow.levels.length) levelIndex = idx + 1;
-      }
-      if (levelIndex >= 0) {
-        const level = workflow.levels[levelIndex];
-        const canAct = user?.role === 'ADMIN' || level.allowed_roles.includes(user?.role as never);
-        if (canAct) {
-          buttons.push(
-            <Button key="approve" size="small" type="primary" onClick={() => runAction(approve, record.id, `${level.label} recorded`)}>
-              {level.label}
-            </Button>,
-          );
-          if (level.allow_reject) {
-            buttons.push(
-              <Button key="reject" size="small" danger onClick={() => openRejectModal(record)}>
-                Reject
-              </Button>,
-            );
-          }
-        }
-      }
-
-      const finalLevel = workflow.levels.find((l) => l.is_final_approval);
-      if (finalLevel && record.status === finalLevel.status_code) {
-        const canLock = user?.role === 'ADMIN' || (workflow.lock_allowed_roles ?? []).includes(user?.role as never);
-        if (canLock) {
-          buttons.push(
-            <Button key="lock" size="small" type="primary" onClick={() => runAction(lock, record.id, 'locked')}>
-              Lock
-            </Button>,
-          );
-        }
-      }
-    }
-    if (record.status === 'REJECTED' && canEditOrDelete(record)) {
-      buttons.push(
-        <Popconfirm
-          key="recall"
-          title="Recall to Draft?"
-          description="This measurement will return to Draft so you can edit and resubmit it."
-          onConfirm={() => handleRecall(record)}
-          okText="Recall"
-        >
-          <Button size="small" loading={recallMeasurement.isPending}>
-            Recall to Draft
-          </Button>
-        </Popconfirm>,
-      );
-    }
-    return <Space>{buttons}</Space>;
-  };
 
   const columns: TableColumnsType<MeasurementRow> = [
     {
@@ -442,16 +234,6 @@ export function MeasurementsPage() {
       },
     },
     {
-      title: 'Status',
-      key: 'status',
-      width: 110,
-      onCell: (row) => (row._type === 'date-header' ? { colSpan: 0 } : {}),
-      render: (_, row) =>
-        row._type === 'item' ? (
-          <Tag color={statusColor(row.measurement.status, workflow)}>{statusLabel(row.measurement.status, workflow)}</Tag>
-        ) : null,
-    },
-    {
       title: 'Billed',
       key: 'billed',
       width: 70,
@@ -459,11 +241,34 @@ export function MeasurementsPage() {
       render: (_, row) => (row._type === 'item' ? (row.measurement.billed ? 'Yes' : 'No') : null),
     },
     {
+      title: 'Recorded By',
+      key: 'recorded_by',
+      width: 140,
+      onCell: (row) => (row._type === 'date-header' ? { colSpan: 0 } : {}),
+      render: (_, row) => (row._type === 'item' ? row.measurement.recorded_by_name : null),
+    },
+    {
       title: 'Actions',
       key: 'actions',
-      width: 220,
+      width: 160,
       onCell: (row) => (row._type === 'date-header' ? { colSpan: 0 } : {}),
-      render: (_, row) => (row._type === 'item' ? renderActions(row.measurement) : null),
+      render: (_, row) => {
+        if (row._type !== 'item' || !canEditOrDelete(row.measurement)) return null;
+        return (
+          <Space>
+            <Button size="small" onClick={() => openEditModal(row.measurement)}>Edit</Button>
+            <Popconfirm
+              title="Delete this measurement?"
+              description="This will also remove its contribution from DPR production."
+              onConfirm={() => handleDelete(row.measurement)}
+              okText="Delete"
+              okButtonProps={{ danger: true }}
+            >
+              <Button size="small" danger loading={deleteMeasurement.isPending}>Delete</Button>
+            </Popconfirm>
+          </Space>
+        );
+      },
     },
   ];
 
@@ -471,7 +276,7 @@ export function MeasurementsPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <Typography.Title level={3} style={{ margin: 0 }}>
-          Measurement Book & Approvals
+          Measurement Book
         </Typography.Title>
         <Space>
           <ProjectSelector />
@@ -505,30 +310,6 @@ export function MeasurementsPage() {
           rowExpandable: (row) => row._type === 'item',
         }}
       />
-
-      <Modal
-        title="Reject Measurement"
-        open={!!rejectingMeasurement}
-        onCancel={() => setRejectingMeasurement(null)}
-        onOk={handleReject}
-        okText="Reject"
-        okButtonProps={{ danger: true, disabled: !rejectRemarks.trim() }}
-        confirmLoading={reject.isPending}
-        destroyOnHidden
-      >
-        <Form layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item label="Rejection Reason" required>
-            <Input.TextArea
-              rows={4}
-              maxLength={500}
-              showCount
-              placeholder="Describe why this measurement is being rejected…"
-              value={rejectRemarks}
-              onChange={(e) => setRejectRemarks(e.target.value)}
-            />
-          </Form.Item>
-        </Form>
-      </Modal>
 
       <Modal
         title="Edit Measurement"

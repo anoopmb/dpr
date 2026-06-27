@@ -338,19 +338,6 @@ class DprService:
 
     async def submit(self, header_id: uuid.UUID, actor_id: uuid.UUID) -> DprHeader:
         header = await self._get_editable_header(header_id)
-        measurement_workflow = await self.workflow_config.get_effective_definition(
-            WorkflowEntityType.MEASUREMENT, header.project_id
-        )
-        pending_codes = WorkflowConfigService.pending_status_codes(measurement_workflow)
-        pending = await self.measurement_repo.count_status_for_project_date(
-            header.project_id, header.report_date, pending_codes
-        )
-        if pending > 0:
-            raise DomainError(
-                f"Cannot submit DPR — {pending} measurement(s) have not completed the full "
-                "PM + QS approval flow. Every measurement for this date must be QS approved, "
-                "locked, or rejected before the DPR can be submitted."
-            )
         before = serialize_model(header)
         header.status = DprStatus.SUBMITTED
         header.submitted_at = datetime.now(timezone.utc)
@@ -710,18 +697,6 @@ class DprService:
             raise NotFoundError(f"DPR {header_id} not found.")
         if header.status != DprStatus.DRAFT:
             raise PermissionDeniedError("Only DRAFT DPRs can be deleted.")
-        measurement_workflow = await self.workflow_config.get_effective_definition(
-            WorkflowEntityType.MEASUREMENT, header.project_id
-        )
-        final_codes = WorkflowConfigService.final_approval_status_codes(measurement_workflow)
-        has_approved = await self.measurement_repo.has_status_for_project_date(
-            header.project_id, header.report_date, final_codes
-        )
-        if has_approved:
-            raise DomainError(
-                "Cannot delete DPR — one or more measurements for this date have been approved. "
-                "Delete or recall the approved measurements first."
-            )
         # Collect issue photo URLs before cascade delete so we can clean up storage.
         issue_result = await self.session.execute(
             select(DprIssue).where(DprIssue.dpr_header_id == header_id)
@@ -765,12 +740,8 @@ class DprProductionService:
         calculations. Auto-creates a DRAFT DPR header for the date if none
         exists yet. No-ops once the header is no longer DRAFT
         (submitted/locked DPRs are immutable) or marked as a no-work day."""
-        measurement_workflow = await self.workflow_config.get_effective_definition(
-            WorkflowEntityType.MEASUREMENT, project_id
-        )
-        feeds_production_codes = WorkflowConfigService.feeds_production_status_codes(measurement_workflow)
         qty, amount = await self.measurement_repo.sum_qty_and_amount_for_item_date(
-            boq_item_id, measurement_date, feeds_production_codes
+            boq_item_id, measurement_date
         )
         amount = amount.quantize(Decimal("0.01"))
 

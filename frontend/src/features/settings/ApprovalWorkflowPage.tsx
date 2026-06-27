@@ -10,7 +10,6 @@ import {
   Skeleton,
   Space,
   Switch,
-  Tabs,
   Tag,
   Typography,
   message,
@@ -70,7 +69,6 @@ function WorkflowEditor({
   const deleteDefinition = useDeleteWorkflowDefinition();
 
   const [approvalsEnabled, setApprovalsEnabled] = useState(viewing.approvals_enabled);
-  const [lockAllowedRoles, setLockAllowedRoles] = useState<UserRole[]>(viewing.lock_allowed_roles ?? []);
   const [levels, setLevels] = useState<EditableLevel[]>(() => toEditable(viewing.levels));
 
   const patchLevel = (key: string, patch: Partial<EditableLevel>) =>
@@ -112,10 +110,6 @@ function WorkflowEditor({
     ]);
 
   const handleSave = async () => {
-    if (entityType === 'MEASUREMENT' && lockAllowedRoles.length === 0) {
-      message.warning('Select at least one role allowed to lock fully-approved measurements');
-      return;
-    }
     if (levels.some((l) => !l.status_code.trim() || !l.label.trim() || l.allowed_roles.length === 0)) {
       message.warning('Every level needs a status code, label, and at least one allowed role');
       return;
@@ -125,7 +119,7 @@ function WorkflowEditor({
       label: l.label,
       allowed_roles: l.allowed_roles,
       allow_reject: l.allow_reject,
-      feeds_production: l.feeds_production,
+      feeds_production: false,
       is_final_approval: l.is_final_approval,
     }));
     try {
@@ -134,17 +128,15 @@ function WorkflowEditor({
           id: viewing.id,
           data: {
             approvals_enabled: approvalsEnabled,
-            lock_allowed_roles: entityType === 'MEASUREMENT' ? lockAllowedRoles : undefined,
             levels: payloadLevels,
           },
         });
       } else if (selectedProjectId) {
         await createDefinition.mutateAsync({
-          entity_type: entityType,
+          entity_type: 'DPR_HEADER',
           project_id: selectedProjectId,
-          name: `${entityType === 'MEASUREMENT' ? 'Measurement' : 'DPR'} Approval Override`,
+          name: 'DPR Approval Override',
           approvals_enabled: approvalsEnabled,
-          lock_allowed_roles: entityType === 'MEASUREMENT' ? lockAllowedRoles : undefined,
           levels: payloadLevels,
         });
       }
@@ -172,7 +164,7 @@ function WorkflowEditor({
       size="small"
       title={
         <Space>
-          <span>{entityType === 'MEASUREMENT' ? 'Measurement Approval' : 'DPR Approval'}</span>
+          <span>DPR Approval</span>
           {isProjectView && (
             <Tag color={hasOverride ? 'blue' : 'default'}>{hasOverride ? 'Project override' : 'Using org default'}</Tag>
           )}
@@ -199,11 +191,8 @@ function WorkflowEditor({
           </Typography.Text>
         </div>
 
-        {entityType === 'MEASUREMENT' && (
+        {false && (
           <div>
-            <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>
-              Who can lock a fully-approved measurement (makes it billable)
-            </Typography.Text>
             <Select
               mode="multiple"
               style={{ width: '100%', maxWidth: 480 }}
@@ -262,16 +251,10 @@ function WorkflowEditor({
                     <Switch size="small" checked={level.allow_reject} onChange={(v) => patchLevel(level.key, { allow_reject: v })} />
                     <Typography.Text style={{ fontSize: 12 }}>Allow reject at this level</Typography.Text>
                   </Space>
-                  {entityType === 'MEASUREMENT' && (
-                    <Space size={6}>
-                      <Switch size="small" checked={level.feeds_production} onChange={(v) => patchLevel(level.key, { feeds_production: v })} />
-                      <Typography.Text style={{ fontSize: 12 }}>Counts toward DPR production once reached</Typography.Text>
-                    </Space>
-                  )}
                   <Space size={6}>
                     <Switch size="small" checked={level.is_final_approval} onChange={() => setFinalLevel(level.key)} />
                     <Typography.Text style={{ fontSize: 12 }}>
-                      Final approval level{entityType === 'DPR_HEADER' ? ' (locks status_code to APPROVED)' : ''}
+                      Final approval level (locks status_code to APPROVED)
                     </Typography.Text>
                   </Space>
                 </div>
@@ -296,7 +279,7 @@ function WorkflowEditor({
 }
 
 export function ApprovalWorkflowPage() {
-  const [entityType, setEntityType] = useState<WorkflowEntityType>('MEASUREMENT');
+  const entityType: WorkflowEntityType = 'DPR_HEADER';
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const { data: projects } = useProjects();
   const { data: definitions, isLoading } = useWorkflowDefinitions(entityType);
@@ -313,7 +296,7 @@ export function ApprovalWorkflowPage() {
     <div>
       <Typography.Title level={3}>Approval Workflow</Typography.Title>
       <Typography.Paragraph type="secondary">
-        Configure who can approve measurements and DPRs, how many approval levels are required, and whether
+        Configure who can approve DPRs, how many approval levels are required, and whether
         approvals are required at all — org-wide by default, or overridden per project.
       </Typography.Paragraph>
 
@@ -328,15 +311,6 @@ export function ApprovalWorkflowPage() {
           optionFilterProp="label"
         />
       </Space>
-
-      <Tabs
-        activeKey={entityType}
-        onChange={(k) => setEntityType(k as WorkflowEntityType)}
-        items={[
-          { key: 'MEASUREMENT', label: 'Measurement' },
-          { key: 'DPR_HEADER', label: 'DPR' },
-        ]}
-      />
 
       {isLoading && <Skeleton active paragraph={{ rows: 6 }} />}
       {!isLoading && !definitions?.some((d) => d.is_org_default) && (
