@@ -60,7 +60,7 @@ import {
 } from '@/api/hooks/useBoq';
 import { useUoms, useWorkTypes } from '@/api/hooks/useMasters';
 import { useThemeMode } from '@/theme/theme-context';
-import { useNumberFormat } from '@/utils/format';
+import { useDateFormat, useNumberFormat } from '@/utils/format';
 import { useAuthStore } from '@/store/auth-store';
 import {
   useApplyBoqTemplate,
@@ -152,7 +152,7 @@ function RevisionHistoryDrawer({
                 <Descriptions size="small" column={2} style={{ marginTop: 6 }}>
                   <Descriptions.Item label="Effective From">{r.effective_from}</Descriptions.Item>
                   {r.revised_rate && <Descriptions.Item label={`Rate (${symbol})`}>{fmtQty(r.revised_rate, 2)}</Descriptions.Item>}
-                  {r.revised_tendered_qty && <Descriptions.Item label="Qty">{parseFloat(r.revised_tendered_qty).toLocaleString('en-IN', { maximumFractionDigits: 3 })}</Descriptions.Item>}
+                  {r.revised_tendered_qty && <Descriptions.Item label="Qty">{fmtQty(r.revised_tendered_qty)}</Descriptions.Item>}
                   <Descriptions.Item label="Reason" span={2}>{r.reason}</Descriptions.Item>
                   {r.rejected_reason && <Descriptions.Item label="Rejection reason" span={2}><Typography.Text type="danger">{r.rejected_reason}</Typography.Text></Descriptions.Item>}
                 </Descriptions>
@@ -361,7 +361,8 @@ export function BoqPage() {
   const rejectRevision = useRejectBoqRevision();
   const { data: pendingRevisions } = usePendingBoqRevisions(isAdmin ? selectedProjectId : null);
   const { resolvedMode } = useThemeMode();
-  const { fmtAmt, fmtQty, symbol } = useNumberFormat();
+  const { fmtAmt, fmtQty, fmtQtyByUnit, symbol } = useNumberFormat();
+  const { dateFormat } = useDateFormat();
 
   const { data: templates, isLoading: templatesLoading } = useBoqTemplateList();
   const saveFromProject = useSaveBoqTemplateFromProject();
@@ -743,8 +744,8 @@ export function BoqPage() {
         return {};
       },
       render: (_, row) => {
-        if (row._type === 'item') return parseFloat(row.item.tendered_qty).toLocaleString('en-IN', { maximumFractionDigits: 3 });
-        if (row._type === 'subtotal') return sectionQty(row.section.items, 'tendered_qty').toLocaleString('en-IN', { maximumFractionDigits: 3 });
+        if (row._type === 'item') return fmtQtyByUnit(row.item.tendered_qty, row.item.unit);
+        if (row._type === 'subtotal') return fmtQty(sectionQty(row.section.items, 'tendered_qty'));
         return null;
       },
     },
@@ -759,8 +760,8 @@ export function BoqPage() {
         return {};
       },
       render: (_, row) => {
-        if (row._type === 'item') return parseFloat(row.item.consumed_qty).toLocaleString('en-IN', { maximumFractionDigits: 3 });
-        if (row._type === 'subtotal') return sectionQty(row.section.items, 'consumed_qty').toLocaleString('en-IN', { maximumFractionDigits: 3 });
+        if (row._type === 'item') return fmtQtyByUnit(row.item.consumed_qty, row.item.unit);
+        if (row._type === 'subtotal') return fmtQty(sectionQty(row.section.items, 'consumed_qty'));
         return null;
       },
     },
@@ -813,7 +814,7 @@ export function BoqPage() {
         return isRevised ? (
           <Space size={4}>
             <Tag color="orange" style={{ marginRight: 0 }}>Revised</Tag>
-            {parseFloat(row.item.current_tendered_qty).toLocaleString('en-IN', { maximumFractionDigits: 3 })}
+            {fmtQtyByUnit(row.item.current_tendered_qty, row.item.unit)}
           </Space>
         ) : <Typography.Text type="secondary">—</Typography.Text>;
       },
@@ -1040,7 +1041,7 @@ export function BoqPage() {
               { title: 'Type', key: 'type', width: 130, render: (_: unknown, r: BoqRevisionRead) => REVISION_TYPE_LABELS[r.revision_type] },
               { title: 'Effective From', dataIndex: 'effective_from', key: 'eff', width: 120 },
               { title: 'Revised Rate', key: 'rrate', width: 110, align: 'right' as const, render: (_: unknown, r: BoqRevisionRead) => r.revised_rate ? fmtQty(r.revised_rate, 2) : '—' },
-              { title: 'Revised Qty', key: 'rqty', width: 110, align: 'right' as const, render: (_: unknown, r: BoqRevisionRead) => r.revised_tendered_qty ? parseFloat(r.revised_tendered_qty).toLocaleString('en-IN', { maximumFractionDigits: 3 }) : '—' },
+              { title: 'Revised Qty', key: 'rqty', width: 110, align: 'right' as const, render: (_: unknown, r: BoqRevisionRead) => r.revised_tendered_qty ? fmtQty(r.revised_tendered_qty) : '—' },
               { title: 'Reason', dataIndex: 'reason', key: 'reason', ellipsis: true },
               {
                 title: 'Actions',
@@ -1330,8 +1331,8 @@ export function BoqPage() {
           <Descriptions size="small" column={2} style={{ marginBottom: 16 }}>
             <Descriptions.Item label="Contract Rate">{fmtQty(revisionModal.item.rate, 2)}</Descriptions.Item>
             <Descriptions.Item label="Current Rate">{fmtQty(revisionModal.item.current_rate, 2)}</Descriptions.Item>
-            <Descriptions.Item label="Contract Qty">{parseFloat(revisionModal.item.tendered_qty).toLocaleString('en-IN', { maximumFractionDigits: 3 })}</Descriptions.Item>
-            <Descriptions.Item label="Current Qty">{parseFloat(revisionModal.item.current_tendered_qty).toLocaleString('en-IN', { maximumFractionDigits: 3 })}</Descriptions.Item>
+            <Descriptions.Item label="Contract Qty">{fmtQtyByUnit(revisionModal.item.tendered_qty, revisionModal.item.unit)}</Descriptions.Item>
+            <Descriptions.Item label="Current Qty">{fmtQtyByUnit(revisionModal.item.current_tendered_qty, revisionModal.item.unit)}</Descriptions.Item>
           </Descriptions>
         )}
         <Form form={revisionForm} layout="vertical" onFinish={handleCreateRevision}>
@@ -1346,7 +1347,7 @@ export function BoqPage() {
             />
           </Form.Item>
           <Form.Item name="effective_from" label="Effective From Date" rules={[{ required: true }]}>
-            <DatePicker style={{ width: '100%' }} />
+            <DatePicker style={{ width: '100%' }} format={dateFormat} />
           </Form.Item>
           <Form.Item
             name="revised_rate"

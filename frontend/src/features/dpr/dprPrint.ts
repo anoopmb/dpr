@@ -69,6 +69,10 @@ function td(style: string, content: string | number = ''): string {
   return `<td style="${CELL}${style}">${content}</td>`;
 }
 
+function shortDateFmt(dateFormat: string): string {
+  return dateFormat.replace('YYYY-', '').replace('-YYYY', '').replace('/YYYY', '').replace('YYYY/', '');
+}
+
 function buildProductionTable(
   report: DprMonthlyReportRead,
   slice: Slice,
@@ -76,6 +80,7 @@ function buildProductionTable(
   fmtAmt: Fmt,
   fmtQty: FmtQty,
   symbol: string,
+  dateFormat: string,
 ): string {
   const { startDayIdx, endDayIdx, startDay, endDay } = slice;
   const numDays = endDay - startDay + 1;
@@ -104,7 +109,7 @@ function buildProductionTable(
   <th style="${CELL}${TH1}" rowspan="2">Rate(${esc(symbol)})</th>
   <th style="${CELL}${TH1}" rowspan="2">Agreed</th>
   <th style="${CELL}${TH1}" colspan="2">${esc(openLabel)}</th>
-  ${dayIdxs.map(i => `<th style="${CELL}${TH1}" colspan="2">Day ${i + 1}<br><span style="font-size:5.5pt;font-weight:400">${esc(month.date(i + 1).format('DD/MM'))}</span></th>`).join('')}
+  ${dayIdxs.map(i => `<th style="${CELL}${TH1}" colspan="2">Day ${i + 1}<br><span style="font-size:5.5pt;font-weight:400">${esc(month.date(i + 1).format(shortDateFmt(dateFormat)))}</span></th>`).join('')}
   <th style="${CELL}${TH1}" colspan="2">Up to Day ${endDay}</th>
 </tr>
 <tr style="${TH2}text-align:center">
@@ -291,6 +296,7 @@ function buildSummarySection(
   slice: Slice,
   month: Dayjs,
   fmtAmt: Fmt,
+  dateFormat: string,
 ): string {
   const rows = summary.filter(c => c.day >= slice.startDay && c.day <= slice.endDay);
   if (rows.length === 0) return '';
@@ -315,7 +321,7 @@ function buildSummarySection(
     const wb = cell.day % 7 === 0 || cell.day === lastDay;
     const rs = wb ? SUBTOT : '';
     t += `<tr style="${rs}">
-      ${td(rs, esc(month.date(cell.day).format('DD/MM/YYYY')))}
+      ${td(rs, esc(month.date(cell.day).format(dateFormat)))}
       ${td(rs + 'text-align:right', fmtAmt(cell.income))}
       ${td(rs + 'text-align:right', fmtAmt(cell.expense))}
       ${td(rs + 'text-align:right', fmtAmt(cell.profit_loss))}
@@ -337,6 +343,7 @@ export function buildPrintableHTML(
   fmtAmt: Fmt,
   fmtQty: FmtQty,
   symbol: string,
+  dateFormat: string,
 ): string {
   const slices = makeSlices(report.days_in_month);
 
@@ -362,7 +369,7 @@ export function buildPrintableHTML(
   </div>
 
   <div style="font-size:7.5pt;font-weight:700;margin:0 0 2px;padding:2px 4px;background:#e0ebff;border-left:3px solid #4472c4;page-break-after:avoid;break-after:avoid">A. Daily Production</div>
-  ${buildProductionTable(report, slice, month, fmtAmt, fmtQty, symbol)}
+  ${buildProductionTable(report, slice, month, fmtAmt, fmtQty, symbol, dateFormat)}
 
   <div style="font-size:7.5pt;font-weight:700;margin:4px 0 2px;padding:2px 4px;background:#e0ebff;border-left:3px solid #4472c4;page-break-after:avoid;break-after:avoid">B. Expenditure</div>
   ${buildQtyAmtSection('1) Material Consumption', matRows, slice, fmtAmt, fmtQty)}
@@ -370,7 +377,7 @@ export function buildPrintableHTML(
   ${buildQtyAmtSection('3) Labour', labRows, slice, fmtAmt, fmtQty)}
   ${buildExpensesSection(report.expenses, slice, fmtAmt)}
 
-  ${buildSummarySection(report.summary, slice, month, fmtAmt)}
+  ${buildSummarySection(report.summary, slice, month, fmtAmt, dateFormat)}
 </div>`;
   });
 

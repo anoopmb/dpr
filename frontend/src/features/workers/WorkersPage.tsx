@@ -75,7 +75,7 @@ function LedgerTab({ projectId }: { projectId: string }) {
   const deletePayment = useDeleteWorkerPayment();
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [payForm] = Form.useForm();
-  const { fmtDate } = useDateFormat();
+  const { fmtDate, dateFormat } = useDateFormat();
   const { fmtAmt } = useNumberFormat();
   const [search, setSearch] = useState('');
 
@@ -247,7 +247,7 @@ function LedgerTab({ projectId }: { projectId: string }) {
       >
         <Form form={payForm} layout="vertical" onFinish={handleAddPayment}>
           <Form.Item name="payment_date" label="Date" rules={[{ required: true }]} initialValue={dayjs()}>
-            <DatePicker style={{ width: '100%' }} />
+            <DatePicker style={{ width: '100%' }} format={dateFormat} />
           </Form.Item>
           <Form.Item name="payment_type" label="Type" rules={[{ required: true }]}>
             <Select

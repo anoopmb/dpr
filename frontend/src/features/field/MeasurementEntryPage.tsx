@@ -14,7 +14,7 @@ import { PhotoCapture } from '@/components/common/PhotoCapture';
 import { getCurrentPosition } from '@/utils/geolocation';
 import { RequireAttendance } from '@/components/field/RequireAttendance';
 import { useThemeMode } from '@/theme/theme-context';
-import { useDateFormat } from '@/utils/format';
+import { useDateFormat, useNumberFormat } from '@/utils/format';
 
 const FIELD_LABELS: Record<string, string> = {
   length: 'Length (m)',
@@ -36,6 +36,7 @@ export function MeasurementEntryPage() {
   const attachPhoto = useAttachPhoto();
   const { resolvedMode } = useThemeMode();
   const { fmtDate } = useDateFormat();
+  const { fmtQty } = useNumberFormat();
   const RECORDED_BG = resolvedMode === 'dark' ? 'rgba(82, 196, 26, 0.12)' : '#f6ffed';
 
   const { data: dprList } = useDprList(selectedProjectId);
@@ -188,7 +189,7 @@ export function MeasurementEntryPage() {
 
         {dimensionFields.length > 0 && (
           <Card style={{ marginBottom: 16, textAlign: 'center' }}>
-            <Statistic title="Computed Quantity" value={quantity.toFixed(3)} />
+            <Statistic title="Computed Quantity" value={fmtQty(quantity)} />
           </Card>
         )}
 

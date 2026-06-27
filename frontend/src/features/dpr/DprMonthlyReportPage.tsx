@@ -20,7 +20,7 @@ import {
   type MaterialConsumptionRow,
 } from '@/api/hooks/useDpr';
 import { useThemeMode } from '@/theme/theme-context';
-import { useNumberFormat } from '@/utils/format';
+import { useDateFormat, useNumberFormat } from '@/utils/format';
 
 interface SectionSubtotal {
   agreed_amount: string;
@@ -402,6 +402,7 @@ export function DprMonthlyReportPage() {
   const monthStr = month.format('YYYY-MM');
   const { resolvedMode } = useThemeMode();
   const { fmtAmt, fmtQty, fmtQtyByUnit, symbol } = useNumberFormat();
+  const { dateFormat } = useDateFormat();
 
   const HDR_BG = resolvedMode === 'dark' ? 'rgba(22, 119, 255, 0.10)' : '#f0f5ff';
   const SUB_BG = resolvedMode === 'dark' ? 'rgba(255, 255, 255, 0.04)' : '#fafafa';
@@ -626,7 +627,7 @@ export function DprMonthlyReportPage() {
   const machineryRows = (report?.machinery ?? []).map((m: MachineryUsageRow) => ({ key: m.machinery_id, ...m }));
   const labourRows = (report?.labour ?? []).map((l: LabourRow) => ({ key: l.worker_category_id, name: l.name, unit: 'Nos', daily: l.daily, total_qty: l.total_qty, total_amount: l.total_amount }));
 
-  const fmtDateForDay = (day: number) => month.date(day).format('DD/MM/YYYY');
+  const fmtDateForDay = (day: number) => month.date(day).format(dateFormat);
 
   const handleExport = () => {
     if (!report) return;
@@ -649,9 +650,10 @@ export function DprMonthlyReportPage() {
       fmtAmt,
       fmtQty,
       symbol,
+      dateFormat,
     );
     triggerPrint(html);
-  }, [report, projects, selectedProjectId, month, fmtAmt, fmtQty, symbol]);
+  }, [report, projects, selectedProjectId, month, fmtAmt, fmtQty, symbol, dateFormat]);
 
   return (
     <div>

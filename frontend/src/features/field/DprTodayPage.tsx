@@ -1632,7 +1632,7 @@ function MeasurementsTab({
   const uploadPhoto = useUploadPhoto();
   const attachPhoto = useAttachPhoto();
   const { fmtDate } = useDateFormat();
-  const { fmtAmt, symbol } = useNumberFormat();
+  const { fmtAmt, fmtQty, symbol } = useNumberFormat();
   const { token } = theme.useToken();
 
   const [drafts, setDrafts] = useState<MeasDraftRow[]>([]);
@@ -1844,7 +1844,7 @@ function MeasurementsTab({
       align: 'right' as const,
       render: (_: unknown, row: MeasRow) =>
         row._kind === 'existing' ? (
-          <Typography.Text strong style={{ fontSize: 12 }}>{parseFloat(row.entry.computed_qty).toFixed(3)}</Typography.Text>
+          <Typography.Text strong style={{ fontSize: 12 }}>{fmtQty(row.entry.computed_qty)}</Typography.Text>
         ) : (
           <InputNumber
             size="small" style={inp} min={0} precision={3}
@@ -1984,7 +1984,7 @@ function MeasurementsTab({
             <Table.Summary>
               <Table.Summary.Row style={{ fontWeight: 700 }}>
                 <Table.Summary.Cell index={0} colSpan={9}>Total</Table.Summary.Cell>
-                <Table.Summary.Cell index={9} align="right">{totalQty.toFixed(3)}</Table.Summary.Cell>
+                <Table.Summary.Cell index={9} align="right">{fmtQty(totalQty)}</Table.Summary.Cell>
                 <Table.Summary.Cell index={10} />
                 <Table.Summary.Cell index={11} align="right">{fmtAmt(totalAmount)}</Table.Summary.Cell>
                 <Table.Summary.Cell index={12} />
@@ -2025,7 +2025,7 @@ function MeasurementsTab({
                 />
               </Form.Item>
             ))}
-            <Statistic title="Computed Quantity" value={editComputedQty.toFixed(3)} />
+            <Statistic title="Computed Quantity" value={fmtQty(editComputedQty)} />
           </Form>
         )}
       </Modal>
@@ -2312,7 +2312,7 @@ function DprPreviewModal({
   projectName: string;
 }) {
   const { fmtDate } = useDateFormat();
-  const { fmtAmt, symbol } = useNumberFormat();
+  const { fmtAmt, fmtQty: fmtQtyPreview, symbol } = useNumberFormat();
   const { token } = theme.useToken();
   const { resolvedMode } = useThemeMode();
 
@@ -2598,7 +2598,7 @@ function DprPreviewModal({
               },
               {
                 title: 'Qty', dataIndex: 'computed_qty', width: 90, align: 'right' as const,
-                render: (v: string) => parseFloat(v).toFixed(3),
+                render: (v: string) => fmtQtyPreview(v),
               },
               {
                 title: `Amount (${symbol})`, key: 'amount', width: 110, align: 'right' as const,

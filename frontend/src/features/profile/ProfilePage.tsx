@@ -3,10 +3,10 @@ import { Avatar, Button, Card, Empty, Form, Input, List, Tabs, Tag, Typography, 
 import { IdcardOutlined, MailOutlined, UserOutlined } from '@ant-design/icons';
 import { isAxiosError } from 'axios';
 import { useNavigate } from 'react-router-dom';
-import dayjs from 'dayjs';
 import { useAuthStore, type UserRole } from '@/store/auth-store';
 import { useUpdateMyProfile, useChangeMyPassword } from '@/api/hooks/useUsers';
 import { useMyActivity } from '@/api/hooks/useActivity';
+import { useDateFormat } from '@/utils/format';
 import { useUploadPhoto } from '@/api/hooks/useUpload';
 import { PhotoCapture } from '@/components/common/PhotoCapture';
 import { useProjectContextStore } from '@/store/project-context-store';
@@ -166,6 +166,7 @@ function MyActivityTab() {
   const { data, isLoading } = useMyActivity();
   const navigate = useNavigate();
   const setSelectedProjectId = useProjectContextStore((s) => s.setSelectedProjectId);
+  const { fmtDate } = useDateFormat();
 
   const items = data?.items ?? [];
 
@@ -191,7 +192,7 @@ function MyActivityTab() {
                     <Tag>{entry.type.replace(/_/g, ' ')}</Tag> {entry.description}
                   </>
                 }
-                description={dayjs(entry.activity_date).format('DD MMM YYYY')}
+                description={fmtDate(entry.activity_date)}
               />
             </List.Item>
           )}

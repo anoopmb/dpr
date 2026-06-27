@@ -32,7 +32,7 @@ import { useMaterials, useMachinery } from '@/api/hooks/useMasters';
 import { useBoqItems } from '@/api/hooks/useBoq';
 import { useEffectiveWorkflow, type WorkflowDefinitionRead } from '@/api/hooks/useWorkflowConfig';
 import { useThemeMode } from '@/theme/theme-context';
-import { useDateFormat } from '@/utils/format';
+import { useDateFormat, useNumberFormat } from '@/utils/format';
 import type { MeasurementRead, MeasurementStatus } from '@/api/hooks/useMeasurements';
 
 // DRAFT/SUBMITTED/REJECTED/LOCKED/APPROVED are fixed bookends with fixed
@@ -104,6 +104,7 @@ function DprDetailPanel({
   const { data: measurements, isLoading: measurementsLoading } = useDprMeasurements(header.id);
   const { data: measurementWorkflow } = useEffectiveWorkflow('MEASUREMENT', header.project_id);
   const { fmtDateTime, fmtDate } = useDateFormat();
+  const { fmtAmt } = useNumberFormat();
 
   const approvalCols: TableColumnsType<DprHeaderApprovalRead> = [
     ...APPROVAL_COLS,
@@ -144,7 +145,7 @@ function DprDetailPanel({
             {header.materials.map((m) => (
               <li key={m.id}>
                 {materialById.get(m.material_id)?.name ?? m.material_id} — {m.qty_consumed}
-                {m.rate ? ` @ ₹${m.rate}` : ''}
+                {m.rate ? ` @ ${fmtAmt(m.rate)}` : ''}
               </li>
             ))}
           </ul>
@@ -160,7 +161,7 @@ function DprDetailPanel({
             {header.machinery_entries.map((m) => (
               <li key={m.id}>
                 {machineryById.get(m.machinery_id)?.name ?? m.machinery_id} — {m.quantity_used} {m.hire_unit}
-                {m.hire_rate ? ` @ ₹${m.hire_rate}/${m.hire_unit}` : ''}
+                {m.hire_rate ? ` @ ${fmtAmt(m.hire_rate)}/${m.hire_unit}` : ''}
               </li>
             ))}
           </ul>

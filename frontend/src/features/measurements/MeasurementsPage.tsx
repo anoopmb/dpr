@@ -27,7 +27,7 @@ import { useBoqItems } from '@/api/hooks/useBoq';
 import { useWorkTypes } from '@/api/hooks/useMasters';
 import { calculateQuantity } from '@/features/measurements/formulaEngine';
 import { useThemeMode } from '@/theme/theme-context';
-import { useDateFormat } from '@/utils/format';
+import { useDateFormat, useNumberFormat } from '@/utils/format';
 
 const FIELD_LABELS: Record<string, string> = {
   length: 'Length (m)',
@@ -68,6 +68,7 @@ function MeasurementDetailPanel({
   boqRate: string | null;
 }) {
   const { fmtDate } = useDateFormat();
+  const { fmtAmt } = useNumberFormat();
   const effectiveRate = measurement.rate ?? boqRate;
   const isOverride = measurement.rate != null && boqRate != null && parseFloat(measurement.rate) !== parseFloat(boqRate);
 
@@ -88,7 +89,7 @@ function MeasurementDetailPanel({
         </Descriptions.Item>
         <Descriptions.Item label="Amount">
           {effectiveRate != null
-            ? (parseFloat(measurement.computed_qty) * parseFloat(effectiveRate)).toFixed(2)
+            ? fmtAmt(parseFloat(measurement.computed_qty) * parseFloat(effectiveRate))
             : '—'}
         </Descriptions.Item>
         {Object.entries(measurement.dimensions).map(([k, v]) => (
@@ -109,6 +110,7 @@ export function MeasurementsPage() {
   const user = useAuthStore((s) => s.user);
   const { resolvedMode } = useThemeMode();
   const { fmtDate } = useDateFormat();
+  const { fmtQty } = useNumberFormat();
 
   const DATE_HDR_BG = resolvedMode === 'dark' ? 'rgba(22, 119, 255, 0.10)' : '#f0f5ff';
 
@@ -348,7 +350,7 @@ export function MeasurementsPage() {
                 />
               </Form.Item>
             ))}
-            <Statistic title="Computed Quantity" value={editComputedQty.toFixed(3)} />
+            <Statistic title="Computed Quantity" value={fmtQty(editComputedQty)} />
           </Form>
         )}
       </Modal>

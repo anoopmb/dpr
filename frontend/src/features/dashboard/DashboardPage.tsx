@@ -64,7 +64,7 @@ import { useRunningBills } from '@/api/hooks/useBilling';
 import { useMaterialIndents } from '@/api/hooks/useMaterialIndents';
 import { useProductionProgress } from '@/api/hooks/useDpr';
 import { apiClient } from '@/api/client';
-import { useNumberFormat } from '@/utils/format';
+import { useDateFormat, useNumberFormat } from '@/utils/format';
 import { useThemeMode } from '@/theme/theme-context';
 import type { UserRole } from '@/store/auth-store';
 
@@ -245,6 +245,7 @@ function FilterBtn({ content }: { content: React.ReactNode }) {
 function DateRangeFilter({
   value, onChange, projectStart,
 }: { value: [Dayjs, Dayjs]; onChange: (r: [Dayjs, Dayjs]) => void; projectStart?: string }) {
+  const { dateFormat } = useDateFormat();
   const presets: [string, () => [Dayjs, Dayjs]][] = [
     ['7 days',    () => [dayjs().subtract(6, 'day'), dayjs()]],
     ['30 days',   () => [dayjs().subtract(29, 'day'), dayjs()]],
@@ -268,6 +269,7 @@ function DateRangeFilter({
         allowClear={false}
         style={{ width: '100%', borderRadius: 8 }}
         onChange={(v) => { if (v?.[0] && v[1]) onChange([v[0], v[1]]); }}
+        format={dateFormat}
       />
     </Space>
   );
@@ -280,7 +282,7 @@ function DailyTrendChart({ projectId, projectStart }: { projectId: string; proje
     projectId, range[0].format('YYYY-MM-DD'), range[1].format('YYYY-MM-DD'),
   );
   const ct = useChartTheme();
-  const { symbol } = useNumberFormat();
+  const { fmtAmt, symbol } = useNumberFormat();
 
   const chartData = (data?.daily ?? []).map((d) => ({
     date: dayjs(d.date).format('DD MMM'),
@@ -326,7 +328,7 @@ function DailyTrendChart({ projectId, projectStart }: { projectId: string; proje
               tickFormatter={(v) => `${symbol}${(v / 1000).toFixed(0)}k`}
             />
             <RTooltip
-              content={<ChartTooltip fmt={(v) => `${symbol} ${v.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />}
+              content={<ChartTooltip fmt={(v) => fmtAmt(Math.round(v))} />}
             />
             <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
             <Area type="monotone" dataKey="Production" stroke={P.blue}  fill="url(#gProd)"   strokeWidth={2} dot={false} />
@@ -532,7 +534,7 @@ function BoqProgressChart({ projectId }: { projectId: string }) {
   const [mode, setMode] = useState<'pct' | 'value'>('pct');
   const { data: sections, isLoading } = useBoqSections(projectId);
   const ct = useChartTheme();
-  const { fmtAmt } = useNumberFormat();
+  const { fmtAmt, symbol } = useNumberFormat();
 
   const chartData = useMemo(() => {
     if (!sections) return [];
@@ -560,7 +562,7 @@ function BoqProgressChart({ projectId }: { projectId: string }) {
               onChange={(v: 'pct' | 'value') => setMode(v)}
               options={[
                 { value: 'pct',   label: '% Complete' },
-                { value: 'value', label: 'Value (₹)' },
+                { value: 'value', label: `Value (${symbol})` },
               ]}
             />
           }

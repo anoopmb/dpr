@@ -39,7 +39,7 @@ import { useAttachPhoto } from '@/api/hooks/usePhotos';
 import { useUploadPhoto } from '@/api/hooks/useUpload';
 import { calculateQuantity } from '@/features/measurements/formulaEngine';
 import { getCurrentPosition } from '@/utils/geolocation';
-import { useDateFormat } from '@/utils/format';
+import { useDateFormat, useNumberFormat } from '@/utils/format';
 
 const FIELD_LABELS: Record<string, string> = {
   length: 'Length (m)',
@@ -56,6 +56,7 @@ export function MyMeasurementsPage() {
   const selectedEntryDate = useProjectContextStore((s) => s.selectedEntryDate);
   const user = useAuthStore((s) => s.user);
   const { fmtDate } = useDateFormat();
+  const { fmtQty } = useNumberFormat();
   const { token } = theme.useToken();
 
   // data hooks
@@ -352,7 +353,7 @@ export function MyMeasurementsPage() {
                       <div style={{ flex: '1 1 120px', display: 'flex', alignItems: 'flex-end' }}>
                         <Statistic
                           title="Computed Qty"
-                          value={addComputedQty.toFixed(3)}
+                          value={fmtQty(addComputedQty)}
                           valueStyle={{ fontSize: 20, fontWeight: 700, color: token.colorPrimary }}
                         />
                       </div>
@@ -428,7 +429,7 @@ export function MyMeasurementsPage() {
                 />
               </Form.Item>
             ))}
-            <Statistic title="Computed Quantity" value={editComputedQty.toFixed(3)} />
+            <Statistic title="Computed Quantity" value={fmtQty(editComputedQty)} />
           </Form>
         )}
       </Modal>
