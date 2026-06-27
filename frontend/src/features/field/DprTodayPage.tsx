@@ -506,7 +506,9 @@ function LabourTab({
   const workerById = new Map((workers ?? []).map((w) => [w.id, w]));
   const availableWorkers = (workers ?? []).filter((w) => !existingWorkerIds.has(w.id));
 
-  const totalAmount = (entries ?? []).reduce((s, e) => s + parseFloat(e.amount || '0'), 0);
+  const totalAmount = (entries ?? []).reduce(
+    (s, e) => s + parseFloat(e.amount || '0') + parseFloat(e.overtime_amount || '0'), 0,
+  );
 
   const patchDraft = (key: string, patch: Partial<LabourDraftRow>) =>
     setDrafts((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
@@ -521,7 +523,12 @@ function LabourTab({
     try {
       await addLabour.mutateAsync({
         headerId,
-        data: { worker_id: draft.worker_id, quantity: String(draft.quantity), rate: String(draft.rate) },
+        data: {
+          worker_id: draft.worker_id,
+          quantity: String(draft.quantity),
+          rate: String(draft.rate),
+          ...(draft.overtime_amount != null ? { overtime_amount: String(draft.overtime_amount) } : {}),
+        },
       });
       removeDraft(draft.key);
     } catch {
@@ -651,6 +658,35 @@ function LabourTab({
       },
     },
     {
+      title: `OT Amount (${symbol})`, key: 'overtime_amount', width: 120, align: 'right' as const,
+      render: (_: unknown, row: LabourRow) =>
+        row._kind === 'existing' ? (
+          isSubmitted ? (
+            <span>{row.entry.overtime_amount != null ? fmtAmt(parseFloat(row.entry.overtime_amount)) : '—'}</span>
+          ) : (
+            <InputNumber
+              size="small" min={0} precision={2}
+              value={row.entry.overtime_amount != null ? parseFloat(row.entry.overtime_amount) : undefined}
+              style={{ width: 90 }} placeholder="0.00"
+              onChange={async (v) => {
+                try {
+                  await updateLabour.mutateAsync({
+                    itemId: row.entry.id,
+                    data: { overtime_amount: v != null ? String(v) : null },
+                  });
+                } catch { message.error('Could not update overtime'); }
+              }}
+            />
+          )
+        ) : (
+          <InputNumber
+            size="small" min={0} precision={2} style={inp} placeholder="0.00"
+            value={row.draft.overtime_amount ?? undefined}
+            onChange={(v) => patchDraft(row.draft.key, { overtime_amount: v })}
+          />
+        ),
+    },
+    {
       title: 'Contractor Workers', key: 'cw', width: 130,
       render: (_: unknown, row: LabourRow) => {
         if (row._kind === 'draft') return null;
@@ -706,7 +742,7 @@ function LabourTab({
         {!isSubmitted && (
           <Button
             size="small" icon={<PlusOutlined />}
-            onClick={() => setDrafts((p) => [...p, { key: nextLabourKey(), worker_id: null, quantity: null, rate: null }])}>
+            onClick={() => setDrafts((p) => [...p, { key: nextLabourKey(), worker_id: null, quantity: null, rate: null, overtime_amount: null }])}>
             Add Labour
           </Button>
         )}
@@ -725,9 +761,10 @@ function LabourTab({
           <Table.Summary>
             <Table.Summary.Row style={{ fontWeight: 700 }}>
               <Table.Summary.Cell index={0} colSpan={5}>Total Labour Cost</Table.Summary.Cell>
-              <Table.Summary.Cell index={5} align="right">{fmtAmt(totalAmount)}</Table.Summary.Cell>
-              <Table.Summary.Cell index={6} />
-              {!isSubmitted && <Table.Summary.Cell index={7} />}
+              <Table.Summary.Cell index={5} />
+              <Table.Summary.Cell index={6} align="right">{fmtAmt(totalAmount)}</Table.Summary.Cell>
+              <Table.Summary.Cell index={7} />
+              {!isSubmitted && <Table.Summary.Cell index={8} />}
             </Table.Summary.Row>
           </Table.Summary>
         ) : undefined}
@@ -749,7 +786,7 @@ const nextMeasKey = () => `ms-${++_measSeq}`;
 let _issueSeq = 0;
 const nextIssueKey = () => `iss-${++_issueSeq}`;
 
-interface LabourDraftRow { key: string; worker_id: string | null; quantity: number | null; rate: number | null; }
+interface LabourDraftRow { key: string; worker_id: string | null; quantity: number | null; rate: number | null; overtime_amount: number | null; }
 interface MatDraftRow { key: string; material_id: string | null; qty: number | null; uom_id: string | null; rate: number | null; }
 interface MachDraftRow { key: string; machinery_id: string | null; qty: number | null; hire_rate: number | null; hire_unit: string | null; }
 interface MeasDraftRow { key: string; boq_item_id: string | null; dimensions: Record<string, number>; chainage: string; qty: number | null; rate: number | null; }
@@ -2094,12 +2131,30 @@ function ProductionTab({
       render: (_, row) => (row._type === 'item' ? row.item.description : null),
     },
     {
-      title: `BOQ Rate (${symbol})`,
+      title: `Contract Rate (${symbol})`,
       key: 'rate',
-      width: 90,
+      width: 100,
       align: 'right' as const,
       onCell: (row) => (row._type === 'header' ? { colSpan: 0 } : {}),
       render: (_, row) => (row._type === 'item' ? fmtQty(row.item.rate, 2) : null),
+    },
+    {
+      title: `Effective Rate (${symbol})`,
+      key: 'current_rate',
+      width: 120,
+      align: 'right' as const,
+      onCell: (row) => (row._type === 'header' ? { colSpan: 0 } : {}),
+      render: (_, row) => {
+        if (row._type !== 'item') return null;
+        const isRevised = row.item.current_rate !== row.item.rate;
+        if (!isRevised) return <Typography.Text type="secondary" style={{ fontSize: 11 }}>—</Typography.Text>;
+        return (
+          <Space size={4}>
+            <Tag color="orange" style={{ marginRight: 0, fontSize: 10 }}>Revised</Tag>
+            {fmtQty(row.item.current_rate, 2)}
+          </Space>
+        );
+      },
     },
     {
       title: `Rate Used in MB (${symbol})`,
@@ -2117,7 +2172,7 @@ function ProductionTab({
         const effectiveRate = parseFloat(entry.amount_today) / parseFloat(entry.qty_today);
         const isOverride = Math.abs(effectiveRate - parseFloat(row.item.rate)) > 0.005;
         return (
-          <span title={isOverride ? `BOQ rate is ${fmtQty(row.item.rate, 2)} — this rate was overridden in the measurement entry` : 'Matches BOQ rate'}>
+          <span title={isOverride ? `Contract rate is ${fmtQty(row.item.rate, 2)} — this rate was overridden in the measurement entry` : 'Matches contract rate'}>
             {fmtQty(String(effectiveRate), 2)}{isOverride && ' *'}
           </span>
         );
@@ -2283,7 +2338,9 @@ function DprPreviewModal({
   const forDateMeasurements = (measurements ?? []).filter((m) => m.measurement_date === entryDate);
   const productionWithQty = (production ?? []).filter((p) => parseFloat(p.qty_today) > 0);
 
-  const totalLabour = (labour ?? []).reduce((s, e) => s + parseFloat(e.amount || '0'), 0);
+  const totalLabour = (labour ?? []).reduce(
+    (s, e) => s + parseFloat(e.amount || '0') + parseFloat(e.overtime_amount || '0'), 0,
+  );
   const totalMaterial = (header?.materials ?? []).reduce(
     (s, e) => s + (e.rate ? parseFloat(e.rate) * parseFloat(e.qty_consumed) : 0), 0,
   );
@@ -2414,13 +2471,14 @@ function DprPreviewModal({
         <>
           <Divider orientation="left" style={{ margin: '12px 0 8px' }}>Labour</Divider>
           <Table
-            size="small" rowKey="id" dataSource={labour ?? []} pagination={false} scroll={{ x: 560 }}
+            size="small" rowKey="id" dataSource={labour ?? []} pagination={false} scroll={{ x: 660 }}
             summary={() => (
               <Table.Summary>
                 <Table.Summary.Row style={{ fontWeight: 700 }}>
                   <Table.Summary.Cell index={0} colSpan={4}>Total Labour</Table.Summary.Cell>
-                  <Table.Summary.Cell index={4} align="right">{fmtAmt(totalLabour)}</Table.Summary.Cell>
-                  <Table.Summary.Cell index={5} />
+                  <Table.Summary.Cell index={4} />
+                  <Table.Summary.Cell index={5} align="right">{fmtAmt(totalLabour)}</Table.Summary.Cell>
+                  <Table.Summary.Cell index={6} />
                 </Table.Summary.Row>
               </Table.Summary>
             )}
@@ -2435,6 +2493,10 @@ function DprPreviewModal({
               {
                 title: `Amount (${symbol})`, dataIndex: 'amount', width: 110, align: 'right' as const,
                 render: (v: string) => fmtAmt(parseFloat(v || '0')),
+              },
+              {
+                title: `OT Amount (${symbol})`, dataIndex: 'overtime_amount', width: 110, align: 'right' as const,
+                render: (v: string | null) => v != null ? fmtAmt(parseFloat(v)) : '—',
               },
               {
                 title: 'Contractor Workers', dataIndex: 'contractor_workers_count', width: 140, align: 'right' as const,
@@ -2513,28 +2575,6 @@ function DprPreviewModal({
                 render: (_: unknown, e: DprMachineryRead) =>
                   e.hire_rate ? fmtAmt(parseFloat(e.hire_rate) * parseFloat(e.quantity_used)) : '—',
               },
-            ]}
-          />
-        </>
-      )}
-
-      {/* Production */}
-      {productionWithQty.length > 0 && (
-        <>
-          <Divider orientation="left" style={{ margin: '12px 0 8px' }}>Production</Divider>
-          <Table
-            size="small" rowKey="id" dataSource={productionWithQty} pagination={false} scroll={{ x: 560 }}
-            columns={[
-              {
-                title: 'BOQ Item', dataIndex: 'boq_item_id', ellipsis: true,
-                render: (id: string) => { const b = boqById.get(id); return b ? `${b.item_no} — ${b.description}` : id; },
-              },
-              { title: "Today's Qty", dataIndex: 'qty_today', width: 110, align: 'right' as const },
-              {
-                title: `Amount (${symbol})`, dataIndex: 'amount_today', width: 110, align: 'right' as const,
-                render: (v: string) => fmtAmt(parseFloat(v)),
-              },
-              { title: 'Chainage', dataIndex: 'chainage', width: 130, render: (v: string | null) => v ?? '—' },
             ]}
           />
         </>
@@ -2627,6 +2667,42 @@ function DprPreviewModal({
               },
             ]}
           />
+        </>
+      )}
+
+      {/* Production */}
+      {(productionWithQty.length > 0 || header?.daily_work_summary) && (
+        <>
+          <Divider orientation="left" style={{ margin: '12px 0 8px' }}>Production</Divider>
+          {header?.daily_work_summary && (
+            <Descriptions size="small" bordered column={1} style={{ marginBottom: 8 }}>
+              <Descriptions.Item label="Daily Work Summary">{header.daily_work_summary}</Descriptions.Item>
+            </Descriptions>
+          )}
+          {productionWithQty.length > 0 && (
+            <Table
+              size="small" rowKey="id" dataSource={productionWithQty} pagination={false} scroll={{ x: 680 }}
+              columns={[
+                {
+                  title: 'BOQ Item', dataIndex: 'boq_item_id', ellipsis: true,
+                  render: (id: string) => { const b = boqById.get(id); return b ? `${b.item_no} — ${b.description}` : id; },
+                },
+                { title: "Today's Qty", dataIndex: 'qty_today', width: 110, align: 'right' as const },
+                {
+                  title: `Rate Used (${symbol})`, dataIndex: 'rate_snapshot', width: 110, align: 'right' as const,
+                  render: (v: string) => {
+                    const val = parseFloat(v);
+                    return val > 0 ? v : '—';
+                  },
+                },
+                {
+                  title: `Amount (${symbol})`, dataIndex: 'amount_today', width: 110, align: 'right' as const,
+                  render: (v: string) => fmtAmt(parseFloat(v)),
+                },
+                { title: 'Chainage', dataIndex: 'chainage', width: 130, render: (v: string | null) => v ?? '—' },
+              ]}
+            />
+          )}
         </>
       )}
       </Modal>

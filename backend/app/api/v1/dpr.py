@@ -243,6 +243,7 @@ async def list_labour(header_id: uuid.UUID, session: SessionDep, _: CurrentUserD
                 quantity=entry.quantity,
                 rate=entry.rate,
                 amount=entry.amount,
+                overtime_amount=entry.overtime_amount,
                 contractor_workers_count=entry.contractor_workers_count,
                 remarks=entry.remarks,
             )
@@ -272,6 +273,7 @@ async def add_labour(
         quantity=entry.quantity,
         rate=entry.rate,
         amount=entry.amount,
+        overtime_amount=entry.overtime_amount,
         contractor_workers_count=entry.contractor_workers_count,
         remarks=entry.remarks,
     )
@@ -298,6 +300,7 @@ async def update_labour(
         quantity=entry.quantity,
         rate=entry.rate,
         amount=entry.amount,
+        overtime_amount=entry.overtime_amount,
         contractor_workers_count=entry.contractor_workers_count,
         remarks=entry.remarks,
     )

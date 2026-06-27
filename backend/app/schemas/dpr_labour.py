@@ -8,6 +8,7 @@ class DprLabourCreate(BaseModel):
     worker_id: uuid.UUID
     quantity: Decimal = Field(ge=0)
     rate: Decimal = Field(ge=0)
+    overtime_amount: Decimal | None = Field(default=None, ge=0)
     contractor_workers_count: int | None = Field(default=None, ge=0)
     remarks: str | None = Field(default=None, max_length=500)
 
@@ -15,6 +16,7 @@ class DprLabourCreate(BaseModel):
 class DprLabourUpdate(BaseModel):
     quantity: Decimal | None = Field(default=None, ge=0)
     rate: Decimal | None = Field(default=None, ge=0)
+    overtime_amount: Decimal | None = Field(default=None, ge=0)
     contractor_workers_count: int | None = Field(default=None, ge=0)
     remarks: str | None = Field(default=None, max_length=500)
 
@@ -31,6 +33,7 @@ class DprLabourRead(BaseModel):
     quantity: Decimal
     rate: Decimal
     amount: Decimal
+    overtime_amount: Decimal | None
     contractor_workers_count: int | None
     remarks: str | None
 

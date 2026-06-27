@@ -11,6 +11,7 @@ export interface DprLabourRead {
   quantity: string;
   rate: string;
   amount: string;
+  overtime_amount: string | null;
   contractor_workers_count: number | null;
   remarks: string | null;
 }
@@ -29,6 +30,7 @@ export interface DprLabourCreateInput {
   worker_id: string;
   quantity: string;
   rate: string;
+  overtime_amount?: string;
   contractor_workers_count?: number;
   remarks?: string;
 }
@@ -36,6 +38,7 @@ export interface DprLabourCreateInput {
 export interface DprLabourUpdateInput {
   quantity?: string;
   rate?: string;
+  overtime_amount?: string | null;
   contractor_workers_count?: number | null;
   remarks?: string | null;
 }

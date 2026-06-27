@@ -4,7 +4,6 @@ from decimal import Decimal
 
 from sqlalchemy import func, select
 
-from app.models.boq import BoqItem
 from app.models.measurement import Measurement
 from app.repositories.base import BaseRepository
 
@@ -31,16 +30,12 @@ class MeasurementRepository(BaseRepository[Measurement]):
         self, boq_item_id: uuid.UUID, measurement_date: date
     ) -> tuple[Decimal, Decimal]:
         """Sum of computed_qty and computed_qty * rate across every measurement
-        on this BOQ item/date. Amount uses each measurement's own rate override
-        if set, else the BOQ item's current rate."""
+        on this BOQ item/date. Uses the rate snapshotted at creation time."""
         result = await self.session.execute(
             select(
                 func.coalesce(func.sum(Measurement.computed_qty), 0),
-                func.coalesce(
-                    func.sum(Measurement.computed_qty * func.coalesce(Measurement.rate, BoqItem.rate)), 0
-                ),
+                func.coalesce(func.sum(Measurement.computed_qty * Measurement.rate), 0),
             )
-            .join(BoqItem, BoqItem.id == Measurement.boq_item_id)
             .where(
                 Measurement.boq_item_id == boq_item_id,
                 Measurement.measurement_date == measurement_date,

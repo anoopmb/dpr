@@ -151,6 +151,7 @@ class DprProductionEntry(TimestampedBase):
     )
     qty_today: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
     amount_today: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    rate_snapshot: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
     chainage: Mapped[str | None] = mapped_column(String(100))
     remarks: Mapped[str | None] = mapped_column(String(500))
 
@@ -178,6 +179,7 @@ class DprLabour(TimestampedBase):
     quantity: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
     rate: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    overtime_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     # Number of the contractor's own labourers deployed (CONTRACTOR/SUBCONTRACTOR only).
     contractor_workers_count: Mapped[int | None] = mapped_column()
     remarks: Mapped[str | None] = mapped_column(String(500))

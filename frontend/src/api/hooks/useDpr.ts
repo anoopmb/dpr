@@ -75,6 +75,7 @@ export interface DprProductionEntryRead {
   boq_item_id: string;
   qty_today: string;
   amount_today: string;
+  rate_snapshot: string;
   chainage: string | null;
   remarks: string | null;
 }
@@ -100,7 +101,9 @@ export interface BoqItemProgressRead {
   description: string;
   unit: string;
   rate: string;
+  current_rate: string;
   agreed_qty: string;
+  current_tendered_qty: string;
   executed_qty: string;
   executed_amount: string;
   remaining_qty: string;
@@ -135,7 +138,9 @@ export interface DprReportItemRead {
   description: string;
   unit: string;
   rate: string;
+  current_rate: string;
   agreed_qty: string;
+  current_tendered_qty: string;
   opening_qty: string;
   opening_amount: string;
   daily: DailyProductionCell[];

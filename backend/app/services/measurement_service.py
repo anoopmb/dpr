@@ -54,6 +54,8 @@ class MeasurementService:
             computed_qty, snapshot, tolerance_pct=org_settings.default_measurement_tolerance_percent
         )
 
+        from app.services.boq_service import BoqService
+        effective_rate = await BoqService(self.session).get_effective_rate(data.boq_item_id, data.measurement_date)
         measurement = Measurement(
             project_id=data.project_id,
             boq_item_id=data.boq_item_id,
@@ -64,7 +66,7 @@ class MeasurementService:
             status='DRAFT',
             recorded_by=recorded_by,
             chainage=data.chainage,
-            rate=data.rate if data.rate is not None else boq_item.rate,
+            rate=data.rate if data.rate is not None else effective_rate,
         )
         self.repo.add(measurement)
         await self.session.flush()

@@ -2,6 +2,7 @@ import uuid
 from decimal import Decimal
 
 from fastapi import BackgroundTasks
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
@@ -31,7 +32,44 @@ class BillingService:
         self.assignment_service = ProjectAssignmentService(session)
         self.audit = AuditService(session)
 
+    async def _cumulative_billed_qty(self, boq_item_id: uuid.UUID, exclude_bill_id: uuid.UUID | None = None) -> Decimal:
+        from sqlalchemy import select as sa_select
+        from app.models.billing import RunningBillItem as RBI
+        q = (
+            sa_select(func.coalesce(func.sum(RBI.billed_qty), 0))
+            .join(RunningBill, RunningBill.id == RBI.running_bill_id)
+            .where(RBI.boq_item_id == boq_item_id, RunningBill.status != BillStatus.DRAFT)
+        )
+        if exclude_bill_id:
+            q = q.where(RBI.running_bill_id != exclude_bill_id)
+        result = await self.session.execute(q)
+        return Decimal(str(result.scalar_one()))
+
+    def _cpwd_band_amounts(
+        self,
+        qty_this_bill: Decimal,
+        original_tendered_qty: Decimal,
+        previous_billed_qty: Decimal,
+        original_rate: Decimal,
+        revised_rate: Decimal,
+    ) -> tuple[Decimal, Decimal]:
+        """Returns (amount_at_original_rate, amount_at_revised_rate) for this bill's qty.
+
+        CPWD rule: work within 110% of original agreed qty is billed at original contract rate.
+        Work beyond that band is billed at the revised/market rate.
+        """
+        band_limit = (original_tendered_qty * Decimal("1.10")).quantize(Decimal("0.001"))
+        band_remaining = max(Decimal("0"), band_limit - previous_billed_qty)
+        qty_at_original = min(qty_this_bill, band_remaining)
+        qty_at_revised = max(Decimal("0"), qty_this_bill - qty_at_original)
+        amount_original = (qty_at_original * original_rate).quantize(Decimal("0.01"))
+        amount_revised = (qty_at_revised * revised_rate).quantize(Decimal("0.01"))
+        return amount_original, amount_revised
+
     async def create_bill(self, data: RunningBillCreate, generated_by: uuid.UUID) -> RunningBill:
+        from app.services.boq_service import BoqService
+        boq_svc = BoqService(self.session)
+
         bill = RunningBill(
             project_id=data.project_id,
             bill_number=data.bill_number,
@@ -56,13 +94,30 @@ class BillingService:
             if boq_item is None:
                 raise NotFoundError(f"BOQ item for measurement {measurement_id} not found.")
 
-            amount = (measurement.computed_qty * boq_item.rate).quantize(Decimal("0.01"))
+            measurement_rate = measurement.rate if measurement.rate is not None else boq_item.rate
+            previous_billed_qty = await self._cumulative_billed_qty(boq_item.id)
+            effective_rate = await boq_svc.get_effective_rate(boq_item.id, data.bill_date)
+
+            if effective_rate != boq_item.rate:
+                amt_original, amt_revised = self._cpwd_band_amounts(
+                    qty_this_bill=measurement.computed_qty,
+                    original_tendered_qty=boq_item.tendered_qty,
+                    previous_billed_qty=previous_billed_qty,
+                    original_rate=boq_item.rate,
+                    revised_rate=effective_rate,
+                )
+                amount = amt_original + amt_revised
+                bill_rate = measurement_rate
+            else:
+                amount = (measurement.computed_qty * measurement_rate).quantize(Decimal("0.01"))
+                bill_rate = measurement_rate
+
             bill.items.append(
                 RunningBillItem(
                     measurement_id=measurement.id,
                     boq_item_id=boq_item.id,
                     billed_qty=measurement.computed_qty,
-                    rate=boq_item.rate,
+                    rate=bill_rate,
                     amount=amount,
                 )
             )

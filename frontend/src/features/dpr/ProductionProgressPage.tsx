@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { DatePicker, Empty, Table, Typography } from 'antd';
+import { DatePicker, Empty, Space, Table, Tag, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
@@ -62,17 +62,17 @@ function buildRows(sections: SectionProgressRead[]): ProgressRow[] {
 
 /**
  * Total number of leaf columns in the table.
- * Item No | Description | Unit | Rate | Agreed Qty | Agreed Amt | Exec Qty | Exec Amt | Remaining Qty | % Done
- * = 10 columns
+ * Item No | Description | Unit | Contract Rate | Revised Rate | Contract Qty | Contract Amt | Revised Amt | Exec Qty | Exec Amt | Remaining Qty | % Done
+ * = 12 columns
  */
-const NCOLS = 10;
+const NCOLS = 12;
 
 /**
  * How many columns the "Section Total" label spans.
- * It should cover EXACTLY: Item No (0) + Description (1) + Unit (2) + Rate (3) = 4 columns,
- * so that the first numeric column (Agreed Qty at index 4) starts at the correct position.
+ * Covers: Item No (0) + Description (1) + Unit (2) + Contract Rate (3) + Revised Rate (4) = 5 columns,
+ * so that the first numeric column (Contract Qty at index 5) starts at the correct position.
  */
-const LABEL_SPAN = 4;
+const LABEL_SPAN = 5;
 
 // ── Component ──────────────────────────────────────────────────────────────
 
@@ -155,11 +155,11 @@ export function ProductionProgressPage() {
       render: (_, row) => (row._type === 'item' ? row.item.unit : null),
     },
 
-    // ── Col 3: Rate — colSpan 0 for header and subtotal
+    // ── Col 3: Contract Rate — colSpan 0 for header and subtotal
     {
-      title: `Rate (${symbol})`,
+      title: `Contract Rate (${symbol})`,
       key: 'rate',
-      width: 100,
+      width: 110,
       align: 'right' as const,
       onCell: (row) => {
         if (row._type === 'header')   return { colSpan: 0 };
@@ -169,9 +169,32 @@ export function ProductionProgressPage() {
       render: (_, row) => (row._type === 'item' ? fmtQty(row.item.rate, 2) : null),
     },
 
-    // ── Col 4: Agreed Qty
+    // ── Col 4: Revised Rate — colSpan 0 for header and subtotal
     {
-      title: 'Agreed Qty',
+      title: `Revised Rate (${symbol})`,
+      key: 'current_rate',
+      width: 110,
+      align: 'right' as const,
+      onCell: (row) => {
+        if (row._type === 'header')   return { colSpan: 0 };
+        if (row._type === 'subtotal') return { colSpan: 0 };
+        return {};
+      },
+      render: (_, row) => {
+        if (row._type !== 'item') return null;
+        const isRevised = row.item.current_rate !== row.item.rate;
+        return isRevised ? (
+          <Space size={4}>
+            <Tag color="orange" style={{ marginRight: 0, fontSize: 10 }}>R</Tag>
+            {fmtQty(row.item.current_rate, 2)}
+          </Space>
+        ) : <Typography.Text type="secondary" style={{ fontSize: 11 }}>—</Typography.Text>;
+      },
+    },
+
+    // ── Col 5: Contract Qty
+    {
+      title: 'Contract Qty',
       key: 'agreed_qty',
       width: 110,
       align: 'right' as const,
@@ -181,17 +204,27 @@ export function ProductionProgressPage() {
         return {};
       },
       render: (_, row) => {
-        if (row._type === 'item')     return fmtQtyByUnit(row.item.agreed_qty, row.item.unit);
+        if (row._type === 'item') {
+          const isRevised = row.item.current_tendered_qty !== row.item.agreed_qty;
+          return isRevised ? (
+            <span>
+              {fmtQtyByUnit(row.item.agreed_qty, row.item.unit)}
+              <Typography.Text type="secondary" style={{ fontSize: 10, marginLeft: 4 }}>
+                → {fmtQtyByUnit(row.item.current_tendered_qty, row.item.unit)}
+              </Typography.Text>
+            </span>
+          ) : fmtQtyByUnit(row.item.agreed_qty, row.item.unit);
+        }
         if (row._type === 'subtotal') return fmtQty(row.totals.agreedQty, 3);
         return null;
       },
     },
 
-    // ── Col 5: Agreed Amt
+    // ── Col 6: Contract Amt (original)
     {
-      title: 'Agreed Amt',
+      title: 'Contract Amt',
       key: 'agreed_amount',
-      width: 150,
+      width: 130,
       align: 'right' as const,
       onCell: (row) => {
         if (row._type === 'header')   return { colSpan: 0 };
@@ -208,7 +241,35 @@ export function ProductionProgressPage() {
       },
     },
 
-    // ── Col 6: Executed Qty
+    // ── Col 7: Revised Amt (current_tendered_qty × current_rate)
+    {
+      title: 'Revised Amt',
+      key: 'revised_amount',
+      width: 130,
+      align: 'right' as const,
+      onCell: (row) => {
+        if (row._type === 'header')   return { colSpan: 0 };
+        if (row._type === 'subtotal') return { style: SUB_STYLE };
+        return {};
+      },
+      render: (_, row) => {
+        if (row._type === 'item') {
+          const isRevised = row.item.current_rate !== row.item.rate || row.item.current_tendered_qty !== row.item.agreed_qty;
+          if (!isRevised) return <Typography.Text type="secondary" style={{ fontSize: 11 }}>—</Typography.Text>;
+          return fmtAmt(parseFloat(row.item.current_tendered_qty) * parseFloat(row.item.current_rate));
+        }
+        if (row._type === 'subtotal') {
+          const revisedAmt = row.section.items.reduce(
+            (s, i) => s + parseFloat(i.current_tendered_qty) * parseFloat(i.current_rate), 0,
+          );
+          const isRevised = Math.abs(revisedAmt - row.totals.agreedAmount) > 0.005;
+          return isRevised ? fmtAmt(revisedAmt) : <Typography.Text type="secondary" style={{ fontSize: 11 }}>—</Typography.Text>;
+        }
+        return null;
+      },
+    },
+
+    // ── Col 8: Executed Qty
     {
       title: 'Executed Qty',
       key: 'exec_qty',
@@ -226,11 +287,11 @@ export function ProductionProgressPage() {
       },
     },
 
-    // ── Col 7: Executed Amt
+    // ── Col 9: Executed Amt
     {
       title: 'Executed Amt',
       key: 'exec_amount',
-      width: 150,
+      width: 130,
       align: 'right' as const,
       onCell: (row) => {
         if (row._type === 'header')   return { colSpan: 0 };
@@ -244,7 +305,7 @@ export function ProductionProgressPage() {
       },
     },
 
-    // ── Col 8: Remaining Qty
+    // ── Col 10: Remaining Qty
     {
       title: 'Remaining Qty',
       key: 'remaining',
@@ -262,7 +323,7 @@ export function ProductionProgressPage() {
       },
     },
 
-    // ── Col 9: % Done — hidden for subtotal
+    // ── Col 11: % Done — hidden for subtotal
     {
       title: '% Done',
       key: 'pct',
@@ -331,12 +392,13 @@ export function ProductionProgressPage() {
               <Table.Summary fixed>
                 <Table.Summary.Row style={{ fontWeight: 700, background: TOTAL_BG }}>
                   <Table.Summary.Cell index={0} colSpan={LABEL_SPAN}>Grand Total</Table.Summary.Cell>
-                  <Table.Summary.Cell index={4}  align="right">{fmtQty(totalAgreedQty, 3)}</Table.Summary.Cell>
-                  <Table.Summary.Cell index={5}  align="right">{fmtAmt(progress.total_agreed_amount)}</Table.Summary.Cell>
-                  <Table.Summary.Cell index={6}  align="right">{fmtQty(totalExecutedQty, 3)}</Table.Summary.Cell>
-                  <Table.Summary.Cell index={7}  align="right">{fmtAmt(progress.total_executed_amount)}</Table.Summary.Cell>
-                  <Table.Summary.Cell index={8}  align="right">{fmtQty(totalRemainingQty, 3)}</Table.Summary.Cell>
-                  <Table.Summary.Cell index={9} />
+                  <Table.Summary.Cell index={5}  align="right">{fmtQty(totalAgreedQty, 3)}</Table.Summary.Cell>
+                  <Table.Summary.Cell index={6}  align="right">{fmtAmt(progress.total_agreed_amount)}</Table.Summary.Cell>
+                  <Table.Summary.Cell index={7}  align="right">—</Table.Summary.Cell>
+                  <Table.Summary.Cell index={8}  align="right">{fmtQty(totalExecutedQty, 3)}</Table.Summary.Cell>
+                  <Table.Summary.Cell index={9}  align="right">{fmtAmt(progress.total_executed_amount)}</Table.Summary.Cell>
+                  <Table.Summary.Cell index={10} align="right">{fmtQty(totalRemainingQty, 3)}</Table.Summary.Cell>
+                  <Table.Summary.Cell index={11} />
                 </Table.Summary.Row>
               </Table.Summary>
             ) : null

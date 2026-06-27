@@ -9,6 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import TimestampedBase
 
 if TYPE_CHECKING:
+    from app.models.boq_revision import BoqItemRevision
     from app.models.project import Project
 
 
@@ -52,9 +53,17 @@ class BoqItem(TimestampedBase):
     tendered_qty: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
     consumed_qty: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False, default=0)
     rate: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    current_rate: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    current_tendered_qty: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
     has_active_variation_order: Mapped[bool] = mapped_column(default=False)
 
     project: Mapped["Project"] = relationship(back_populates="boq_items")
+    revisions: Mapped[list["BoqItemRevision"]] = relationship(
+        "BoqItemRevision",
+        foreign_keys="BoqItemRevision.boq_item_id",
+        cascade="all, delete-orphan",
+        order_by="BoqItemRevision.effective_from",
+    )
 
 
 class BoqTemplate(TimestampedBase):

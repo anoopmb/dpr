@@ -12,6 +12,9 @@ export interface BoqItemRead {
   tendered_qty: string;
   consumed_qty: string;
   rate: string;
+  current_rate: string;
+  current_tendered_qty: string;
+  revision_count: number;
   has_active_variation_order: boolean;
 }
 
@@ -46,6 +49,34 @@ export interface BoqSectionUpdateInput {
   section_no?: string;
   section_name?: string;
   sort_order?: number;
+}
+
+export type BoqRevisionType = 'VARIATION_ORDER' | 'RATE_AMENDMENT' | 'RECAST_ESTIMATE' | 'QTY_REVISION';
+export type BoqRevisionStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface BoqRevisionRead {
+  id: string;
+  boq_item_id: string;
+  revision_number: string;
+  revision_type: BoqRevisionType;
+  status: BoqRevisionStatus;
+  effective_from: string;
+  revised_rate: string | null;
+  revised_tendered_qty: string | null;
+  reason: string;
+  created_by_user_id: string;
+  approved_by_user_id: string | null;
+  approved_at: string | null;
+  rejected_reason: string | null;
+  created_at: string;
+}
+
+export interface BoqRevisionCreateInput {
+  revision_type: BoqRevisionType;
+  effective_from: string;
+  revised_rate?: string | null;
+  revised_tendered_qty?: string | null;
+  reason: string;
 }
 
 export function useBoqItems(projectId: string | null) {
@@ -110,8 +141,6 @@ export interface BoqItemUpdateInput {
   description?: string;
   work_type_id?: string;
   uom_id?: string;
-  tendered_qty?: string;
-  rate?: string;
 }
 
 export function useUpdateBoqItem() {
@@ -137,5 +166,63 @@ export function useDeleteBoqItem() {
       queryClient.invalidateQueries({ queryKey: ['boq-items', projectId] });
       queryClient.invalidateQueries({ queryKey: ['boq-sections', projectId] });
     },
+  });
+}
+
+export function useBoqRevisions(boqItemId: string | null) {
+  return useQuery({
+    queryKey: ['boq-revisions', boqItemId],
+    queryFn: async () =>
+      (await apiClient.get<BoqRevisionRead[]>(`/boq-items/${boqItemId}/revisions`)).data,
+    enabled: !!boqItemId,
+  });
+}
+
+export function useCreateBoqRevision() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ boqItemId, data }: { boqItemId: string; data: BoqRevisionCreateInput }) =>
+      (await apiClient.post<BoqRevisionRead>(`/boq-items/${boqItemId}/revisions`, data)).data,
+    onSuccess: (revision) => {
+      queryClient.invalidateQueries({ queryKey: ['boq-revisions', revision.boq_item_id] });
+      queryClient.invalidateQueries({ queryKey: ['boq-items'] });
+      queryClient.invalidateQueries({ queryKey: ['boq-sections'] });
+      queryClient.invalidateQueries({ queryKey: ['boq-revisions-pending'] });
+    },
+  });
+}
+
+export function useApproveBoqRevision() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (revisionId: string) =>
+      (await apiClient.post<BoqRevisionRead>(`/boq-revisions/${revisionId}/approve`)).data,
+    onSuccess: (revision) => {
+      queryClient.invalidateQueries({ queryKey: ['boq-revisions', revision.boq_item_id] });
+      queryClient.invalidateQueries({ queryKey: ['boq-items'] });
+      queryClient.invalidateQueries({ queryKey: ['boq-sections'] });
+      queryClient.invalidateQueries({ queryKey: ['boq-revisions-pending'] });
+    },
+  });
+}
+
+export function useRejectBoqRevision() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ revisionId, rejected_reason }: { revisionId: string; rejected_reason: string }) =>
+      (await apiClient.post<BoqRevisionRead>(`/boq-revisions/${revisionId}/reject`, { rejected_reason })).data,
+    onSuccess: (revision) => {
+      queryClient.invalidateQueries({ queryKey: ['boq-revisions', revision.boq_item_id] });
+      queryClient.invalidateQueries({ queryKey: ['boq-revisions-pending'] });
+    },
+  });
+}
+
+export function usePendingBoqRevisions(projectId: string | null) {
+  return useQuery({
+    queryKey: ['boq-revisions-pending', projectId],
+    queryFn: async () =>
+      (await apiClient.get<BoqRevisionRead[]>('/boq/revisions/pending', { params: { project_id: projectId } })).data,
+    enabled: !!projectId,
   });
 }

@@ -628,6 +628,7 @@ class DprService:
             quantity=data.quantity,
             rate=data.rate,
             amount=amount,
+            overtime_amount=data.overtime_amount,
             contractor_workers_count=data.contractor_workers_count,
             remarks=data.remarks,
         )
@@ -655,6 +656,8 @@ class DprService:
             entry.quantity = data.quantity
         if data.rate is not None:
             entry.rate = data.rate
+        if data.overtime_amount is not None:
+            entry.overtime_amount = data.overtime_amount
         if data.contractor_workers_count is not None:
             entry.contractor_workers_count = data.contractor_workers_count
         if data.remarks is not None:
@@ -767,13 +770,21 @@ class DprProductionService:
                 await self.session.commit()
             return
 
+        from app.services.boq_service import BoqService
+        rate_snapshot = await BoqService(self.session).get_effective_rate(boq_item_id, measurement_date)
+
         if existing is not None:
             existing.qty_today = qty
             existing.amount_today = amount
+            existing.rate_snapshot = rate_snapshot
         else:
             self.session.add(
                 DprProductionEntry(
-                    dpr_header_id=header.id, boq_item_id=boq_item_id, qty_today=qty, amount_today=amount
+                    dpr_header_id=header.id,
+                    boq_item_id=boq_item_id,
+                    qty_today=qty,
+                    amount_today=amount,
+                    rate_snapshot=rate_snapshot,
                 )
             )
         await self.session.commit()
@@ -843,12 +854,17 @@ class DprProductionService:
                     )
                 continue
 
-            amount = (entry_data.qty_today * boq_item.rate).quantize(Decimal("0.01"))
+            from app.services.boq_service import BoqService
+            effective_rate = await BoqService(self.session).get_effective_rate(
+                boq_item.id, header.report_date
+            )
+            amount = (entry_data.qty_today * effective_rate).quantize(Decimal("0.01"))
 
             if existing is not None:
                 before = serialize_model(existing)
                 existing.qty_today = entry_data.qty_today
                 existing.amount_today = amount
+                existing.rate_snapshot = effective_rate
                 existing.chainage = entry_data.chainage
                 existing.remarks = entry_data.remarks
                 await self.session.flush()
@@ -867,6 +883,7 @@ class DprProductionService:
                     boq_item_id=entry_data.boq_item_id,
                     qty_today=entry_data.qty_today,
                     amount_today=amount,
+                    rate_snapshot=effective_rate,
                     chainage=entry_data.chainage,
                     remarks=entry_data.remarks,
                 )
@@ -916,8 +933,8 @@ class DprProductionService:
             sec_executed = Decimal(0)
 
             for item in section_items:
-                agreed_qty = item.tendered_qty
-                agreed_amount = (agreed_qty * item.rate).quantize(Decimal("0.01"))
+                agreed_qty = item.current_tendered_qty
+                agreed_amount = (agreed_qty * item.current_rate).quantize(Decimal("0.01"))
                 exec_qty, exec_amount = cumulative.get(item.id, (Decimal(0), Decimal(0)))
                 exec_qty = Decimal(str(exec_qty)).quantize(Decimal("0.001"))
                 exec_amount = Decimal(str(exec_amount)).quantize(Decimal("0.01"))
@@ -934,7 +951,9 @@ class DprProductionService:
                         description=item.description,
                         unit=uom_map.get(item.uom_id, ""),
                         rate=item.rate,
-                        agreed_qty=agreed_qty,
+                        current_rate=item.current_rate,
+                        agreed_qty=item.tendered_qty,
+                        current_tendered_qty=agreed_qty,
                         executed_qty=exec_qty,
                         executed_amount=exec_amount,
                         remaining_qty=remaining,
@@ -963,8 +982,8 @@ class DprProductionService:
             sec_agreed = Decimal(0)
             sec_executed = Decimal(0)
             for item in unsectioned:
-                agreed_qty = item.tendered_qty
-                agreed_amount = (agreed_qty * item.rate).quantize(Decimal("0.01"))
+                agreed_qty = item.current_tendered_qty
+                agreed_amount = (agreed_qty * item.current_rate).quantize(Decimal("0.01"))
                 exec_qty, exec_amount = cumulative.get(item.id, (Decimal(0), Decimal(0)))
                 exec_qty = Decimal(str(exec_qty)).quantize(Decimal("0.001"))
                 exec_amount = Decimal(str(exec_amount)).quantize(Decimal("0.01"))
@@ -980,7 +999,9 @@ class DprProductionService:
                         description=item.description,
                         unit=uom_map.get(item.uom_id, ""),
                         rate=item.rate,
-                        agreed_qty=agreed_qty,
+                        current_rate=item.current_rate,
+                        agreed_qty=item.tendered_qty,
+                        current_tendered_qty=agreed_qty,
                         executed_qty=exec_qty,
                         executed_amount=exec_amount,
                         remaining_qty=remaining,
@@ -1054,7 +1075,9 @@ class DprProductionService:
                 description=item.description,
                 unit=uom_map.get(item.uom_id, ""),
                 rate=item.rate,
+                current_rate=item.current_rate,
                 agreed_qty=item.tendered_qty,
+                current_tendered_qty=item.current_tendered_qty,
                 opening_qty=Decimal(str(opening_qty)).quantize(Decimal("0.001")),
                 opening_amount=Decimal(str(opening_amount)).quantize(Decimal("0.01")),
                 daily=daily_cells,
@@ -1069,7 +1092,7 @@ class DprProductionService:
         for section in sections:
             section_items = items_by_section.get(section.id, [])
             item_reads = [build_item_read(item) for item in section_items]
-            sec_agreed = sum((i.agreed_qty * i.rate for i in item_reads), Decimal(0)).quantize(Decimal("0.01"))
+            sec_agreed = sum((i.current_tendered_qty * i.current_rate for i in item_reads), Decimal(0)).quantize(Decimal("0.01"))
             sec_closing = sum((i.closing_amount for i in item_reads), Decimal(0))
             report_sections.append(
                 DprReportSectionRead(
@@ -1087,7 +1110,7 @@ class DprProductionService:
         unsectioned = items_by_section.get(None, [])
         if unsectioned:
             item_reads = [build_item_read(item) for item in unsectioned]
-            sec_agreed = sum((i.agreed_qty * i.rate for i in item_reads), Decimal(0)).quantize(Decimal("0.01"))
+            sec_agreed = sum((i.current_tendered_qty * i.current_rate for i in item_reads), Decimal(0)).quantize(Decimal("0.01"))
             sec_closing = sum((i.closing_amount for i in item_reads), Decimal(0))
             report_sections.append(
                 DprReportSectionRead(

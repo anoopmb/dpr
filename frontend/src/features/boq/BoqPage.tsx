@@ -1,7 +1,11 @@
 import { useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import {
+  Badge,
   Button,
+  DatePicker,
+  Descriptions,
+  Drawer,
   Form,
   Input,
   InputNumber,
@@ -12,10 +16,13 @@ import {
   Table,
   Tabs,
   Tag,
+  Timeline,
   Typography,
   message,
 } from 'antd';
 import {
+  CheckOutlined,
+  CloseOutlined,
   DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
@@ -24,25 +31,37 @@ import {
   PlusOutlined,
   SaveOutlined,
   AppstoreAddOutlined,
+  HistoryOutlined,
+  ToolOutlined,
 } from '@ant-design/icons';
 import type { TableColumnsType } from 'antd';
+import dayjs from 'dayjs';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import {
   useBoqSections,
+  useBoqRevisions,
   useCreateBoqItem,
+  useCreateBoqRevision,
   useCreateBoqSection,
   useDeleteBoqItem,
   useDeleteBoqSection,
+  useApproveBoqRevision,
+  useRejectBoqRevision,
+  usePendingBoqRevisions,
   useUpdateBoqItem,
   useUpdateBoqSection,
   type BoqItemRead,
+  type BoqRevisionCreateInput,
+  type BoqRevisionRead,
+  type BoqRevisionType,
   type BoqSectionRead,
 } from '@/api/hooks/useBoq';
 import { useUoms, useWorkTypes } from '@/api/hooks/useMasters';
 import { useThemeMode } from '@/theme/theme-context';
 import { useNumberFormat } from '@/utils/format';
+import { useAuthStore } from '@/store/auth-store';
 import {
   useApplyBoqTemplate,
   useBoqImport,
@@ -59,14 +78,99 @@ type RowType =
   | { _type: 'item'; item: BoqItemRead; key: string }
   | { _type: 'subtotal'; section: BoqSectionRead; key: string };
 
-function itemValue(item: BoqItemRead): number {
+function itemContractValue(item: BoqItemRead): number {
   return parseFloat(item.tendered_qty) * parseFloat(item.rate);
 }
 
-/** Section total VALUE (qty × rate, summed) — belongs under the Tendered
- * Value column, not under a quantity column. */
+function itemRevisedValue(item: BoqItemRead): number {
+  return parseFloat(item.current_tendered_qty) * parseFloat(item.current_rate);
+}
+
+/** Section total VALUE using current (revised) rate — for the revised contract value column. */
+function sectionRevisedAmount(items: BoqItemRead[]): number {
+  return items.reduce((acc, i) => acc + parseFloat(i.current_tendered_qty) * parseFloat(i.current_rate), 0);
+}
+
+/** Section total VALUE using original rate — for the original contract value column. */
 function sectionAmount(items: BoqItemRead[], field: 'tendered_qty' | 'consumed_qty'): number {
   return items.reduce((acc, i) => acc + parseFloat(i[field]) * parseFloat(i.rate), 0);
+}
+
+const REVISION_TYPE_LABELS: Record<BoqRevisionType, string> = {
+  VARIATION_ORDER: 'Variation Order',
+  RATE_AMENDMENT: 'Rate Amendment',
+  RECAST_ESTIMATE: 'Recast Estimate',
+  QTY_REVISION: 'Qty Revision',
+};
+
+const REVISION_STATUS_COLOR: Record<string, string> = {
+  PENDING: 'gold',
+  APPROVED: 'green',
+  REJECTED: 'red',
+};
+
+interface RevisionHistoryDrawerProps {
+  open: boolean;
+  item: BoqItemRead | null;
+  isAdmin: boolean;
+  onClose: () => void;
+  onApprove: (id: string) => void;
+  onRejectClick: (r: BoqRevisionRead) => void;
+  fmtQty: (v: string | number, decimals?: number) => string;
+  symbol: string;
+  approveLoading: boolean;
+}
+
+function RevisionHistoryDrawer({
+  open, item, isAdmin, onClose, onApprove, onRejectClick, fmtQty, symbol, approveLoading,
+}: RevisionHistoryDrawerProps) {
+  const { data: revisions, isLoading } = useBoqRevisions(item?.id ?? null);
+
+  return (
+    <Drawer
+      title={`Revision History${item ? ` — ${item.item_no}: ${item.description}` : ''}`}
+      open={open}
+      onClose={onClose}
+      width={560}
+      destroyOnHidden
+    >
+      {isLoading ? (
+        <Typography.Text type="secondary">Loading...</Typography.Text>
+      ) : (revisions ?? []).length === 0 ? (
+        <Typography.Text type="secondary">No revisions yet for this item.</Typography.Text>
+      ) : (
+        <Timeline
+          items={(revisions ?? []).map((r) => ({
+            color: REVISION_STATUS_COLOR[r.status] ?? 'blue',
+            children: (
+              <div key={r.id} style={{ marginBottom: 8 }}>
+                <Space wrap>
+                  <Typography.Text strong>{r.revision_number}</Typography.Text>
+                  <Tag color={REVISION_STATUS_COLOR[r.status] ?? 'blue'}>{r.status}</Tag>
+                  <Tag>{REVISION_TYPE_LABELS[r.revision_type]}</Tag>
+                </Space>
+                <Descriptions size="small" column={2} style={{ marginTop: 6 }}>
+                  <Descriptions.Item label="Effective From">{r.effective_from}</Descriptions.Item>
+                  {r.revised_rate && <Descriptions.Item label={`Rate (${symbol})`}>{fmtQty(r.revised_rate, 2)}</Descriptions.Item>}
+                  {r.revised_tendered_qty && <Descriptions.Item label="Qty">{parseFloat(r.revised_tendered_qty).toLocaleString('en-IN', { maximumFractionDigits: 3 })}</Descriptions.Item>}
+                  <Descriptions.Item label="Reason" span={2}>{r.reason}</Descriptions.Item>
+                  {r.rejected_reason && <Descriptions.Item label="Rejection reason" span={2}><Typography.Text type="danger">{r.rejected_reason}</Typography.Text></Descriptions.Item>}
+                </Descriptions>
+                {isAdmin && r.status === 'PENDING' && (
+                  <Space style={{ marginTop: 6 }}>
+                    <Popconfirm title="Approve this revision?" onConfirm={() => onApprove(r.id)} okText="Approve" okButtonProps={{ type: 'primary' }}>
+                      <Button size="small" type="primary" icon={<CheckOutlined />} loading={approveLoading}>Approve</Button>
+                    </Popconfirm>
+                    <Button size="small" danger icon={<CloseOutlined />} onClick={() => onRejectClick(r)}>Reject</Button>
+                  </Space>
+                )}
+              </div>
+            ),
+          }))}
+        />
+      )}
+    </Drawer>
+  );
 }
 
 /** Section total QUANTITY (plain sum, no rate) — belongs under the
@@ -83,6 +187,24 @@ interface ItemFormValues {
   uom_id: string;
   tendered_qty: number;
   rate: number;
+}
+
+const UNSECTIONED_SECTION_ID = '00000000-0000-0000-0000-000000000000';
+
+interface EditItemFormValues {
+  section_id: string | null;
+  item_no: string;
+  description: string;
+  work_type_id: string;
+  uom_id: string;
+}
+
+interface RevisionFormValues {
+  revision_type: BoqRevisionType;
+  effective_from: dayjs.Dayjs;
+  revised_rate?: number | null;
+  revised_tendered_qty?: number | null;
+  reason: string;
 }
 
 interface SectionFormValues {
@@ -223,6 +345,8 @@ function resolveImportRows(
 export function BoqPage() {
   const isMobile = useIsMobile();
   const selectedProjectId = useProjectContextStore((s) => s.selectedProjectId);
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.role === 'ADMIN';
   const { data: sections, isLoading } = useBoqSections(selectedProjectId);
   const { data: workTypes } = useWorkTypes();
   const { data: uoms } = useUoms();
@@ -232,6 +356,10 @@ export function BoqPage() {
   const createSection = useCreateBoqSection();
   const updateSection = useUpdateBoqSection();
   const deleteSection = useDeleteBoqSection();
+  const createRevision = useCreateBoqRevision();
+  const approveRevision = useApproveBoqRevision();
+  const rejectRevision = useRejectBoqRevision();
+  const { data: pendingRevisions } = usePendingBoqRevisions(isAdmin ? selectedProjectId : null);
   const { resolvedMode } = useThemeMode();
   const { fmtAmt, fmtQty, symbol } = useNumberFormat();
 
@@ -247,6 +375,10 @@ export function BoqPage() {
   const [itemModal, setItemModal] = useState<{ open: boolean; defaultSectionId?: string }>({ open: false });
   const [editItemModal, setEditItemModal] = useState<{ open: boolean; item?: BoqItemRead }>({ open: false });
   const [sectionModal, setSectionModal] = useState<{ open: boolean; editing?: BoqSectionRead }>({ open: false });
+  const [revisionModal, setRevisionModal] = useState<{ open: boolean; item?: BoqItemRead }>({ open: false });
+  const [revisionHistoryDrawer, setRevisionHistoryDrawer] = useState<{ open: boolean; item?: BoqItemRead }>({ open: false });
+  const [rejectDrawerRevision, setRejectDrawerRevision] = useState<BoqRevisionRead | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
   const [importModal, setImportModal] = useState(false);
   const [saveTemplateModal, setSaveTemplateModal] = useState(false);
   const [applyTemplateModal, setApplyTemplateModal] = useState(false);
@@ -260,9 +392,10 @@ export function BoqPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [itemForm] = Form.useForm<ItemFormValues>();
-  const [editItemForm] = Form.useForm<ItemFormValues>();
+  const [editItemForm] = Form.useForm<EditItemFormValues>();
   const [sectionForm] = Form.useForm<SectionFormValues>();
   const [saveTemplateForm] = Form.useForm<TemplateNameFormValues>();
+  const [revisionForm] = Form.useForm<RevisionFormValues>();
 
   const workTypeById = new Map((workTypes ?? []).map((w) => [w.id, w.name]));
   const uomById = new Map((uoms ?? []).map((u) => [u.id, u.code]));
@@ -341,13 +474,11 @@ export function BoqPage() {
       description: item.description,
       work_type_id: item.work_type_id,
       uom_id: item.uom_id,
-      tendered_qty: parseFloat(item.tendered_qty),
-      rate: parseFloat(item.rate),
     });
     setEditItemModal({ open: true, item });
   };
 
-  const handleEditItem = async (values: ItemFormValues) => {
+  const handleEditItem = async (values: EditItemFormValues) => {
     if (!editItemModal.item) return;
     try {
       await updateItem.mutateAsync({
@@ -358,14 +489,57 @@ export function BoqPage() {
           description: values.description,
           work_type_id: values.work_type_id,
           uom_id: values.uom_id,
-          tendered_qty: String(values.tendered_qty),
-          rate: String(values.rate),
         },
       });
       message.success('BOQ item updated');
       setEditItemModal({ open: false });
     } catch {
       message.error('Could not update BOQ item');
+    }
+  };
+
+  const openRevisionModal = (item: BoqItemRead) => {
+    revisionForm.resetFields();
+    setRevisionModal({ open: true, item });
+  };
+
+  const handleCreateRevision = async (values: RevisionFormValues) => {
+    if (!revisionModal.item) return;
+    const data: BoqRevisionCreateInput = {
+      revision_type: values.revision_type,
+      effective_from: values.effective_from.format('YYYY-MM-DD'),
+      revised_rate: values.revised_rate != null ? String(values.revised_rate) : null,
+      revised_tendered_qty: values.revised_tendered_qty != null ? String(values.revised_tendered_qty) : null,
+      reason: values.reason,
+    };
+    try {
+      await createRevision.mutateAsync({ boqItemId: revisionModal.item.id, data });
+      message.success('Revision submitted for approval');
+      setRevisionModal({ open: false });
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      message.error(detail ?? 'Could not create revision');
+    }
+  };
+
+  const handleApproveRevision = async (id: string) => {
+    try {
+      await approveRevision.mutateAsync(id);
+      message.success('Revision approved');
+    } catch {
+      message.error('Could not approve revision');
+    }
+  };
+
+  const handleRejectRevision = async () => {
+    if (!rejectDrawerRevision || !rejectReason.trim()) return;
+    try {
+      await rejectRevision.mutateAsync({ revisionId: rejectDrawerRevision.id, rejected_reason: rejectReason.trim() });
+      message.success('Revision rejected');
+      setRejectDrawerRevision(null);
+      setRejectReason('');
+    } catch {
+      message.error('Could not reject revision');
     }
   };
 
@@ -476,7 +650,7 @@ export function BoqPage() {
     tableRows.push({ _type: 'subtotal', section, key: `sub-${section.id}` });
   }
 
-  const NCOLS = 9;
+  const NCOLS = 13;
   const columns: TableColumnsType<RowType> = [
     {
       title: 'Item No',
@@ -485,30 +659,36 @@ export function BoqPage() {
       onCell: (row) => {
         if (row._type === 'header') return { colSpan: NCOLS, style: { background: SECTION_HEADER_BG, padding: '6px 12px' } };
         if (row._type === 'subtotal') return { colSpan: 4, style: { background: SUBTOTAL_BG, fontWeight: 600 } };
+
         return {};
       },
       render: (_, row) => {
         if (row._type === 'header') {
+          const isUnsectioned = row.section.id === UNSECTIONED_SECTION_ID;
           return (
             <Space>
               <Typography.Text strong style={{ fontSize: 13 }}>
-                {row.section.section_no}. {row.section.section_name.toUpperCase()}
+                {isUnsectioned ? row.section.section_name.toUpperCase() : `${row.section.section_no}. ${row.section.section_name.toUpperCase()}`}
               </Typography.Text>
               <Tag color="blue" style={{ marginLeft: 8 }}>
                 {row.section.items.length} items
               </Tag>
-              <Button size="small" icon={<PlusOutlined />} onClick={() => openAddItem(row.section.id)}>
-                {!isMobile && 'Add Item'}
-              </Button>
-              <Button size="small" icon={<EditOutlined />} onClick={() => openEditSection(row.section)} />
-              <Popconfirm
-                title="Delete this section? All items must be reassigned first."
-                onConfirm={() => handleDeleteSection(row.section)}
-                okText="Delete"
-                okButtonProps={{ danger: true }}
-              >
-                <Button size="small" danger icon={<DeleteOutlined />} />
-              </Popconfirm>
+              {!isUnsectioned && (
+                <>
+                  <Button size="small" icon={<PlusOutlined />} onClick={() => openAddItem(row.section.id)}>
+                    {!isMobile && 'Add Item'}
+                  </Button>
+                  <Button size="small" icon={<EditOutlined />} onClick={() => openEditSection(row.section)} />
+                  <Popconfirm
+                    title="Delete this section? All items must be reassigned first."
+                    onConfirm={() => handleDeleteSection(row.section)}
+                    okText="Delete"
+                    okButtonProps={{ danger: true }}
+                  >
+                    <Button size="small" danger icon={<DeleteOutlined />} />
+                  </Popconfirm>
+                </>
+              )}
             </Space>
           );
         }
@@ -585,23 +765,61 @@ export function BoqPage() {
       },
     },
     {
-      title: `Rate (${symbol})`,
+      title: `Contract Rate (${symbol})`,
       key: 'rate',
-      width: 90,
+      width: 110,
       align: 'right' as const,
       onCell: (row) => {
         if (row._type === 'header') return { colSpan: 0 };
-        // NOT colSpan: 0 here — HTML tables don't reserve grid space for a
-        // skipped cell, so the next rendered cell (Tendered Value) would
-        // shift left into this column's slot instead of lining up with its
-        // own header. Render an empty-but-present cell instead.
         if (row._type === 'subtotal') return { style: { background: SUBTOTAL_BG } };
         return {};
       },
       render: (_, row) => (row._type === 'item' ? fmtQty(row.item.rate, 2) : null),
     },
     {
-      title: 'Tendered Value',
+      title: `Revised Rate (${symbol})`,
+      key: 'current_rate',
+      width: 110,
+      align: 'right' as const,
+      onCell: (row) => {
+        if (row._type === 'header') return { colSpan: 0 };
+        if (row._type === 'subtotal') return { style: { background: SUBTOTAL_BG } };
+        return {};
+      },
+      render: (_, row) => {
+        if (row._type !== 'item') return null;
+        const isRevised = row.item.current_rate !== row.item.rate;
+        return isRevised ? (
+          <Space size={4}>
+            <Tag color="orange" style={{ marginRight: 0 }}>Revised</Tag>
+            {fmtQty(row.item.current_rate, 2)}
+          </Space>
+        ) : <Typography.Text type="secondary">—</Typography.Text>;
+      },
+    },
+    {
+      title: 'Revised Qty',
+      key: 'current_tendered_qty',
+      width: 100,
+      align: 'right' as const,
+      onCell: (row) => {
+        if (row._type === 'header') return { colSpan: 0 };
+        if (row._type === 'subtotal') return { style: { background: SUBTOTAL_BG } };
+        return {};
+      },
+      render: (_, row) => {
+        if (row._type !== 'item') return null;
+        const isRevised = row.item.current_tendered_qty !== row.item.tendered_qty;
+        return isRevised ? (
+          <Space size={4}>
+            <Tag color="orange" style={{ marginRight: 0 }}>Revised</Tag>
+            {parseFloat(row.item.current_tendered_qty).toLocaleString('en-IN', { maximumFractionDigits: 3 })}
+          </Space>
+        ) : <Typography.Text type="secondary">—</Typography.Text>;
+      },
+    },
+    {
+      title: 'Contract Value',
       key: 'tendered_value',
       width: 130,
       align: 'right' as const,
@@ -611,18 +829,64 @@ export function BoqPage() {
         return {};
       },
       render: (_, row) => {
-        if (row._type === 'item') return fmtAmt(itemValue(row.item));
+        if (row._type === 'item') return fmtAmt(itemContractValue(row.item));
         if (row._type === 'subtotal') return fmtAmt(sectionAmount(row.section.items, 'tendered_qty'));
         return null;
       },
     },
     {
-      title: 'Actions',
-      key: 'item_actions',
-      width: 90,
+      title: 'Revised Value',
+      key: 'revised_value',
+      width: 130,
+      align: 'right' as const,
       onCell: (row) => {
         if (row._type === 'header') return { colSpan: 0 };
-        if (row._type === 'subtotal') return { colSpan: 0, style: { background: SUBTOTAL_BG } };
+        if (row._type === 'subtotal') return { style: { background: SUBTOTAL_BG, fontWeight: 600, textAlign: 'right' } };
+        return {};
+      },
+      render: (_, row) => {
+        if (row._type === 'item') {
+          const isRevised = row.item.current_rate !== row.item.rate || row.item.current_tendered_qty !== row.item.tendered_qty;
+          return isRevised ? fmtAmt(itemRevisedValue(row.item)) : <Typography.Text type="secondary">—</Typography.Text>;
+        }
+        if (row._type === 'subtotal') {
+          const revisedTotal = sectionRevisedAmount(row.section.items);
+          const originalTotal = sectionAmount(row.section.items, 'tendered_qty');
+          return revisedTotal !== originalTotal ? fmtAmt(revisedTotal) : <Typography.Text type="secondary">—</Typography.Text>;
+        }
+        return null;
+      },
+    },
+    {
+      title: 'Revisions',
+      key: 'revisions',
+      width: 85,
+      align: 'center' as const,
+      onCell: (row) => {
+        if (row._type === 'header') return { colSpan: 0 };
+        if (row._type === 'subtotal') return { style: { background: SUBTOTAL_BG } };
+        return {};
+      },
+      render: (_, row) => {
+        if (row._type !== 'item') return null;
+        return (
+          <Badge count={row.item.revision_count} size="small">
+            <Button
+              size="small"
+              icon={<HistoryOutlined />}
+              onClick={() => setRevisionHistoryDrawer({ open: true, item: row.item })}
+            />
+          </Badge>
+        );
+      },
+    },
+    {
+      title: 'Actions',
+      key: 'item_actions',
+      width: 120,
+      onCell: (row) => {
+        if (row._type === 'header') return { colSpan: 0 };
+        if (row._type === 'subtotal') return { style: { background: SUBTOTAL_BG } };
         return {};
       },
       render: (_, row) => {
@@ -630,6 +894,7 @@ export function BoqPage() {
         return (
           <Space>
             <Button size="small" icon={<EditOutlined />} onClick={() => openEditItem(row.item)} />
+            <Button size="small" icon={<ToolOutlined />} title="Revise rate/qty" onClick={() => openRevisionModal(row.item)} />
             <Popconfirm
               title="Delete this BOQ item?"
               description="Only items with no recorded measurements can be deleted."
@@ -645,10 +910,12 @@ export function BoqPage() {
     },
   ];
 
-  const sectionOptions = (sections ?? []).map((s) => ({
-    value: s.id,
-    label: `${s.section_no}. ${s.section_name}`,
-  }));
+  const sectionOptions = (sections ?? [])
+    .filter((s) => s.id !== UNSECTIONED_SECTION_ID)
+    .map((s) => ({
+      value: s.id,
+      label: `${s.section_no}. ${s.section_name}`,
+    }));
 
   const templateColumns: TableColumnsType<BoqTemplateSummary> = [
     { title: 'Name', dataIndex: 'name', key: 'name' },
@@ -757,6 +1024,49 @@ export function BoqPage() {
         </Typography.Text>
       )}
 
+      {isAdmin && selectedProjectId && (pendingRevisions ?? []).length > 0 && (
+        <div style={{ marginBottom: 16, padding: '12px 16px', border: '1px solid #faad14', borderRadius: 6, background: resolvedMode === 'dark' ? 'rgba(250,173,20,0.08)' : '#fffbe6' }}>
+          <Typography.Text strong style={{ color: '#d48806' }}>
+            {pendingRevisions!.length} pending BOQ revision(s) awaiting approval
+          </Typography.Text>
+          <Table
+            rowKey="id"
+            size="small"
+            dataSource={pendingRevisions}
+            pagination={false}
+            style={{ marginTop: 8 }}
+            columns={[
+              { title: 'Item', dataIndex: 'revision_number', key: 'rn', width: 100 },
+              { title: 'Type', key: 'type', width: 130, render: (_: unknown, r: BoqRevisionRead) => REVISION_TYPE_LABELS[r.revision_type] },
+              { title: 'Effective From', dataIndex: 'effective_from', key: 'eff', width: 120 },
+              { title: 'Revised Rate', key: 'rrate', width: 110, align: 'right' as const, render: (_: unknown, r: BoqRevisionRead) => r.revised_rate ? fmtQty(r.revised_rate, 2) : '—' },
+              { title: 'Revised Qty', key: 'rqty', width: 110, align: 'right' as const, render: (_: unknown, r: BoqRevisionRead) => r.revised_tendered_qty ? parseFloat(r.revised_tendered_qty).toLocaleString('en-IN', { maximumFractionDigits: 3 }) : '—' },
+              { title: 'Reason', dataIndex: 'reason', key: 'reason', ellipsis: true },
+              {
+                title: 'Actions',
+                key: 'pa',
+                width: 140,
+                render: (_: unknown, r: BoqRevisionRead) => (
+                  <Space>
+                    <Popconfirm title="Approve this revision?" onConfirm={() => handleApproveRevision(r.id)} okText="Approve" okButtonProps={{ type: 'primary' }}>
+                      <Button size="small" type="primary" icon={<CheckOutlined />}>Approve</Button>
+                    </Popconfirm>
+                    <Button
+                      size="small"
+                      danger
+                      icon={<CloseOutlined />}
+                      onClick={() => { setRejectDrawerRevision(r); setRejectReason(''); }}
+                    >
+                      Reject
+                    </Button>
+                  </Space>
+                ),
+              },
+            ]}
+          />
+        </div>
+      )}
+
       <Table
         rowKey="key"
         loading={isLoading}
@@ -765,7 +1075,7 @@ export function BoqPage() {
         pagination={false}
         bordered
         size="small"
-        scroll={{ x: 1090 }}
+        scroll={{ x: 1600 }}
         onRow={(row) => ({
           style: {
             background:
@@ -906,12 +1216,6 @@ export function BoqPage() {
           <Form.Item name="uom_id" label="Unit of Measure" rules={[{ required: true }]}>
             <Select showSearch optionFilterProp="label" options={(uoms ?? []).map((u) => ({ value: u.id, label: `${u.code} — ${u.name}` }))} />
           </Form.Item>
-          <Form.Item name="tendered_qty" label="Tendered Quantity" rules={[{ required: true }]}>
-            <InputNumber min={0.001} step={0.001} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="rate" label={`Rate (${symbol})`} rules={[{ required: true }]}>
-            <InputNumber min={0} style={{ width: '100%' }} />
-          </Form.Item>
         </Form>
       </Modal>
 
@@ -1010,6 +1314,107 @@ export function BoqPage() {
             }))}
           />
         </Space>
+      </Modal>
+
+      {/* Create Revision modal */}
+      <Modal
+        title={`Revise BOQ Item${revisionModal.item ? ` — ${revisionModal.item.item_no}` : ''}`}
+        open={revisionModal.open}
+        onCancel={() => setRevisionModal({ open: false })}
+        onOk={() => revisionForm.submit()}
+        confirmLoading={createRevision.isPending}
+        destroyOnHidden
+        width={520}
+      >
+        {revisionModal.item && (
+          <Descriptions size="small" column={2} style={{ marginBottom: 16 }}>
+            <Descriptions.Item label="Contract Rate">{fmtQty(revisionModal.item.rate, 2)}</Descriptions.Item>
+            <Descriptions.Item label="Current Rate">{fmtQty(revisionModal.item.current_rate, 2)}</Descriptions.Item>
+            <Descriptions.Item label="Contract Qty">{parseFloat(revisionModal.item.tendered_qty).toLocaleString('en-IN', { maximumFractionDigits: 3 })}</Descriptions.Item>
+            <Descriptions.Item label="Current Qty">{parseFloat(revisionModal.item.current_tendered_qty).toLocaleString('en-IN', { maximumFractionDigits: 3 })}</Descriptions.Item>
+          </Descriptions>
+        )}
+        <Form form={revisionForm} layout="vertical" onFinish={handleCreateRevision}>
+          <Form.Item name="revision_type" label="Revision Type" rules={[{ required: true }]}>
+            <Select
+              options={[
+                { value: 'VARIATION_ORDER', label: 'Variation Order (VO)' },
+                { value: 'RATE_AMENDMENT', label: 'Rate Amendment (RA)' },
+                { value: 'RECAST_ESTIMATE', label: 'Recast Estimate (RE)' },
+                { value: 'QTY_REVISION', label: 'Quantity Revision (QR)' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name="effective_from" label="Effective From Date" rules={[{ required: true }]}>
+            <DatePicker style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item
+            name="revised_rate"
+            label={`Revised Rate (${symbol}) — leave blank to keep current`}
+            dependencies={['revised_tendered_qty']}
+            rules={[{
+              validator: async (_, value) => {
+                const qty = revisionForm.getFieldValue('revised_tendered_qty');
+                if ((value == null) && (qty == null)) {
+                  throw new Error('Provide at least one: Revised Rate or Revised Qty');
+                }
+              },
+            }]}
+          >
+            <InputNumber min={0} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item
+            name="revised_tendered_qty"
+            label="Revised Tendered Qty — leave blank to keep current"
+            dependencies={['revised_rate']}
+            rules={[{
+              validator: async (_, value) => {
+                const rate = revisionForm.getFieldValue('revised_rate');
+                if ((value == null) && (rate == null)) {
+                  throw new Error('Provide at least one: Revised Rate or Revised Qty');
+                }
+              },
+            }]}
+          >
+            <InputNumber min={0.001} step={0.001} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="reason" label="Reason / Justification" rules={[{ required: true, min: 1 }]}>
+            <Input.TextArea rows={3} placeholder="Describe the reason for this revision" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Revision History Drawer */}
+      <RevisionHistoryDrawer
+        open={revisionHistoryDrawer.open}
+        item={revisionHistoryDrawer.item ?? null}
+        isAdmin={isAdmin}
+        onClose={() => setRevisionHistoryDrawer({ open: false })}
+        onApprove={handleApproveRevision}
+        onRejectClick={(r) => { setRejectDrawerRevision(r); setRejectReason(''); }}
+        fmtQty={fmtQty}
+        symbol={symbol}
+        approveLoading={approveRevision.isPending}
+      />
+
+      {/* Reject Reason modal */}
+      <Modal
+        title="Reject Revision"
+        open={!!rejectDrawerRevision}
+        onCancel={() => { setRejectDrawerRevision(null); setRejectReason(''); }}
+        onOk={handleRejectRevision}
+        okText="Reject"
+        okButtonProps={{ danger: true, disabled: !rejectReason.trim(), loading: rejectRevision.isPending }}
+        destroyOnHidden
+      >
+        <Typography.Text>Please provide a reason for rejecting this revision:</Typography.Text>
+        <Input.TextArea
+          rows={3}
+          style={{ marginTop: 8 }}
+          value={rejectReason}
+          onChange={(e) => setRejectReason(e.target.value)}
+          placeholder="Reason for rejection"
+        />
       </Modal>
     </div>
   );

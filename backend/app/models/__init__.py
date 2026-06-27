@@ -2,6 +2,7 @@ from app.models.attendance import AttendanceRecord
 from app.models.audit import AuditLog
 from app.models.billing import PaymentReceived, RunningBill, RunningBillItem
 from app.models.boq import BoqItem, BoqSection
+from app.models.boq_revision import BoqItemRevision
 from app.models.department import Department
 from app.models.dpr import DprHeader, DprHeaderApproval, DprIssue, DprLabour, DprMachinery, DprMaterial, DprProductionEntry, DprWorkItem
 from app.models.expense import Expense
@@ -33,6 +34,7 @@ __all__ = [
     "ProjectAssignment",
     "BoqSection",
     "BoqItem",
+    "BoqItemRevision",
     "User",
     "Department",
     "UomMaster",

@@ -16,7 +16,9 @@ class DprReportItemRead(BaseModel):
     description: str
     unit: str
     rate: Decimal
+    current_rate: Decimal
     agreed_qty: Decimal
+    current_tendered_qty: Decimal
     opening_qty: Decimal
     opening_amount: Decimal
     daily: list[DailyProductionCell]

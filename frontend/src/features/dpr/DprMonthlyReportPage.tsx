@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Button, Card, DatePicker, Empty, Table, Typography } from 'antd';
+import { Button, Card, DatePicker, Empty, Space, Table, Tag, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { DownloadOutlined, FilePdfOutlined, PrinterOutlined } from '@ant-design/icons';
 import * as XLSX from 'xlsx';
@@ -495,15 +495,32 @@ export function DprMonthlyReportPage() {
         render: (_, row) => (row._type === 'item' ? row.item.unit : null),
       },
       {
-        title: `Rate (${symbol})`,
+        title: `Contract Rate (${symbol})`,
         key: 'rate',
-        width: 80,
+        width: 90,
         align: 'right' as const,
         onCell: blankOnCell,
         render: (_, row) => (row._type === 'item' ? fmtQty(row.item.rate, 2) : null),
       },
       {
-        title: 'Agreed Qty',
+        title: `Revised Rate (${symbol})`,
+        key: 'current_rate',
+        width: 90,
+        align: 'right' as const,
+        onCell: blankOnCell,
+        render: (_, row) => {
+          if (row._type !== 'item') return null;
+          const isRevised = row.item.current_rate !== row.item.rate;
+          return isRevised ? (
+            <Space size={2}>
+              <Tag color="orange" style={{ marginRight: 0, fontSize: 10, padding: '0 3px' }}>R</Tag>
+              {fmtQty(row.item.current_rate, 2)}
+            </Space>
+          ) : <Typography.Text type="secondary" style={{ fontSize: 11 }}>—</Typography.Text>;
+        },
+      },
+      {
+        title: 'Contract Qty',
         key: 'agreed_qty',
         width: 90,
         align: 'right' as const,

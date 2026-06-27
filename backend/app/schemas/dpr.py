@@ -185,7 +185,9 @@ class BoqItemProgressRead(BaseModel):
     description: str
     unit: str
     rate: Decimal
+    current_rate: Decimal
     agreed_qty: Decimal
+    current_tendered_qty: Decimal
     executed_qty: Decimal
     executed_amount: Decimal
     remaining_qty: Decimal

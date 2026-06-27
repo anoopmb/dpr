@@ -18,18 +18,27 @@ class BoqItemCreate(BoqItemBase):
     section_id: uuid.UUID | None = None
 
 
-class BoqItemRead(BoqItemBase):
+class BoqItemRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     project_id: uuid.UUID
     section_id: uuid.UUID | None
+    work_type_id: uuid.UUID
+    uom_id: uuid.UUID
+    item_no: str
+    description: str
+    tendered_qty: Decimal
+    rate: Decimal
+    current_rate: Decimal
+    current_tendered_qty: Decimal
     consumed_qty: Decimal
     has_active_variation_order: bool
+    revision_count: int = 0
 
     @property
     def remaining_qty(self) -> Decimal:
-        return self.tendered_qty - self.consumed_qty
+        return self.current_tendered_qty - self.consumed_qty
 
 
 class BoqItemUpdate(BaseModel):
@@ -38,8 +47,6 @@ class BoqItemUpdate(BaseModel):
     description: str | None = Field(default=None, min_length=1, max_length=500)
     work_type_id: uuid.UUID | None = None
     uom_id: uuid.UUID | None = None
-    tendered_qty: Decimal | None = Field(default=None, gt=0)
-    rate: Decimal | None = Field(default=None, ge=0)
 
 
 class BoqSectionCreate(BaseModel):
