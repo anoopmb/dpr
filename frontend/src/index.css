@@ -183,16 +183,14 @@ body.ant-scrolling-effect {
   }
 }
 
+/* Hide increment/decrement spinners on all number inputs system-wide */
+.ant-input-number-handler-wrap {
+  display: none !important;
+}
+
 /* Right-align numeric input text in table cells (qty, rate, amount columns) */
 .ant-table-cell .ant-input-number-input {
   text-align: right;
-}
-
-/* When stepper arrows appear (hover/focus), pad right so the value
-   doesn't hide behind the +/- handles (~22 px wide) */
-.ant-table-cell .ant-input-number:hover .ant-input-number-input,
-.ant-table-cell .ant-input-number-focused .ant-input-number-input {
-  padding-right: 22px;
 }
 
 @media print {
