@@ -7,6 +7,7 @@ from app.api.v1 import (
     billing,
     boq,
     boq_template,
+    construction_templates,
     dpr,
     expenses,
     masters,
@@ -50,3 +51,5 @@ api_router.include_router(push.router)
 api_router.include_router(audit.router)
 api_router.include_router(worker_ledger.router)
 api_router.include_router(workflow_config.router)
+api_router.include_router(construction_templates.templates_router)
+api_router.include_router(construction_templates.material_preview_router)

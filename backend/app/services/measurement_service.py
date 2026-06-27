@@ -1,20 +1,30 @@
 import uuid
 from decimal import Decimal
 
+from sqlalchemy import delete, select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError, PermissionDeniedError
+from app.core.exceptions import DomainError, NotFoundError, PermissionDeniedError
 from app.domain.measurement.calculators import calculate_quantity
 from app.domain.measurement.validators import BoqItemSnapshot, validate_measurement_against_boq
 from app.models.audit import AuditAction
+from app.models.dpr import DprHeader, DprMaterial
 from app.models.master_data import WorkTypeMaster
 from app.models.measurement import Measurement
+from app.models.measurement_steel_line import MeasurementSteelLine
 from app.models.user import UserRole
 from app.repositories.boq_repo import BoqRepository
 from app.repositories.measurement_repo import MeasurementRepository
 from app.schemas.measurement import MeasurementCreate, MeasurementUpdate
 from app.services.audit_service import AuditService, serialize_model
 from app.services.dpr_service import DprProductionService
+from app.services.material_template_service import (
+    BITUMINOUS_TYPES,
+    STEEL_COEFFICIENTS,
+    SUPPORTED_CONCRETE_GRADES,
+    MaterialTemplateResult,
+    MaterialTemplateService,
+)
 from app.services.organization_settings_service import OrganizationSettingsService
 
 
@@ -38,18 +48,35 @@ class MeasurementService:
         if boq_item is None or boq_item.project_id != data.project_id:
             raise NotFoundError("BOQ item not found for this project.")
 
-        work_type = await self._get_work_type(boq_item.work_type_id)
+        construction_type = boq_item.construction_type
+        org_settings = await self.settings_service.get()
 
-        computed_qty: Decimal = calculate_quantity(
-            work_type.formula, work_type.dimension_fields, data.dimensions
-        ).quantize(Decimal("0.001"))
+        if construction_type == "STEEL":
+            if not data.steel_lines:
+                raise DomainError("Steel measurements require at least one bar entry.")
+            template_svc = MaterialTemplateService(self.session)
+            computed_qty = Decimal("0")
+            for line in data.steel_lines:
+                computed_qty += template_svc.compute_steel_line_weight(
+                    line.diameter_mm, line.bar_count, line.length_m
+                )
+            computed_qty = computed_qty.quantize(Decimal("0.001"))
+        else:
+            work_type = await self._get_work_type(boq_item.work_type_id)
+            if construction_type == "CONCRETE":
+                if not data.construction_subtype or data.construction_subtype not in SUPPORTED_CONCRETE_GRADES:
+                    raise DomainError(f"Concrete grade required. Supported: {SUPPORTED_CONCRETE_GRADES}")
+                if not data.dimensions:
+                    raise DomainError("Dimensions are required for concrete measurements.")
+            computed_qty = calculate_quantity(
+                work_type.formula, work_type.dimension_fields, data.dimensions
+            ).quantize(Decimal("0.001"))
 
         snapshot = BoqItemSnapshot(
             tendered_qty=boq_item.tendered_qty,
             consumed_qty=boq_item.consumed_qty,
             has_active_variation_order=boq_item.has_active_variation_order,
         )
-        org_settings = await self.settings_service.get()
         validate_measurement_against_boq(
             computed_qty, snapshot, tolerance_pct=org_settings.default_measurement_tolerance_percent
         )
@@ -61,15 +88,32 @@ class MeasurementService:
             boq_item_id=data.boq_item_id,
             work_type_id=boq_item.work_type_id,
             measurement_date=data.measurement_date,
-            dimensions={k: str(v) for k, v in data.dimensions.items()},
+            dimensions={k: str(v) for k, v in data.dimensions.items()} if data.dimensions else {},
             computed_qty=computed_qty,
-            status='DRAFT',
+            status="DRAFT",
             recorded_by=recorded_by,
             chainage=data.chainage,
             rate=data.rate if data.rate is not None else effective_rate,
+            construction_subtype=data.construction_subtype,
         )
         self.repo.add(measurement)
         await self.session.flush()
+
+        if construction_type == "STEEL":
+            template_svc = MaterialTemplateService(self.session)
+            for line in data.steel_lines:
+                coeff_val = STEEL_COEFFICIENTS.get(line.diameter_mm, Decimal("0"))
+                weight = template_svc.compute_steel_line_weight(line.diameter_mm, line.bar_count, line.length_m)
+                self.session.add(MeasurementSteelLine(
+                    measurement_id=measurement.id,
+                    description=line.description,
+                    diameter_mm=line.diameter_mm,
+                    bar_count=line.bar_count,
+                    length_m=line.length_m,
+                    coefficient=coeff_val,
+                    computed_weight_mt=weight,
+                ))
+
         await self.audit.record(
             entity_type="MEASUREMENT",
             entity_id=measurement.id,
@@ -79,6 +123,8 @@ class MeasurementService:
         )
         await self.session.commit()
         await self.session.refresh(measurement)
+
+        await self._sync_auto_materials(measurement, construction_type, org_settings.steel_measurement_uom)
 
         await self.production_service.sync_from_measurements(
             measurement.project_id, measurement.boq_item_id, measurement.measurement_date, recorded_by
@@ -101,30 +147,69 @@ class MeasurementService:
         if measurement.recorded_by != actor_id and actor_role != UserRole.ADMIN:
             raise PermissionDeniedError("Only the recording engineer can edit this measurement.")
 
-        work_type = await self._get_work_type(measurement.work_type_id)
-        computed_qty: Decimal = calculate_quantity(
-            work_type.formula, work_type.dimension_fields, data.dimensions
-        ).quantize(Decimal("0.001"))
-
         boq_item = await self.boq_repo.get(measurement.boq_item_id)
         if boq_item is None:
             raise NotFoundError("BOQ item for this measurement no longer exists.")
+
+        construction_type = boq_item.construction_type
+        org_settings = await self.settings_service.get()
+
+        if construction_type == "STEEL":
+            if not data.steel_lines:
+                raise DomainError("Steel measurements require at least one bar entry.")
+            template_svc = MaterialTemplateService(self.session)
+            computed_qty = Decimal("0")
+            for line in data.steel_lines:
+                computed_qty += template_svc.compute_steel_line_weight(
+                    line.diameter_mm, line.bar_count, line.length_m
+                )
+            computed_qty = computed_qty.quantize(Decimal("0.001"))
+        else:
+            work_type = await self._get_work_type(measurement.work_type_id)
+            if construction_type == "CONCRETE":
+                if not data.construction_subtype or data.construction_subtype not in SUPPORTED_CONCRETE_GRADES:
+                    raise DomainError(f"Concrete grade required. Supported: {SUPPORTED_CONCRETE_GRADES}")
+                if not data.dimensions:
+                    raise DomainError("Dimensions are required for concrete measurements.")
+            computed_qty = calculate_quantity(
+                work_type.formula, work_type.dimension_fields, data.dimensions
+            ).quantize(Decimal("0.001"))
+
         snapshot = BoqItemSnapshot(
             tendered_qty=boq_item.tendered_qty,
             consumed_qty=boq_item.consumed_qty,
             has_active_variation_order=boq_item.has_active_variation_order,
         )
-        org_settings = await self.settings_service.get()
         validate_measurement_against_boq(
             computed_qty, snapshot, tolerance_pct=org_settings.default_measurement_tolerance_percent
         )
 
         before = serialize_model(measurement)
-        measurement.dimensions = {k: str(v) for k, v in data.dimensions.items()}
+        measurement.dimensions = {k: str(v) for k, v in data.dimensions.items()} if data.dimensions else {}
         measurement.computed_qty = computed_qty
         measurement.chainage = data.chainage
+        measurement.construction_subtype = data.construction_subtype
         if data.rate is not None:
             measurement.rate = data.rate
+
+        if construction_type == "STEEL":
+            await self.session.execute(
+                delete(MeasurementSteelLine).where(MeasurementSteelLine.measurement_id == measurement.id)
+            )
+            template_svc = MaterialTemplateService(self.session)
+            for line in data.steel_lines:
+                coeff_val = STEEL_COEFFICIENTS.get(line.diameter_mm, Decimal("0"))
+                weight = template_svc.compute_steel_line_weight(line.diameter_mm, line.bar_count, line.length_m)
+                self.session.add(MeasurementSteelLine(
+                    measurement_id=measurement.id,
+                    description=line.description,
+                    diameter_mm=line.diameter_mm,
+                    bar_count=line.bar_count,
+                    length_m=line.length_m,
+                    coefficient=coeff_val,
+                    computed_weight_mt=weight,
+                ))
+
         await self.session.flush()
         await self.audit.record(
             entity_type="MEASUREMENT",
@@ -136,6 +221,8 @@ class MeasurementService:
         )
         await self.session.commit()
         await self.session.refresh(measurement)
+
+        await self._sync_auto_materials(measurement, construction_type, org_settings.steel_measurement_uom)
 
         await self.production_service.sync_from_measurements(
             measurement.project_id, measurement.boq_item_id, measurement.measurement_date, actor_id
@@ -155,6 +242,13 @@ class MeasurementService:
         entity_id = measurement.id
         before = serialize_model(measurement)
 
+        await self.session.execute(
+            delete(DprMaterial).where(
+                DprMaterial.source_measurement_id == measurement_id,
+                DprMaterial.manually_edited.is_(False),
+            )
+        )
+
         await self.session.delete(measurement)
         await self.audit.record(
             entity_type="MEASUREMENT",
@@ -168,3 +262,59 @@ class MeasurementService:
         await self.production_service.sync_from_measurements(
             project_id, boq_item_id, measurement_date, actor_id
         )
+
+    async def _sync_auto_materials(
+        self, measurement: Measurement, construction_type: str, steel_uom: str
+    ) -> None:
+        await self.session.execute(
+            delete(DprMaterial).where(
+                DprMaterial.source_measurement_id == measurement.id,
+                DprMaterial.manually_edited.is_(False),
+            )
+        )
+        if construction_type == "GENERAL":
+            await self.session.commit()
+            return
+
+        header_row = await self.session.execute(
+            sa_select(DprHeader.id).where(
+                DprHeader.project_id == measurement.project_id,
+                DprHeader.report_date == measurement.measurement_date,
+            )
+        )
+        dpr_header_id = header_row.scalar_one_or_none()
+        if dpr_header_id is None:
+            await self.session.commit()
+            return
+
+        svc = MaterialTemplateService(self.session)
+        materials: list[MaterialTemplateResult] = []
+
+        if construction_type == "STEEL":
+            lines_row = await self.session.execute(
+                sa_select(MeasurementSteelLine).where(
+                    MeasurementSteelLine.measurement_id == measurement.id
+                )
+            )
+            steel_lines = lines_row.scalars().all()
+            materials = await svc.compute_steel_materials(steel_lines, steel_uom)
+        elif construction_type == "CONCRETE" and measurement.construction_subtype:
+            materials = await svc.compute_concrete_materials(
+                measurement.construction_subtype, measurement.computed_qty
+            )
+        elif construction_type in BITUMINOUS_TYPES:
+            materials = await svc.compute_bituminous_materials(construction_type, measurement.computed_qty)
+
+        for m in materials:
+            if m.computed_qty <= 0:
+                continue
+            self.session.add(DprMaterial(
+                dpr_header_id=dpr_header_id,
+                material_id=m.material_id,
+                qty_consumed=m.computed_qty,
+                uom_id=m.uom_id,
+                rate=m.rate,
+                source_measurement_id=measurement.id,
+                manually_edited=False,
+            ))
+        await self.session.commit()

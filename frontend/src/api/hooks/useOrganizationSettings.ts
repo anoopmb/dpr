@@ -22,6 +22,7 @@ export interface OrganizationSettingsRead {
   fiscal_year_start_month: number;
   default_measurement_tolerance_percent: string;
   email_notifications_enabled: boolean;
+  steel_measurement_uom: 'MT' | 'KG';
 }
 
 export interface OrganizationSettingsUpdateInput {
@@ -42,6 +43,7 @@ export interface OrganizationSettingsUpdateInput {
   fiscal_year_start_month?: number;
   default_measurement_tolerance_percent?: number;
   email_notifications_enabled?: boolean;
+  steel_measurement_uom?: 'MT' | 'KG';
 }
 
 export interface OrganizationBrandingRead {

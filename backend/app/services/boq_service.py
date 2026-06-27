@@ -286,7 +286,7 @@ class BoqService:
             "id", "project_id", "section_id", "work_type_id", "uom_id",
             "item_no", "description", "tendered_qty", "rate",
             "current_rate", "current_tendered_qty", "consumed_qty",
-            "has_active_variation_order",
+            "has_active_variation_order", "construction_type",
         )
 
         def make_item_read(i: BoqItem) -> BoqItemRead:
@@ -411,7 +411,7 @@ class BoqService:
                 "id", "project_id", "section_id", "work_type_id", "uom_id",
                 "item_no", "description", "tendered_qty", "rate",
                 "current_rate", "current_tendered_qty", "consumed_qty",
-                "has_active_variation_order",
+                "has_active_variation_order", "construction_type",
             )},
             revision_count=rev_count or 0,
         )

@@ -59,3 +59,4 @@ class OrganizationSettings(TimestampedBase):
     # Even when True, email only actually sends if SMTP settings are also
     # configured (see app.core.email) — this is the admin-facing on/off.
     email_notifications_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    steel_measurement_uom: Mapped[str] = mapped_column(String(3), nullable=False, default="MT")

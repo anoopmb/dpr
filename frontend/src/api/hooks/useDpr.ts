@@ -23,6 +23,8 @@ export interface DprMaterialRead {
   qty_consumed: string;
   uom_id: string;
   rate: string | null;
+  manually_edited: boolean;
+  source_measurement_id: string | null;
 }
 export interface DprMachineryRead {
   id: string;

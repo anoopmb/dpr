@@ -16,6 +16,7 @@ class BoqItemBase(BaseModel):
 class BoqItemCreate(BoqItemBase):
     project_id: uuid.UUID
     section_id: uuid.UUID | None = None
+    construction_type: str = "GENERAL"
 
 
 class BoqItemRead(BaseModel):
@@ -34,6 +35,7 @@ class BoqItemRead(BaseModel):
     current_tendered_qty: Decimal
     consumed_qty: Decimal
     has_active_variation_order: bool
+    construction_type: str = "GENERAL"
     revision_count: int = 0
 
     @property
@@ -47,6 +49,7 @@ class BoqItemUpdate(BaseModel):
     description: str | None = Field(default=None, min_length=1, max_length=500)
     work_type_id: uuid.UUID | None = None
     uom_id: uuid.UUID | None = None
+    construction_type: str | None = Field(default=None, pattern="^(GENERAL|CONCRETE|STEEL|PRIME_COAT|TACK_COAT|BM|DBM|BC)$")
 
 
 class BoqSectionCreate(BaseModel):

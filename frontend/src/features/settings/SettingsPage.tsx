@@ -83,6 +83,7 @@ interface OrgFormValues {
   fiscal_year_start_month: number;
   default_measurement_tolerance_percent: number;
   email_notifications_enabled: boolean;
+  steel_measurement_uom: 'MT' | 'KG';
 }
 
 // Real, browser-provided IANA timezone list (Intl.supportedValuesOf is
@@ -199,6 +200,7 @@ export function SettingsPage() {
           fiscal_year_start_month: settings.fiscal_year_start_month,
           default_measurement_tolerance_percent: parseFloat(settings.default_measurement_tolerance_percent),
           email_notifications_enabled: settings.email_notifications_enabled,
+          steel_measurement_uom: settings.steel_measurement_uom ?? 'MT',
         }}
       >
         <Card title="Company Branding" style={{ marginBottom: 16 }}>
@@ -285,6 +287,20 @@ export function SettingsPage() {
             rules={[{ required: true }]}
           >
             <InputNumber min={0} max={100} style={{ width: 200 }} addonAfter="%" />
+          </Form.Item>
+          <Form.Item
+            name="steel_measurement_uom"
+            label="Steel / Reinforcement Measurement Unit"
+            extra="Controls whether auto-calculated steel material quantities are recorded in Metric Tons (MT) or Kilograms (KG)."
+            rules={[{ required: true }]}
+          >
+            <Select
+              style={{ width: 200 }}
+              options={[
+                { value: 'MT', label: 'MT — Metric Ton' },
+                { value: 'KG', label: 'KG — Kilogram' },
+              ]}
+            />
           </Form.Item>
         </Card>
 

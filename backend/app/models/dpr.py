@@ -112,6 +112,10 @@ class DprMaterial(TimestampedBase):
     # Snapshotted at entry time (defaults from MaterialMaster.cost_rate if not
     # supplied) so later master-rate edits never rewrite already-logged costs.
     rate: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    source_measurement_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("measurements.id", ondelete="SET NULL"), nullable=True
+    )
+    manually_edited: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     dpr_header: Mapped["DprHeader"] = relationship(back_populates="materials")
 

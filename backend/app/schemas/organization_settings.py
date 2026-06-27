@@ -27,6 +27,7 @@ class OrganizationSettingsUpdate(BaseModel):
     fiscal_year_start_month: int | None = Field(default=None, ge=1, le=12)
     default_measurement_tolerance_percent: Decimal | None = Field(default=None, ge=0, le=100)
     email_notifications_enabled: bool | None = None
+    steel_measurement_uom: str | None = Field(default=None, pattern="^(MT|KG)$")
 
     @field_validator("timezone")
     @classmethod
@@ -57,6 +58,7 @@ class OrganizationSettingsRead(BaseModel):
     fiscal_year_start_month: int
     default_measurement_tolerance_percent: Decimal
     email_notifications_enabled: bool
+    steel_measurement_uom: str
 
 
 class OrganizationBrandingRead(BaseModel):

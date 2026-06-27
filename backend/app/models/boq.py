@@ -56,6 +56,7 @@ class BoqItem(TimestampedBase):
     current_rate: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     current_tendered_qty: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
     has_active_variation_order: Mapped[bool] = mapped_column(default=False)
+    construction_type: Mapped[str] = mapped_column(String(20), nullable=False, default="GENERAL")
 
     project: Mapped["Project"] = relationship(back_populates="boq_items")
     revisions: Mapped[list["BoqItemRevision"]] = relationship(

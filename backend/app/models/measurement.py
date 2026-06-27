@@ -5,9 +5,13 @@ from enum import StrEnum
 
 from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, Numeric, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import TimestampedBase
+
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from app.models.measurement_steel_line import MeasurementSteelLine
 
 
 class MeasurementStatus(StrEnum):
@@ -57,6 +61,12 @@ class Measurement(TimestampedBase):
     billed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     chainage: Mapped[str | None] = mapped_column(String(100), nullable=True)
     rate: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    construction_subtype: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    steel_lines: Mapped[list["MeasurementSteelLine"]] = relationship(
+        "MeasurementSteelLine", back_populates="measurement",
+        cascade="all, delete-orphan", lazy="selectin"
+    )
 
 
 class MeasurementApproval(TimestampedBase):

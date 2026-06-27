@@ -111,6 +111,7 @@ const desktopMenuGroups: NavGroup[] = [
       { key: '/users', label: 'Users', icon: <IdcardOutlined />, roles: ['ADMIN'] },
       { key: '/settings', label: 'Settings', icon: <GlobalOutlined />, roles: ['ADMIN'] },
       { key: '/settings/approval-workflow', label: 'Approval Workflow', icon: <CheckOutlined />, roles: ['ADMIN'] },
+      { key: '/settings/construction-templates', label: 'Construction Templates', icon: <SettingOutlined />, roles: ['ADMIN'] },
       { key: '/audit-logs', label: 'Audit Logs', icon: <HistoryOutlined />, roles: ['ADMIN'] },
     ],
   },

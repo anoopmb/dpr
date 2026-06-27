@@ -16,6 +16,8 @@ from app.models.master_data import (
 )
 from app.models.material import MaterialIndent, MaterialIndentItem, MaterialIssue, MaterialReceipt
 from app.models.measurement import Measurement, MeasurementApproval
+from app.models.measurement_steel_line import MeasurementSteelLine
+from app.models.boq_construction_template import BoqConstructionTemplate
 from app.models.notification import Notification
 from app.models.push_subscription import PushSubscription
 from app.models.organization_settings import OrganizationSettings
@@ -58,6 +60,8 @@ __all__ = [
     "WorkerPayment",
     "Measurement",
     "MeasurementApproval",
+    "MeasurementSteelLine",
+    "BoqConstructionTemplate",
     "MaterialIndent",
     "MaterialIndentItem",
     "MaterialIssue",

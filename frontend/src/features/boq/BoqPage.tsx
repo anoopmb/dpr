@@ -52,6 +52,9 @@ import {
   usePendingBoqRevisions,
   useUpdateBoqItem,
   useUpdateBoqSection,
+  CONSTRUCTION_TYPE_COLORS,
+  CONSTRUCTION_TYPE_LABELS,
+  type BoqConstructionType,
   type BoqItemRead,
   type BoqRevisionCreateInput,
   type BoqRevisionRead,
@@ -187,6 +190,7 @@ interface ItemFormValues {
   uom_id: string;
   tendered_qty: number;
   rate: number;
+  construction_type: BoqConstructionType;
 }
 
 const UNSECTIONED_SECTION_ID = '00000000-0000-0000-0000-000000000000';
@@ -197,6 +201,7 @@ interface EditItemFormValues {
   description: string;
   work_type_id: string;
   uom_id: string;
+  construction_type: BoqConstructionType;
 }
 
 interface RevisionFormValues {
@@ -435,6 +440,7 @@ export function BoqPage() {
         description: values.description,
         tendered_qty: String(values.tendered_qty),
         rate: String(values.rate),
+        construction_type: values.construction_type ?? 'GENERAL',
       });
       message.success('BOQ item added');
       setItemModal({ open: false });
@@ -475,6 +481,7 @@ export function BoqPage() {
       description: item.description,
       work_type_id: item.work_type_id,
       uom_id: item.uom_id,
+      construction_type: item.construction_type ?? 'GENERAL',
     });
     setEditItemModal({ open: true, item });
   };
@@ -490,6 +497,7 @@ export function BoqPage() {
           description: values.description,
           work_type_id: values.work_type_id,
           uom_id: values.uom_id,
+          construction_type: values.construction_type,
         },
       });
       message.success('BOQ item updated');
@@ -707,7 +715,20 @@ export function BoqPage() {
         if (row._type === 'subtotal') return { colSpan: 0 };
         return {};
       },
-      render: (_, row) => (row._type === 'item' ? row.item.description : null),
+      render: (_, row) => {
+        if (row._type !== 'item') return null;
+        const ct = row.item.construction_type ?? 'GENERAL';
+        return (
+          <Space direction="vertical" size={2}>
+            <span>{row.item.description}</span>
+            {ct !== 'GENERAL' && (
+              <Tag color={CONSTRUCTION_TYPE_COLORS[ct]} style={{ fontSize: 10, padding: '0 4px', lineHeight: '16px' }}>
+                {CONSTRUCTION_TYPE_LABELS[ct] ?? ct}
+              </Tag>
+            )}
+          </Space>
+        );
+      },
     },
     {
       title: 'Work Type',
@@ -1189,6 +1210,18 @@ export function BoqPage() {
           <Form.Item name="rate" label={`Rate (${symbol})`} rules={[{ required: true }]}>
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
+          <Form.Item name="construction_type" label="Construction Type" initialValue="GENERAL">
+            <Select
+              options={(Object.entries(CONSTRUCTION_TYPE_LABELS) as [BoqConstructionType, string][]).map(([v, l]) => ({
+                value: v,
+                label: (
+                  <Space size={4}>
+                    <Tag color={CONSTRUCTION_TYPE_COLORS[v]} style={{ margin: 0 }}>{l}</Tag>
+                  </Space>
+                ),
+              }))}
+            />
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -1216,6 +1249,18 @@ export function BoqPage() {
           </Form.Item>
           <Form.Item name="uom_id" label="Unit of Measure" rules={[{ required: true }]}>
             <Select showSearch optionFilterProp="label" options={(uoms ?? []).map((u) => ({ value: u.id, label: `${u.code} — ${u.name}` }))} />
+          </Form.Item>
+          <Form.Item name="construction_type" label="Construction Type" initialValue="GENERAL">
+            <Select
+              options={(Object.entries(CONSTRUCTION_TYPE_LABELS) as [BoqConstructionType, string][]).map(([v, l]) => ({
+                value: v,
+                label: (
+                  <Space size={4}>
+                    <Tag color={CONSTRUCTION_TYPE_COLORS[v]} style={{ margin: 0 }}>{l}</Tag>
+                  </Space>
+                ),
+              }))}
+            />
           </Form.Item>
         </Form>
       </Modal>

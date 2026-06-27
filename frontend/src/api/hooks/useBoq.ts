@@ -1,6 +1,43 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
 
+export type BoqConstructionType = 'GENERAL' | 'CONCRETE' | 'STEEL' | 'PRIME_COAT' | 'TACK_COAT' | 'BM' | 'DBM' | 'BC';
+
+export const CONSTRUCTION_TYPE_LABELS: Record<BoqConstructionType, string> = {
+  GENERAL: 'General',
+  CONCRETE: 'Concrete',
+  STEEL: 'Steel / Reinforcement',
+  PRIME_COAT: 'Prime Coat',
+  TACK_COAT: 'Tack Coat',
+  BM: 'Bituminous Macadam (BM)',
+  DBM: 'Dense Bituminous Macadam (DBM)',
+  BC: 'Bituminous Concrete (BC)',
+};
+
+export const CONSTRUCTION_TYPE_COLORS: Record<BoqConstructionType, string> = {
+  GENERAL: 'default',
+  CONCRETE: 'blue',
+  STEEL: 'volcano',
+  PRIME_COAT: 'green',
+  TACK_COAT: 'lime',
+  BM: 'orange',
+  DBM: 'gold',
+  BC: 'cyan',
+};
+
+export interface BoqConstructionTemplateRead {
+  id: string;
+  construction_type: string;
+  material_id: string;
+  material_name: string;
+  material_code: string;
+  coefficient: string;
+  coefficient_description: string | null;
+  uom_id: string;
+  uom_code: string;
+  is_active: boolean;
+}
+
 export interface BoqItemRead {
   id: string;
   project_id: string;
@@ -16,6 +53,7 @@ export interface BoqItemRead {
   current_tendered_qty: string;
   revision_count: number;
   has_active_variation_order: boolean;
+  construction_type: BoqConstructionType;
 }
 
 export interface BoqItemCreateInput {
@@ -27,6 +65,7 @@ export interface BoqItemCreateInput {
   description: string;
   tendered_qty: string;
   rate: string;
+  construction_type?: BoqConstructionType;
 }
 
 export interface BoqSectionRead {
@@ -141,6 +180,7 @@ export interface BoqItemUpdateInput {
   description?: string;
   work_type_id?: string;
   uom_id?: string;
+  construction_type?: BoqConstructionType;
 }
 
 export function useUpdateBoqItem() {
@@ -224,5 +264,48 @@ export function usePendingBoqRevisions(projectId: string | null) {
     queryFn: async () =>
       (await apiClient.get<BoqRevisionRead[]>('/boq/revisions/pending', { params: { project_id: projectId } })).data,
     enabled: !!projectId,
+  });
+}
+
+export function useConstructionTemplates(constructionType?: string) {
+  return useQuery({
+    queryKey: ['construction-templates', constructionType ?? 'all'],
+    queryFn: async () =>
+      (await apiClient.get<BoqConstructionTemplateRead[]>('/construction-templates', {
+        params: constructionType ? { construction_type: constructionType } : {},
+      })).data,
+  });
+}
+
+export function useCreateConstructionTemplate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      construction_type: string;
+      material_id: string;
+      coefficient: string;
+      coefficient_description?: string | null;
+      uom_id: string;
+    }) => (await apiClient.post<BoqConstructionTemplateRead>('/construction-templates', data)).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['construction-templates'] }),
+  });
+}
+
+export function useUpdateConstructionTemplate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, data }: {
+      id: string;
+      data: { coefficient?: string; coefficient_description?: string | null; is_active?: boolean };
+    }) => (await apiClient.patch<BoqConstructionTemplateRead>(`/construction-templates/${id}`, data)).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['construction-templates'] }),
+  });
+}
+
+export function useDeleteConstructionTemplate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => { await apiClient.delete(`/construction-templates/${id}`); return id; },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['construction-templates'] }),
   });
 }

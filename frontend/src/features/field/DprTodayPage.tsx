@@ -876,7 +876,12 @@ function MaterialsTab({
       title: 'Material', key: 'material',
       render: (_: unknown, row: MatRow) =>
         row._kind === 'existing' ? (
-          <Typography.Text>{materialById.get(row.entry.material_id)?.name ?? row.entry.material_id}</Typography.Text>
+          <Space size={4}>
+            <Typography.Text>{materialById.get(row.entry.material_id)?.name ?? row.entry.material_id}</Typography.Text>
+            {!row.entry.manually_edited && row.entry.source_measurement_id && (
+              <Tag color="purple" style={{ fontSize: 10, padding: '0 4px', lineHeight: '16px', margin: 0 }}>Auto</Tag>
+            )}
+          </Space>
         ) : (
           <Select size="small" showSearch optionFilterProp="label" style={inp} placeholder="Select material…" value={row.draft.material_id}
             onChange={(v) => { const m = materialById.get(v); patchDraft(row.draft.key, { material_id: v, uom_id: m?.default_uom_id ?? null, rate: m?.cost_rate != null ? parseFloat(m.cost_rate) : null }); }}
