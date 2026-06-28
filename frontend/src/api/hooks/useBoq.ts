@@ -33,6 +33,7 @@ export interface BoqConstructionTemplateRead {
   material_name: string;
   material_code: string;
   coefficient: string;
+  rate: string | null;
   coefficient_description: string | null;
   uom_id: string;
   uom_code: string;
@@ -286,6 +287,7 @@ export function useCreateConstructionTemplate() {
       construction_subtype?: string | null;
       material_id: string;
       coefficient: string;
+      rate?: string | null;
       coefficient_description?: string | null;
       uom_id: string;
     }) => (await apiClient.post<BoqConstructionTemplateRead>('/construction-templates', data)).data,
@@ -298,7 +300,7 @@ export function useUpdateConstructionTemplate() {
   return useMutation({
     mutationFn: async ({ id, data }: {
       id: string;
-      data: { coefficient?: string; coefficient_description?: string | null; is_active?: boolean };
+      data: { coefficient?: string; rate?: string | null; coefficient_description?: string | null; is_active?: boolean };
     }) => (await apiClient.patch<BoqConstructionTemplateRead>(`/construction-templates/${id}`, data)).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['construction-templates'] }),
   });

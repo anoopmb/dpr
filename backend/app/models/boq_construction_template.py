@@ -35,6 +35,7 @@ class BoqConstructionTemplate(TimestampedBase):
         UUID(as_uuid=True), ForeignKey("material_master.id", ondelete="RESTRICT"), nullable=False
     )
     coefficient: Mapped[Decimal] = mapped_column(Numeric(14, 6), nullable=False)
+    rate: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     coefficient_description: Mapped[str | None] = mapped_column(String(100), nullable=True)
     uom_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("uom_master.id", ondelete="RESTRICT"), nullable=False

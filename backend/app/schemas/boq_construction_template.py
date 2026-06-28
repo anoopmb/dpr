@@ -10,6 +10,7 @@ class BoqConstructionTemplateCreate(BaseModel):
     construction_subtype: str | None = Field(default=None, max_length=20)
     material_id: uuid.UUID
     coefficient: Decimal = Field(gt=0)
+    rate: Decimal | None = Field(default=None, ge=0)
     coefficient_description: str | None = Field(default=None, max_length=100)
     uom_id: uuid.UUID
     is_active: bool = True
@@ -17,6 +18,7 @@ class BoqConstructionTemplateCreate(BaseModel):
 
 class BoqConstructionTemplateUpdate(BaseModel):
     coefficient: Decimal | None = Field(default=None, gt=0)
+    rate: Decimal | None = Field(default=None, ge=0)
     coefficient_description: str | None = None
     uom_id: uuid.UUID | None = None
     is_active: bool | None = None
@@ -32,6 +34,7 @@ class BoqConstructionTemplateRead(BaseModel):
     material_name: str = ""
     material_code: str = ""
     coefficient: Decimal
+    rate: Decimal | None
     coefficient_description: str | None
     uom_id: uuid.UUID
     uom_code: str = ""
@@ -48,6 +51,7 @@ class BoqConstructionTemplateRead(BaseModel):
             material_name=obj.material.name if obj.material else "",
             material_code=obj.material.code if obj.material else "",
             coefficient=obj.coefficient,
+            rate=obj.rate,
             coefficient_description=obj.coefficient_description,
             uom_id=obj.uom_id,
             uom_code=obj.uom.code if obj.uom else "",

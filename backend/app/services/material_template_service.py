@@ -66,7 +66,7 @@ class MaterialTemplateService:
                 computed_qty=qty,
                 uom_id=t.uom_id,
                 uom_code=uom.code if uom else "",
-                rate=t.material.cost_rate,
+                rate=t.rate if t.rate is not None else t.material.cost_rate,
             ))
         return results
 
@@ -104,7 +104,7 @@ class MaterialTemplateService:
                 computed_qty=qty,
                 uom_id=t.uom_id,
                 uom_code=uom.code if uom else "",
-                rate=t.material.cost_rate,
+                rate=t.rate if t.rate is not None else t.material.cost_rate,
             ))
         return results
 
@@ -125,6 +125,6 @@ class MaterialTemplateService:
                 computed_qty=qty,
                 uom_id=t.uom_id,
                 uom_code=uom.code if uom else "",
-                rate=t.material.cost_rate,
+                rate=t.rate if t.rate is not None else t.material.cost_rate,
             ))
         return results
