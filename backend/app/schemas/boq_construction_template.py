@@ -6,7 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class BoqConstructionTemplateCreate(BaseModel):
-    construction_type: str = Field(pattern="^(PRIME_COAT|TACK_COAT|BM|DBM|BC)$")
+    construction_type: str = Field(pattern="^(CONCRETE|STEEL|PRIME_COAT|TACK_COAT|BM|DBM|BC)$")
+    construction_subtype: str | None = Field(default=None, max_length=20)
     material_id: uuid.UUID
     coefficient: Decimal = Field(gt=0)
     coefficient_description: str | None = Field(default=None, max_length=100)
@@ -26,6 +27,7 @@ class BoqConstructionTemplateRead(BaseModel):
 
     id: uuid.UUID
     construction_type: str
+    construction_subtype: str | None
     material_id: uuid.UUID
     material_name: str = ""
     material_code: str = ""
@@ -41,6 +43,7 @@ class BoqConstructionTemplateRead(BaseModel):
         return cls(
             id=obj.id,
             construction_type=obj.construction_type,
+            construction_subtype=obj.construction_subtype,
             material_id=obj.material_id,
             material_name=obj.material.name if obj.material else "",
             material_code=obj.material.code if obj.material else "",

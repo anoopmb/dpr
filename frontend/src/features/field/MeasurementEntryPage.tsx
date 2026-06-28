@@ -32,11 +32,8 @@ import { getCurrentPosition } from '@/utils/geolocation';
 import { RequireAttendance } from '@/components/field/RequireAttendance';
 import { useThemeMode } from '@/theme/theme-context';
 import { useDateFormat, useNumberFormat } from '@/utils/format';
-import { CONSTRUCTION_TYPE_LABELS } from '@/api/hooks/useBoq';
+import { CONSTRUCTION_TYPE_LABELS, useConstructionTemplates } from '@/api/hooks/useBoq';
 import type { BoqConstructionType } from '@/api/hooks/useBoq';
-
-const SUPPORTED_CONCRETE_GRADES = ['M10', 'M15', 'M20', 'M25', 'M30', 'M35', 'M40'];
-const SUPPORTED_STEEL_DIAMETERS = [10, 12, 16, 20, 25, 32];
 
 const FIELD_LABELS: Record<string, string> = {
   length: 'Length (m)',
@@ -61,14 +58,10 @@ interface SteelRow {
 let steelKeyCounter = 0;
 const nextSteelKey = () => `s-${++steelKeyCounter}`;
 
-function computeSteelWeight(rows: SteelRow[]): number {
-  const COEFFS: Record<number, number> = {
-    10: 0.000617, 12: 0.000888, 16: 0.001580,
-    20: 0.002460, 25: 0.003850, 32: 0.006320,
-  };
+function computeSteelWeight(rows: SteelRow[], coeffMap: Record<number, number>): number {
   return rows.reduce((sum, r) => {
     if (!r.bar_count || !r.length_m) return sum;
-    return sum + r.bar_count * r.length_m * (COEFFS[r.diameter_mm] ?? 0);
+    return sum + r.bar_count * r.length_m * (coeffMap[r.diameter_mm] ?? 0);
   }, 0);
 }
 
@@ -129,7 +122,7 @@ export function MeasurementEntryPage() {
   const [boqItemId, setBoqItemId] = useState<string | null>(null);
   const [dimensions, setDimensions] = useState<Record<string, number>>({});
   const [concreteGrade, setConcreteGrade] = useState<string | null>(null);
-  const [steelRows, setSteelRows] = useState<SteelRow[]>([{ key: nextSteelKey(), description: '', diameter_mm: 12, bar_count: null, length_m: null }]);
+  const [steelRows, setSteelRows] = useState<SteelRow[]>([{ key: nextSteelKey(), description: '', diameter_mm: 0, bar_count: null, length_m: null }]);
   const [chainage, setChainage] = useState<string>('');
   const [photo, setPhoto] = useState<File | null>(null);
   const [recordedToday, setRecordedToday] = useState<{ id: string; label: string; qty: string }[]>([]);
@@ -138,6 +131,28 @@ export function MeasurementEntryPage() {
   const constructionType: BoqConstructionType = (boqItem?.construction_type ?? 'GENERAL') as BoqConstructionType;
   const workType = (workTypes ?? []).find((w) => w.id === boqItem?.work_type_id);
   const dimensionFields = useMemo(() => workType?.dimension_fields ?? [], [workType]);
+
+  const { data: steelTemplates } = useConstructionTemplates('STEEL');
+  const { data: concreteTemplates } = useConstructionTemplates('CONCRETE');
+
+  const steelCoeffMap = useMemo<Record<number, number>>(() => {
+    const map: Record<number, number> = {};
+    (steelTemplates ?? []).filter((t) => t.is_active && t.construction_subtype).forEach((t) => {
+      map[parseInt(t.construction_subtype!)] = parseFloat(t.coefficient);
+    });
+    return map;
+  }, [steelTemplates]);
+
+  const steelDiameters = useMemo(
+    () => Object.keys(steelCoeffMap).map(Number).sort((a, b) => a - b),
+    [steelCoeffMap],
+  );
+
+  const concreteGrades = useMemo(() => {
+    const grades = new Set<string>();
+    (concreteTemplates ?? []).filter((t) => t.is_active && t.construction_subtype).forEach((t) => grades.add(t.construction_subtype!));
+    return Array.from(grades).sort();
+  }, [concreteTemplates]);
 
   const isSteel = constructionType === 'STEEL';
   const isConcrete = constructionType === 'CONCRETE';
@@ -148,7 +163,10 @@ export function MeasurementEntryPage() {
     [isSteel, workType, dimensionFields, dimensions],
   );
 
-  const steelWeightMt = useMemo(() => (isSteel ? computeSteelWeight(steelRows) : 0), [isSteel, steelRows]);
+  const steelWeightMt = useMemo(
+    () => (isSteel ? computeSteelWeight(steelRows, steelCoeffMap) : 0),
+    [isSteel, steelRows, steelCoeffMap],
+  );
 
   const quantity = isSteel ? steelWeightMt : regularQty;
 
@@ -156,7 +174,7 @@ export function MeasurementEntryPage() {
     setBoqItemId(value);
     setDimensions({});
     setConcreteGrade(null);
-    setSteelRows([{ key: nextSteelKey(), description: '', diameter_mm: 12, bar_count: null, length_m: null }]);
+    setSteelRows([{ key: nextSteelKey(), description: '', diameter_mm: 0, bar_count: null, length_m: null }]);
   };
 
   const patchSteelRow = (key: string, patch: Partial<SteelRow>) => {
@@ -186,7 +204,7 @@ export function MeasurementEntryPage() {
           size="small"
           value={row.diameter_mm}
           onChange={(v) => patchSteelRow(row.key, { diameter_mm: v })}
-          options={SUPPORTED_STEEL_DIAMETERS.map((d) => ({ value: d, label: `${d}mm` }))}
+          options={steelDiameters.map((d) => ({ value: d, label: `${d}mm` }))}
           style={{ width: '100%' }}
         />
       ),
@@ -226,13 +244,11 @@ export function MeasurementEntryPage() {
       width: 80,
       align: 'right' as const,
       render: (_, row) => {
-        const COEFFS: Record<number, number> = {
-          10: 0.000617, 12: 0.000888, 16: 0.001580,
-          20: 0.002460, 25: 0.003850, 32: 0.006320,
-        };
         if (!row.bar_count || !row.length_m) return <Typography.Text type="secondary">—</Typography.Text>;
-        const w = row.bar_count * row.length_m * (COEFFS[row.diameter_mm] ?? 0);
-        return <Typography.Text>{w.toFixed(4)}</Typography.Text>;
+        const coeff = steelCoeffMap[row.diameter_mm];
+        if (coeff == null) return <Typography.Text type="secondary">—</Typography.Text>;
+        const w = row.bar_count * row.length_m * coeff;
+        return <Typography.Text>{w.toFixed(6)}</Typography.Text>;
       },
     },
     {
@@ -323,7 +339,7 @@ export function MeasurementEntryPage() {
       setBoqItemId(null);
       setDimensions({});
       setConcreteGrade(null);
-      setSteelRows([{ key: nextSteelKey(), description: '', diameter_mm: 12, bar_count: null, length_m: null }]);
+      setSteelRows([{ key: nextSteelKey(), description: '', diameter_mm: 0, bar_count: null, length_m: null }]);
       setChainage('');
       setPhoto(null);
     } catch {
@@ -450,7 +466,7 @@ export function MeasurementEntryPage() {
                     size="small"
                     style={{ marginTop: 8 }}
                     onClick={() =>
-                      setSteelRows((prev) => [...prev, { key: nextSteelKey(), description: '', diameter_mm: 12, bar_count: null, length_m: null }])
+                      setSteelRows((prev) => [...prev, { key: nextSteelKey(), description: '', diameter_mm: steelDiameters[0] ?? 0, bar_count: null, length_m: null }])
                     }
                   >
                     Add Row
@@ -475,7 +491,7 @@ export function MeasurementEntryPage() {
                     placeholder="Select grade"
                     value={concreteGrade ?? undefined}
                     onChange={setConcreteGrade}
-                    options={SUPPORTED_CONCRETE_GRADES.map((g) => ({ value: g, label: g }))}
+                    options={concreteGrades.map((g) => ({ value: g, label: g }))}
                     style={{ width: 200 }}
                   />
                 </Form.Item>

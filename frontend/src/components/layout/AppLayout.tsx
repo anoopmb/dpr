@@ -204,7 +204,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const [openKeys, setOpenKeys] = useState<string[]>(() => {
     if (isField) return [];
     for (const group of desktopMenuGroups) {
-      if (group.children.some((item) => location.pathname.startsWith(item.key))) return [group.key];
+      const sortedChildren = [...group.children].sort((a, b) => b.key.length - a.key.length);
+      if (sortedChildren.some((item) => location.pathname.startsWith(item.key))) return [group.key];
     }
     if (isAdmin && fieldMenuItems.some((item) => location.pathname.startsWith(item.key))) return ['grp-field'];
     return [];
@@ -216,7 +217,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
   };
 
   const selectedKey = useMemo(() => {
-    const match = allNavKeys.find((k) => location.pathname.startsWith(k));
+    const sorted = [...allNavKeys].sort((a, b) => b.length - a.length);
+    const match = sorted.find((k) => location.pathname.startsWith(k));
     return match ? [match] : [allNavKeys[0]];
   }, [allNavKeys, location.pathname]);
 

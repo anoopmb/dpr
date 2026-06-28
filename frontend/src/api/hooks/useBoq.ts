@@ -28,6 +28,7 @@ export const CONSTRUCTION_TYPE_COLORS: Record<BoqConstructionType, string> = {
 export interface BoqConstructionTemplateRead {
   id: string;
   construction_type: string;
+  construction_subtype: string | null;
   material_id: string;
   material_name: string;
   material_code: string;
@@ -282,6 +283,7 @@ export function useCreateConstructionTemplate() {
   return useMutation({
     mutationFn: async (data: {
       construction_type: string;
+      construction_subtype?: string | null;
       material_id: string;
       coefficient: string;
       coefficient_description?: string | null;

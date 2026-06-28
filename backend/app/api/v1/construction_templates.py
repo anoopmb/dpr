@@ -13,7 +13,7 @@ from app.schemas.boq_construction_template import (
     BoqConstructionTemplateUpdate,
 )
 from app.schemas.measurement import AutoMaterialRead
-from app.services.material_template_service import SUPPORTED_CONCRETE_GRADES, MaterialTemplateService
+from app.services.material_template_service import MaterialTemplateService
 
 templates_router = APIRouter(prefix="/construction-templates", tags=["construction-templates"])
 material_preview_router = APIRouter(prefix="/material-templates", tags=["construction-templates"])
@@ -26,10 +26,13 @@ async def list_construction_templates(
     session: SessionDep,
     _: CurrentUserDep,
     construction_type: str | None = Query(default=None),
+    construction_subtype: str | None = Query(default=None),
 ) -> list[BoqConstructionTemplateRead]:
     q = sa_select(BoqConstructionTemplate)
     if construction_type:
         q = q.where(BoqConstructionTemplate.construction_type == construction_type)
+    if construction_subtype is not None:
+        q = q.where(BoqConstructionTemplate.construction_subtype == construction_subtype)
     rows = await session.execute(q)
     return [BoqConstructionTemplateRead.from_orm_with_joins(r) for r in rows.scalars().all()]
 
@@ -100,8 +103,8 @@ async def preview_material_template(
     svc = MaterialTemplateService(session)
 
     if construction_type == "CONCRETE":
-        if not construction_subtype or construction_subtype not in SUPPORTED_CONCRETE_GRADES:
-            raise DomainError(f"construction_subtype required for CONCRETE. Supported: {SUPPORTED_CONCRETE_GRADES}")
+        if not construction_subtype:
+            raise DomainError("construction_subtype (grade) required for CONCRETE.")
         results = await svc.compute_concrete_materials(construction_subtype, qty)
     elif construction_type == "STEEL":
         raise DomainError("STEEL preview requires steel_lines; use the measurement create endpoint.")

@@ -25,7 +25,26 @@ import {
 } from '@/api/hooks/useBoq';
 import { useMaterials, useUoms } from '@/api/hooks/useMasters';
 
-const BITUMINOUS_TYPES = [
+interface TypeConfig {
+  key: string;
+  label: string;
+  subtypeLabel?: string;
+  subtypeOptions?: { value: string; label: string }[];
+}
+
+const TYPE_CONFIGS: TypeConfig[] = [
+  {
+    key: 'CONCRETE',
+    label: 'Concrete',
+    subtypeLabel: 'Grade',
+    subtypeOptions: ['M10', 'M15', 'M20', 'M25', 'M30', 'M35', 'M40'].map((g) => ({ value: g, label: g })),
+  },
+  {
+    key: 'STEEL',
+    label: 'Steel (HYSD Bars)',
+    subtypeLabel: 'Diameter',
+    subtypeOptions: ['10', '12', '16', '20', '25', '32'].map((d) => ({ value: d, label: `${d} mm` })),
+  },
   { key: 'PRIME_COAT', label: 'Prime Coat' },
   { key: 'TACK_COAT', label: 'Tack Coat' },
   { key: 'BM', label: 'Bituminous Macadam (BM)' },
@@ -35,18 +54,19 @@ const BITUMINOUS_TYPES = [
 
 interface TemplateFormValues {
   material_id: string;
+  construction_subtype?: string;
   coefficient: number;
   coefficient_description?: string | null;
   uom_id: string;
 }
 
 interface TemplatesTabProps {
-  constructionType: string;
+  config: TypeConfig;
   isActive: boolean;
 }
 
-function TemplatesTab({ constructionType, isActive }: TemplatesTabProps) {
-  const { data: templates, isLoading } = useConstructionTemplates(isActive ? constructionType : undefined);
+function TemplatesTab({ config, isActive }: TemplatesTabProps) {
+  const { data: templates, isLoading } = useConstructionTemplates(isActive ? config.key : undefined);
   const { data: materials } = useMaterials();
   const { data: uoms } = useUoms();
   const createTemplate = useCreateConstructionTemplate();
@@ -58,12 +78,14 @@ function TemplatesTab({ constructionType, isActive }: TemplatesTabProps) {
   const [addForm] = Form.useForm<TemplateFormValues>();
   const [editForm] = Form.useForm<Partial<TemplateFormValues>>();
 
-  const filtered = (templates ?? []).filter((t) => t.construction_type === constructionType);
+  const hasSubtype = !!config.subtypeOptions;
+  const filtered = (templates ?? []).filter((t) => t.construction_type === config.key);
 
   const handleAdd = async (values: TemplateFormValues) => {
     try {
       await createTemplate.mutateAsync({
-        construction_type: constructionType,
+        construction_type: config.key,
+        construction_subtype: hasSubtype ? values.construction_subtype ?? null : null,
         material_id: values.material_id,
         coefficient: String(values.coefficient),
         coefficient_description: values.coefficient_description || null,
@@ -73,7 +95,7 @@ function TemplatesTab({ constructionType, isActive }: TemplatesTabProps) {
       setAddModal(false);
       addForm.resetFields();
     } catch {
-      message.error('Could not add template — check for duplicate material.');
+      message.error('Could not add template — check for duplicate material / subtype combination.');
     }
   };
 
@@ -103,14 +125,17 @@ function TemplatesTab({ constructionType, isActive }: TemplatesTabProps) {
     }
   };
 
-  const materialById = new Map((materials ?? []).map((m) => [m.id, m]));
-  const uomById = new Map((uoms ?? []).map((u) => [u.id, u]));
-
   const columns: TableColumnsType<BoqConstructionTemplateRead> = [
+    ...(hasSubtype ? [{
+      title: config.subtypeLabel,
+      dataIndex: 'construction_subtype',
+      width: 100,
+      render: (v: string | null) => v ? <Tag color="blue">{config.key === 'STEEL' ? `${v} mm` : v}</Tag> : '—',
+    }] : []),
     {
       title: 'Material',
       key: 'material',
-      render: (_, t) => (
+      render: (_: unknown, t: BoqConstructionTemplateRead) => (
         <Space direction="vertical" size={0}>
           <Typography.Text strong>{t.material_name}</Typography.Text>
           <Typography.Text type="secondary" style={{ fontSize: 11 }}>{t.material_code}</Typography.Text>
@@ -120,8 +145,8 @@ function TemplatesTab({ constructionType, isActive }: TemplatesTabProps) {
     {
       title: 'Coefficient',
       dataIndex: 'coefficient',
-      width: 120,
-      render: (v: string, t) => (
+      width: 140,
+      render: (v: string, t: BoqConstructionTemplateRead) => (
         <Space direction="vertical" size={0}>
           <Typography.Text strong>{v}</Typography.Text>
           {t.coefficient_description && (
@@ -134,7 +159,7 @@ function TemplatesTab({ constructionType, isActive }: TemplatesTabProps) {
       title: 'UOM',
       key: 'uom',
       width: 80,
-      render: (_, t) => <Tag>{t.uom_code || uomById.get(t.uom_id)?.code || '—'}</Tag>,
+      render: (_: unknown, t: BoqConstructionTemplateRead) => <Tag>{t.uom_code || '—'}</Tag>,
     },
     {
       title: 'Status',
@@ -146,7 +171,7 @@ function TemplatesTab({ constructionType, isActive }: TemplatesTabProps) {
       title: '',
       key: 'actions',
       width: 80,
-      render: (_, t) => (
+      render: (_: unknown, t: BoqConstructionTemplateRead) => (
         <Space size={4}>
           <Button
             size="small"
@@ -186,7 +211,7 @@ function TemplatesTab({ constructionType, isActive }: TemplatesTabProps) {
         columns={columns}
         loading={isLoading}
         pagination={false}
-        locale={{ emptyText: 'No templates configured for this type. Click "Add Template" to add one.' }}
+        locale={{ emptyText: 'No templates configured. Click "Add Template" to add one.' }}
       />
 
       <Modal
@@ -198,6 +223,18 @@ function TemplatesTab({ constructionType, isActive }: TemplatesTabProps) {
         destroyOnHidden
       >
         <Form form={addForm} layout="vertical" onFinish={handleAdd}>
+          {hasSubtype && (
+            <Form.Item
+              name="construction_subtype"
+              label={config.subtypeLabel}
+              rules={[{ required: true, message: `${config.subtypeLabel} is required` }]}
+            >
+              <Select
+                placeholder={`Select ${config.subtypeLabel?.toLowerCase()}`}
+                options={config.subtypeOptions}
+              />
+            </Form.Item>
+          )}
           <Form.Item name="material_id" label="Material" rules={[{ required: true }]}>
             <Select
               showSearch
@@ -218,14 +255,13 @@ function TemplatesTab({ constructionType, isActive }: TemplatesTabProps) {
           </Form.Item>
           <Form.Item
             name="coefficient"
-            label="Coefficient (qty per unit of BOQ quantity)"
+            label="Coefficient (material qty per unit of BOQ quantity)"
             rules={[{ required: true }]}
-            extra="E.g. 0.8 means 0.8 kg of binder per m² of surface area."
           >
-            <InputNumber min={0} step={0.0001} precision={4} style={{ width: '100%' }} />
+            <InputNumber min={0} step={0.0001} precision={6} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="coefficient_description" label="Coefficient Notes (optional)">
-            <Input placeholder="e.g. kg/m² @ 75mm thickness" />
+          <Form.Item name="coefficient_description" label="Notes (optional)">
+            <Input placeholder="e.g. kg/m² @ 75mm, IS 10262 M20 nominal mix" />
           </Form.Item>
         </Form>
       </Modal>
@@ -239,12 +275,8 @@ function TemplatesTab({ constructionType, isActive }: TemplatesTabProps) {
         destroyOnHidden
       >
         <Form form={editForm} layout="vertical" onFinish={handleEdit}>
-          <Form.Item
-            name="coefficient"
-            label="Coefficient"
-            rules={[{ required: true }]}
-          >
-            <InputNumber min={0} step={0.0001} precision={4} style={{ width: '100%' }} />
+          <Form.Item name="coefficient" label="Coefficient" rules={[{ required: true }]}>
+            <InputNumber min={0} step={0.0001} precision={6} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="coefficient_description" label="Notes (optional)">
             <Input />
@@ -256,7 +288,7 @@ function TemplatesTab({ constructionType, isActive }: TemplatesTabProps) {
 }
 
 export function ConstructionTemplatesPage() {
-  const [activeTab, setActiveTab] = useState('PRIME_COAT');
+  const [activeTab, setActiveTab] = useState('CONCRETE');
 
   return (
     <div>
@@ -264,17 +296,17 @@ export function ConstructionTemplatesPage() {
         Construction Material Templates
       </Typography.Title>
       <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-        Configure material coefficients for bituminous construction types. When a measurement is
-        recorded for a BOQ item of these types, materials are auto-calculated and added to the DPR.
+        Configure material coefficients per construction type. When a measurement is recorded for a
+        BOQ item of these types, materials are auto-calculated and added to the DPR.
       </Typography.Text>
 
       <Tabs
         activeKey={activeTab}
         onChange={setActiveTab}
-        items={BITUMINOUS_TYPES.map(({ key, label }) => ({
-          key,
-          label,
-          children: <TemplatesTab constructionType={key} isActive={activeTab === key} />,
+        items={TYPE_CONFIGS.map((cfg) => ({
+          key: cfg.key,
+          label: cfg.label,
+          children: <TemplatesTab config={cfg} isActive={activeTab === cfg.key} />,
         }))}
       />
     </div>

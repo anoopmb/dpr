@@ -20,8 +20,6 @@ from app.services.audit_service import AuditService, serialize_model
 from app.services.dpr_service import DprProductionService
 from app.services.material_template_service import (
     BITUMINOUS_TYPES,
-    STEEL_COEFFICIENTS,
-    SUPPORTED_CONCRETE_GRADES,
     MaterialTemplateResult,
     MaterialTemplateService,
 )
@@ -51,21 +49,27 @@ class MeasurementService:
         construction_type = boq_item.construction_type
         org_settings = await self.settings_service.get()
 
+        template_svc = MaterialTemplateService(self.session)
         if construction_type == "STEEL":
             if not data.steel_lines:
                 raise DomainError("Steel measurements require at least one bar entry.")
-            template_svc = MaterialTemplateService(self.session)
+            coeff_map = await template_svc.get_steel_coeff_map()
             computed_qty = Decimal("0")
             for line in data.steel_lines:
-                computed_qty += template_svc.compute_steel_line_weight(
-                    line.diameter_mm, line.bar_count, line.length_m
-                )
+                t = coeff_map.get(line.diameter_mm)
+                if t is None:
+                    raise DomainError(
+                        f"No steel template configured for {line.diameter_mm}mm. "
+                        "Add it in Settings → Construction Templates."
+                    )
+                computed_qty += MaterialTemplateService.line_weight(line.bar_count, line.length_m, t.coefficient)
             computed_qty = computed_qty.quantize(Decimal("0.001"))
         else:
+            coeff_map = {}
             work_type = await self._get_work_type(boq_item.work_type_id)
             if construction_type == "CONCRETE":
-                if not data.construction_subtype or data.construction_subtype not in SUPPORTED_CONCRETE_GRADES:
-                    raise DomainError(f"Concrete grade required. Supported: {SUPPORTED_CONCRETE_GRADES}")
+                if not data.construction_subtype:
+                    raise DomainError("Concrete grade is required (e.g. M20).")
                 if not data.dimensions:
                     raise DomainError("Dimensions are required for concrete measurements.")
             computed_qty = calculate_quantity(
@@ -100,17 +104,18 @@ class MeasurementService:
         await self.session.flush()
 
         if construction_type == "STEEL":
-            template_svc = MaterialTemplateService(self.session)
             for line in data.steel_lines:
-                coeff_val = STEEL_COEFFICIENTS.get(line.diameter_mm, Decimal("0"))
-                weight = template_svc.compute_steel_line_weight(line.diameter_mm, line.bar_count, line.length_m)
+                t = coeff_map.get(line.diameter_mm)
+                if t is None:
+                    continue
+                weight = MaterialTemplateService.line_weight(line.bar_count, line.length_m, t.coefficient)
                 self.session.add(MeasurementSteelLine(
                     measurement_id=measurement.id,
                     description=line.description,
                     diameter_mm=line.diameter_mm,
                     bar_count=line.bar_count,
                     length_m=line.length_m,
-                    coefficient=coeff_val,
+                    coefficient=t.coefficient,
                     computed_weight_mt=weight,
                 ))
 
@@ -154,21 +159,27 @@ class MeasurementService:
         construction_type = boq_item.construction_type
         org_settings = await self.settings_service.get()
 
+        template_svc = MaterialTemplateService(self.session)
         if construction_type == "STEEL":
             if not data.steel_lines:
                 raise DomainError("Steel measurements require at least one bar entry.")
-            template_svc = MaterialTemplateService(self.session)
+            coeff_map = await template_svc.get_steel_coeff_map()
             computed_qty = Decimal("0")
             for line in data.steel_lines:
-                computed_qty += template_svc.compute_steel_line_weight(
-                    line.diameter_mm, line.bar_count, line.length_m
-                )
+                t = coeff_map.get(line.diameter_mm)
+                if t is None:
+                    raise DomainError(
+                        f"No steel template configured for {line.diameter_mm}mm. "
+                        "Add it in Settings → Construction Templates."
+                    )
+                computed_qty += MaterialTemplateService.line_weight(line.bar_count, line.length_m, t.coefficient)
             computed_qty = computed_qty.quantize(Decimal("0.001"))
         else:
+            coeff_map = {}
             work_type = await self._get_work_type(measurement.work_type_id)
             if construction_type == "CONCRETE":
-                if not data.construction_subtype or data.construction_subtype not in SUPPORTED_CONCRETE_GRADES:
-                    raise DomainError(f"Concrete grade required. Supported: {SUPPORTED_CONCRETE_GRADES}")
+                if not data.construction_subtype:
+                    raise DomainError("Concrete grade is required (e.g. M20).")
                 if not data.dimensions:
                     raise DomainError("Dimensions are required for concrete measurements.")
             computed_qty = calculate_quantity(
@@ -196,17 +207,18 @@ class MeasurementService:
             await self.session.execute(
                 delete(MeasurementSteelLine).where(MeasurementSteelLine.measurement_id == measurement.id)
             )
-            template_svc = MaterialTemplateService(self.session)
             for line in data.steel_lines:
-                coeff_val = STEEL_COEFFICIENTS.get(line.diameter_mm, Decimal("0"))
-                weight = template_svc.compute_steel_line_weight(line.diameter_mm, line.bar_count, line.length_m)
+                t = coeff_map.get(line.diameter_mm)
+                if t is None:
+                    continue
+                weight = MaterialTemplateService.line_weight(line.bar_count, line.length_m, t.coefficient)
                 self.session.add(MeasurementSteelLine(
                     measurement_id=measurement.id,
                     description=line.description,
                     diameter_mm=line.diameter_mm,
                     bar_count=line.bar_count,
                     length_m=line.length_m,
-                    coefficient=coeff_val,
+                    coefficient=t.coefficient,
                     computed_weight_mt=weight,
                 ))
 
