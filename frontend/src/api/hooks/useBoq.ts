@@ -25,19 +25,30 @@ export const CONSTRUCTION_TYPE_COLORS: Record<BoqConstructionType, string> = {
   BC: 'cyan',
 };
 
-export interface BoqConstructionTemplateRead {
+export interface BoqConstructionTemplateItemRead {
   id: string;
-  construction_type: string;
-  construction_subtype: string | null;
+  template_id: string;
   material_id: string;
   material_name: string;
   material_code: string;
   coefficient: string;
   rate: string | null;
-  coefficient_description: string | null;
   uom_id: string;
   uom_code: string;
+  notes: string | null;
+  bar_diameter_mm: number | null;
+  sort_order: number;
+}
+
+export interface BoqConstructionTemplateRead {
+  id: string;
+  name: string;
+  description: string | null;
+  construction_type: string;
+  construction_subtype: string | null;
   is_active: boolean;
+  items: BoqConstructionTemplateItemRead[];
+  created_at: string;
 }
 
 export interface BoqItemRead {
@@ -269,13 +280,15 @@ export function usePendingBoqRevisions(projectId: string | null) {
   });
 }
 
-export function useConstructionTemplates(constructionType?: string) {
+export function useConstructionTemplates(constructionType?: string, constructionSubtype?: string) {
   return useQuery({
-    queryKey: ['construction-templates', constructionType ?? 'all'],
-    queryFn: async () =>
-      (await apiClient.get<BoqConstructionTemplateRead[]>('/construction-templates', {
-        params: constructionType ? { construction_type: constructionType } : {},
-      })).data,
+    queryKey: ['construction-templates', constructionType ?? 'all', constructionSubtype ?? 'all'],
+    queryFn: async () => {
+      const params: Record<string, string> = {};
+      if (constructionType) params.construction_type = constructionType;
+      if (constructionSubtype) params.construction_subtype = constructionSubtype;
+      return (await apiClient.get<BoqConstructionTemplateRead[]>('/construction-templates', { params })).data;
+    },
   });
 }
 
@@ -283,13 +296,11 @@ export function useCreateConstructionTemplate() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: {
+      name: string;
+      description?: string | null;
       construction_type: string;
       construction_subtype?: string | null;
-      material_id: string;
-      coefficient: string;
-      rate?: string | null;
-      coefficient_description?: string | null;
-      uom_id: string;
+      is_active?: boolean;
     }) => (await apiClient.post<BoqConstructionTemplateRead>('/construction-templates', data)).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['construction-templates'] }),
   });
@@ -300,7 +311,7 @@ export function useUpdateConstructionTemplate() {
   return useMutation({
     mutationFn: async ({ id, data }: {
       id: string;
-      data: { coefficient?: string; rate?: string | null; coefficient_description?: string | null; is_active?: boolean };
+      data: { name?: string; description?: string | null; is_active?: boolean };
     }) => (await apiClient.patch<BoqConstructionTemplateRead>(`/construction-templates/${id}`, data)).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['construction-templates'] }),
   });
@@ -310,6 +321,59 @@ export function useDeleteConstructionTemplate() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => { await apiClient.delete(`/construction-templates/${id}`); return id; },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['construction-templates'] }),
+  });
+}
+
+export function useAddTemplateItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ templateId, data }: {
+      templateId: string;
+      data: {
+        material_id: string;
+        coefficient: string;
+        rate?: string | null;
+        uom_id: string;
+        notes?: string | null;
+        bar_diameter_mm?: number | null;
+        sort_order?: number;
+      };
+    }) => (await apiClient.post<BoqConstructionTemplateItemRead>(
+      `/construction-templates/${templateId}/items`, data
+    )).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['construction-templates'] }),
+  });
+}
+
+export function useUpdateTemplateItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ templateId, itemId, data }: {
+      templateId: string;
+      itemId: string;
+      data: {
+        coefficient?: string;
+        rate?: string | null;
+        uom_id?: string;
+        notes?: string | null;
+        bar_diameter_mm?: number | null;
+        sort_order?: number;
+      };
+    }) => (await apiClient.patch<BoqConstructionTemplateItemRead>(
+      `/construction-templates/${templateId}/items/${itemId}`, data
+    )).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['construction-templates'] }),
+  });
+}
+
+export function useDeleteTemplateItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ templateId, itemId }: { templateId: string; itemId: string }) => {
+      await apiClient.delete(`/construction-templates/${templateId}/items/${itemId}`);
+      return { templateId, itemId };
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['construction-templates'] }),
   });
 }

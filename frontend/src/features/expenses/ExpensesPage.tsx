@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button, DatePicker, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Typography, message } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
-import type { AxiosError } from 'axios';
+import { getApiErrorMessage } from '@/utils/api-error';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
 import { useExpenseCategories } from '@/api/hooks/useMasters';
@@ -61,8 +61,8 @@ export function ExpensesPage() {
       message.success('Expense recorded');
       setCreateModalOpen(false);
       createForm.resetFields();
-    } catch {
-      message.error('Could not record expense');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not record expense'));
     }
   };
 
@@ -93,8 +93,8 @@ export function ExpensesPage() {
       message.success('Expense updated');
       setEditingExpense(null);
       editForm.resetFields();
-    } catch {
-      message.error('Could not update expense');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not update expense'));
     }
   };
 
@@ -103,9 +103,7 @@ export function ExpensesPage() {
       await deleteExpense.mutateAsync({ id, projectId });
       message.success('Expense deleted');
     } catch (err) {
-      const status = (err as AxiosError)?.response?.status;
-      if (status === 409) message.error('Cannot delete — this expense is referenced by other data.');
-      else message.error('Could not delete expense');
+      message.error(getApiErrorMessage(err, 'Could not delete expense'));
     }
   };
 

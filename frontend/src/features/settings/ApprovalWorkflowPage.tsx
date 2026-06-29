@@ -15,7 +15,7 @@ import {
   message,
 } from 'antd';
 import { DeleteOutlined, PlusOutlined, DownOutlined, UpOutlined } from '@ant-design/icons';
-import { isAxiosError } from 'axios';
+import { getApiErrorMessage } from '@/utils/api-error';
 import {
   useCreateWorkflowDefinition,
   useDeleteWorkflowDefinition,
@@ -32,10 +32,6 @@ import type { UserRole } from '@/store/auth-store';
 const ALL_ROLES: UserRole[] = ['SITE_ENGINEER', 'PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'STORE_KEEPER', 'ADMIN'];
 const ROLE_OPTIONS = ALL_ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }));
 
-function errorMessage(err: unknown, fallback: string): string {
-  if (isAxiosError(err) && typeof err.response?.data?.message === 'string') return err.response.data.message;
-  return fallback;
-}
 
 let _levelSeq = 0;
 const nextLevelKey = () => `lvl-${++_levelSeq}`;
@@ -142,7 +138,7 @@ function WorkflowEditor({
       }
       message.success('Workflow saved');
     } catch (err) {
-      message.error(errorMessage(err, 'Could not save workflow'));
+      message.error(getApiErrorMessage(err, 'Could not save workflow'));
     }
   };
 
@@ -152,7 +148,7 @@ function WorkflowEditor({
       await deleteDefinition.mutateAsync(override.id);
       message.success('Reverted to org-wide default');
     } catch (err) {
-      message.error(errorMessage(err, 'Could not reset to default'));
+      message.error(getApiErrorMessage(err, 'Could not reset to default'));
     }
   };
 

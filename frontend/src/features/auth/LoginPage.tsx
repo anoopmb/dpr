@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button, Form, Input, Typography, message } from 'antd';
 import { useNavigate } from 'react-router-dom';
-import { isAxiosError } from 'axios';
+import { getApiErrorMessage } from '@/utils/api-error';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
 import { useAuthStore, type AuthUser, type UserRole } from '@/store/auth-store';
@@ -44,11 +44,7 @@ export function LoginPage() {
       setUser(user);
       navigate(user.role === 'SITE_ENGINEER' ? '/field/dpr-today' : '/dashboard');
     } catch (error) {
-      if (isAxiosError(error) && error.response?.status === 401) {
-        message.error('Incorrect User ID or password.');
-      } else {
-        message.error('Could not sign in. Please try again.');
-      }
+      message.error(getApiErrorMessage(error, 'Could not sign in. Please try again.'));
     } finally {
       setLoading(false);
     }

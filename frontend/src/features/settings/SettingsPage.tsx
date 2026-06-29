@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getApiErrorMessage } from '@/utils/api-error';
 import {
   Button,
   Card,
@@ -175,8 +176,8 @@ export function SettingsPage() {
         favicon_url: null,
       });
       message.success('Settings saved');
-    } catch {
-      message.error('Could not save settings');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not save settings'));
     }
   };
 

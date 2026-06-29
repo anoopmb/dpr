@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getApiErrorMessage } from '@/utils/api-error';
 import {
   Button,
   Col,
@@ -103,8 +104,8 @@ export function MaterialIndentsPage() {
       message.success('Material indent created');
       setModalOpen(false);
       form.resetFields();
-    } catch {
-      message.error('Could not create indent');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not create indent'));
     }
   };
 
@@ -112,8 +113,8 @@ export function MaterialIndentsPage() {
     try {
       await action.mutateAsync(id);
       message.success(`Indent ${label}`);
-    } catch {
-      message.error(`Could not ${label.toLowerCase()} indent`);
+    } catch (err) {
+      message.error(getApiErrorMessage(err, `Could not ${label.toLowerCase()} indent`));
     }
   };
 

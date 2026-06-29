@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { getApiErrorMessage } from '@/utils/api-error';
 import {
   Button,
   Descriptions,
@@ -177,8 +178,8 @@ export function MeasurementsPage() {
       });
       message.success('Measurement updated');
       setEditingMeasurement(null);
-    } catch {
-      message.error('Could not update measurement — check it does not exceed the BOQ tolerance.');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not update measurement'));
     }
   };
 
@@ -186,8 +187,8 @@ export function MeasurementsPage() {
     try {
       await deleteMeasurement.mutateAsync({ id: record.id, projectId: record.project_id });
       message.success('Measurement deleted');
-    } catch {
-      message.error('Could not delete measurement');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not delete measurement'));
     }
   };
 

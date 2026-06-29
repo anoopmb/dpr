@@ -11,6 +11,7 @@ from app.models.base import TimestampedBase
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
+    from app.models.boq_construction_template import BoqConstructionTemplate
     from app.models.measurement_steel_line import MeasurementSteelLine
 
 
@@ -61,8 +62,16 @@ class Measurement(TimestampedBase):
     billed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     chainage: Mapped[str | None] = mapped_column(String(100), nullable=True)
     rate: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
-    construction_subtype: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    boq_template_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("boq_construction_templates.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    boq_template_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
+    boq_template: Mapped["BoqConstructionTemplate | None"] = relationship(
+        "BoqConstructionTemplate", lazy="joined", foreign_keys=[boq_template_id]
+    )
     steel_lines: Mapped[list["MeasurementSteelLine"]] = relationship(
         "MeasurementSteelLine", back_populates="measurement",
         cascade="all, delete-orphan", lazy="selectin"

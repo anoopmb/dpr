@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getApiErrorMessage } from '@/utils/api-error';
 import { Button, Col, Empty, Form, Input, InputNumber, Modal, Row, Select, Space, Table, Tag, Typography, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
@@ -83,8 +84,8 @@ export function MyMaterialIndentsPage() {
       message.success('Material indent created');
       setModalOpen(false);
       form.resetFields();
-    } catch {
-      message.error('Could not create indent');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not create indent'));
     }
   };
 
@@ -92,8 +93,8 @@ export function MyMaterialIndentsPage() {
     try {
       await submitIndent.mutateAsync(id);
       message.success('Indent submitted');
-    } catch {
-      message.error('Could not submit indent');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not submit indent'));
     }
   };
 
@@ -101,8 +102,8 @@ export function MyMaterialIndentsPage() {
     try {
       await cancelIndent.mutateAsync(id);
       message.success('Indent cancelled');
-    } catch {
-      message.error('Could not cancel indent');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not cancel indent'));
     }
   };
 

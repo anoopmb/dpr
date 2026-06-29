@@ -29,7 +29,7 @@ import {
 } from 'antd';
 import type { TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
-import { isAxiosError } from 'axios';
+import { getApiErrorMessage } from '@/utils/api-error';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { RequireAttendance } from '@/components/field/RequireAttendance';
 import { useProjectContextStore } from '@/store/project-context-store';
@@ -72,7 +72,7 @@ import {
   useDeleteAttendance,
   type AttendanceRecordRead,
 } from '@/api/hooks/useAttendance';
-import { useBoqSections, useBoqItems, type BoqItemRead, type BoqSectionRead } from '@/api/hooks/useBoq';
+import { useBoqSections, useBoqItems, useConstructionTemplates, type BoqItemRead, type BoqSectionRead } from '@/api/hooks/useBoq';
 import { useMaterials, useMachinery, useUoms, useWorkTypes, useExpenseCategories, MACHINERY_HIRE_UNIT_LABELS } from '@/api/hooks/useMasters';
 import {
   useExpensesByHeader,
@@ -237,7 +237,6 @@ function AttendanceTab({
       }
       const photoUrl = photo ? await uploadPhoto.mutateAsync({ prefix: 'attendance', file: photo }) : undefined;
       let success = 0;
-      let alreadyIn = 0;
       for (const workerId of selectedWorkerIds) {
         try {
           await checkIn.mutateAsync({
@@ -251,17 +250,15 @@ function AttendanceTab({
           });
           success++;
         } catch (err) {
-          if (isAxiosError(err) && err.response?.data?.code === 'ALREADY_CHECKED_IN') alreadyIn++;
-          else message.error(`Check-in failed for one worker`);
+          message.error(getApiErrorMessage(err, 'Check-in failed for one worker'));
         }
       }
       if (success > 0) message.success(`${success} worker(s) checked in successfully`);
-      if (alreadyIn > 0) message.warning(`${alreadyIn} worker(s) were already checked in`);
       setSelectedWorkerIds([]);
       setPhoto(null);
       setPhotoPreviewUrl(null);
-    } catch {
-      message.error('Check-in failed');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Check-in failed'));
     }
   };
 
@@ -278,8 +275,8 @@ function AttendanceTab({
       });
       message.success(`${result.length} worker(s) marked present`);
       setSelectedWorkerIds([]);
-    } catch {
-      message.error('Could not mark workers present');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not mark workers present'));
     }
   };
 
@@ -454,8 +451,8 @@ function AttendanceTab({
                     try {
                       await deleteAttendance.mutateAsync({ recordId: row.id, projectId: row.project_id });
                       message.success('Attendance record removed');
-                    } catch {
-                      message.error('Could not remove record');
+                    } catch (err) {
+                      message.error(getApiErrorMessage(err, 'Could not remove record'));
                     }
                   }}
                   okText="Remove"
@@ -531,8 +528,8 @@ function LabourTab({
         },
       });
       removeDraft(draft.key);
-    } catch {
-      message.error('Could not add labour entry');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not add labour entry'));
     } finally {
       setSavingKeys((p) => { const s = new Set(p); s.delete(draft.key); return s; });
     }
@@ -542,19 +539,19 @@ function LabourTab({
     if (qty == null) return;
     try {
       await updateLabour.mutateAsync({ itemId: entry.id, data: { quantity: String(qty), rate: entry.rate } });
-    } catch { message.error('Could not update'); }
+    } catch (err) { message.error(getApiErrorMessage(err, 'Could not update')); }
   };
 
   const handleRateChange = async (entry: DprLabourRead, rate: number | null) => {
     if (rate == null) return;
     try {
       await updateLabour.mutateAsync({ itemId: entry.id, data: { quantity: entry.quantity, rate: String(rate) } });
-    } catch { message.error('Could not update rate'); }
+    } catch (err) { message.error(getApiErrorMessage(err, 'Could not update rate')); }
   };
 
   const handleDelete = async (entry: DprLabourRead) => {
     try { await deleteLabour.mutateAsync({ itemId: entry.id, headerId }); }
-    catch { message.error('Could not delete labour entry'); }
+    catch (err) { message.error(getApiErrorMessage(err, 'Could not delete labour entry')); }
   };
 
   const rows: LabourRow[] = [
@@ -674,7 +671,7 @@ function LabourTab({
                     itemId: row.entry.id,
                     data: { overtime_amount: v != null ? String(v) : null },
                   });
-                } catch { message.error('Could not update overtime'); }
+                } catch (err) { message.error(getApiErrorMessage(err, 'Could not update overtime')); }
               }}
             />
           )
@@ -789,7 +786,7 @@ const nextIssueKey = () => `iss-${++_issueSeq}`;
 interface LabourDraftRow { key: string; worker_id: string | null; quantity: number | null; rate: number | null; overtime_amount: number | null; }
 interface MatDraftRow { key: string; material_id: string | null; qty: number | null; uom_id: string | null; rate: number | null; }
 interface MachDraftRow { key: string; machinery_id: string | null; qty: number | null; hire_rate: number | null; hire_unit: string | null; }
-interface MeasDraftRow { key: string; boq_item_id: string | null; dimensions: Record<string, number>; chainage: string; qty: number | null; rate: number | null; }
+interface MeasDraftRow { key: string; boq_item_id: string | null; boq_template_id: string | null; dimensions: Record<string, number>; chainage: string; qty: number | null; rate: number | null; }
 interface IssueDraftRow { key: string; description: string; severity: IssueSeverity | null; }
 type LabourRow = { _kind: 'existing'; entry: DprLabourRead } | { _kind: 'draft'; draft: LabourDraftRow };
 type MatRow = { _kind: 'existing'; entry: DprMaterialRead } | { _kind: 'draft'; draft: MatDraftRow };
@@ -831,7 +828,7 @@ function MaterialsTab({
     try {
       await addMaterial.mutateAsync({ headerId, data: { material_id: draft.material_id, qty_consumed: String(draft.qty), uom_id: draft.uom_id, rate: draft.rate != null ? String(draft.rate) : undefined } });
       removeDraft(draft.key);
-    } catch { message.error('Could not add entry'); }
+    } catch (err) { message.error(getApiErrorMessage(err, 'Could not add entry')); }
     finally { setSavingKeys((p) => { const s = new Set(p); s.delete(draft.key); return s; }); }
   };
 
@@ -839,25 +836,25 @@ function MaterialsTab({
     const qty = parseFloat(raw);
     if (isNaN(qty) || qty === parseFloat(entry.qty_consumed)) return;
     try { await updateMaterial.mutateAsync({ itemId: entry.id, data: { qty_consumed: String(qty), uom_id: entry.uom_id, rate: entry.rate ?? undefined } }); }
-    catch { message.error('Could not update'); }
+    catch (err) { message.error(getApiErrorMessage(err, 'Could not update')); }
   };
 
   const saveRate = async (entry: DprMaterialRead, raw: string) => {
     const rate = raw ? parseFloat(raw) : null;
     if (rate === (entry.rate != null ? parseFloat(entry.rate) : null)) return;
     try { await updateMaterial.mutateAsync({ itemId: entry.id, data: { qty_consumed: entry.qty_consumed, uom_id: entry.uom_id, rate: rate != null ? String(rate) : undefined } }); }
-    catch { message.error('Could not update'); }
+    catch (err) { message.error(getApiErrorMessage(err, 'Could not update')); }
   };
 
   const saveUom = async (entry: DprMaterialRead, uomId: string) => {
     if (uomId === entry.uom_id) return;
     try { await updateMaterial.mutateAsync({ itemId: entry.id, data: { qty_consumed: entry.qty_consumed, uom_id: uomId, rate: entry.rate ?? undefined } }); }
-    catch { message.error('Could not update'); }
+    catch (err) { message.error(getApiErrorMessage(err, 'Could not update')); }
   };
 
   const handleDelete = async (entry: DprMaterialRead) => {
     try { await deleteMaterial.mutateAsync({ itemId: entry.id, headerId }); }
-    catch { message.error('Could not delete'); }
+    catch (err) { message.error(getApiErrorMessage(err, 'Could not delete')); }
   };
 
   const rows: MatRow[] = [
@@ -1019,7 +1016,7 @@ function MachineryTab({
     try {
       await addMachinery.mutateAsync({ headerId, data: { machinery_id: draft.machinery_id, quantity_used: String(draft.qty), hire_rate: draft.hire_unit !== 'OWNED' && draft.hire_rate != null ? String(draft.hire_rate) : undefined } });
       removeDraft(draft.key);
-    } catch { message.error('Could not add entry'); }
+    } catch (err) { message.error(getApiErrorMessage(err, 'Could not add entry')); }
     finally { setSavingKeys((p) => { const s = new Set(p); s.delete(draft.key); return s; }); }
   };
 
@@ -1027,7 +1024,7 @@ function MachineryTab({
     const qty = parseFloat(raw);
     if (isNaN(qty) || qty === parseFloat(entry.quantity_used)) return;
     try { await updateMachinery.mutateAsync({ itemId: entry.id, data: { quantity_used: String(qty), hire_rate: entry.hire_unit === 'OWNED' ? null : (entry.hire_rate ?? null) } }); }
-    catch { message.error('Could not update'); }
+    catch (err) { message.error(getApiErrorMessage(err, 'Could not update')); }
   };
 
   const saveRate = async (entry: DprMachineryRead, raw: string) => {
@@ -1035,12 +1032,12 @@ function MachineryTab({
     const rate = raw ? parseFloat(raw) : null;
     if (rate === (entry.hire_rate != null ? parseFloat(entry.hire_rate) : null)) return;
     try { await updateMachinery.mutateAsync({ itemId: entry.id, data: { quantity_used: entry.quantity_used, hire_rate: rate != null ? String(rate) : null } }); }
-    catch { message.error('Could not update'); }
+    catch (err) { message.error(getApiErrorMessage(err, 'Could not update')); }
   };
 
   const handleDelete = async (entry: DprMachineryRead) => {
     try { await deleteMachinery.mutateAsync({ itemId: entry.id, headerId }); }
-    catch { message.error('Could not delete'); }
+    catch (err) { message.error(getApiErrorMessage(err, 'Could not delete')); }
   };
 
   const rows: MachRow[] = [
@@ -1214,8 +1211,8 @@ function IssuesTab({
       });
       removeDraft(draft.key);
       setPhotoFiles((prev) => { const next = { ...prev }; delete next[draft.key]; return next; });
-    } catch {
-      message.error('Could not log issue');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not log issue'));
     } finally {
       setSavingKeys((p) => { const s = new Set(p); s.delete(draft.key); return s; });
     }
@@ -1407,8 +1404,8 @@ function ExpensesTab({ projectId, headerId, entryDate }: { projectId: string; he
         remarks: draft.remarks.trim() || undefined,
       });
       removeDraft(draft.key);
-    } catch {
-      message.error('Could not save expense');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not save expense'));
     } finally {
       setSavingKeys((p) => { const s = new Set(p); s.delete(draft.key); return s; });
     }
@@ -1438,8 +1435,8 @@ function ExpensesTab({ projectId, headerId, entryDate }: { projectId: string; he
       });
       message.success('Updated');
       setEditingExpense(null);
-    } catch {
-      message.error('Could not update expense');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not update expense'));
     }
   };
 
@@ -1447,8 +1444,8 @@ function ExpensesTab({ projectId, headerId, entryDate }: { projectId: string; he
     try {
       await deleteExpense.mutateAsync({ id: expense.id, projectId: expense.project_id, headerId });
       message.success('Deleted');
-    } catch {
-      message.error('Could not delete expense');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not delete expense'));
     }
   };
 
@@ -1630,6 +1627,7 @@ function MeasurementsTab({
   const { data: measurements, isLoading } = useMeasurements(projectId);
   const { data: boqItems } = useBoqItems(projectId);
   const { data: workTypes } = useWorkTypes();
+  const { data: allTemplates } = useConstructionTemplates();
   const createMeasurement = useCreateMeasurement();
   const updateMeasurement = useUpdateMeasurement();
   const deleteMeasurement = useDeleteMeasurement();
@@ -1693,6 +1691,10 @@ function MeasurementsTab({
       message.warning('No dimension fields configured for this BOQ item');
       return;
     }
+    if (boqItem && boqItem.construction_type !== 'GENERAL' && !draft.boq_template_id) {
+      message.warning('Select a construction template for this measurement');
+      return;
+    }
     setSavingKeys((p) => new Set(p).add(draft.key));
     try {
       const created = await createMeasurement.mutateAsync({
@@ -1702,6 +1704,7 @@ function MeasurementsTab({
         dimensions: Object.fromEntries(workType.dimension_fields.map((f) => [f, String(draft.dimensions[f] ?? 0)])),
         chainage: draft.chainage.trim() || null,
         rate: draft.rate != null ? String(draft.rate) : null,
+        boq_template_id: draft.boq_template_id ?? null,
       });
       const photoFile = photoFiles[draft.key];
       if (photoFile) {
@@ -1722,8 +1725,8 @@ function MeasurementsTab({
       }
       message.success(`Saved — qty: ${created.computed_qty}`);
       removeDraft(draft.key);
-    } catch {
-      message.error('Could not save — check BOQ tolerance');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not save measurement'));
     } finally {
       setSavingKeys((p) => { const s = new Set(p); s.delete(draft.key); return s; });
     }
@@ -1742,7 +1745,7 @@ function MeasurementsTab({
       });
       message.success('Updated');
       setEditingMeasurement(null);
-    } catch { message.error('Could not update — check tolerance'); }
+    } catch (err) { message.error(getApiErrorMessage(err, 'Could not update measurement')); }
   };
 
   const openEditModal = (record: MeasurementRead) => {
@@ -1754,7 +1757,7 @@ function MeasurementsTab({
 
   const handleDelete = async (record: MeasurementRead) => {
     try { await deleteMeasurement.mutateAsync({ id: record.id, projectId: record.project_id }); message.success('Deleted'); }
-    catch { message.error('Could not delete'); }
+    catch (err) { message.error(getApiErrorMessage(err, 'Could not delete')); }
   };
 
   const rows: MeasRow[] = [
@@ -1786,19 +1789,45 @@ function MeasurementsTab({
             value={row.draft.boq_item_id ?? undefined}
             onChange={(v) => {
               const boqItem = boqById.get(v);
-              const wt = (workTypes ?? []).find((w) => w.id === boqItem?.work_type_id);
               patchDraft(row.draft.key, {
                 boq_item_id: v,
+                boq_template_id: null,
                 dimensions: {},
                 qty: 0,
                 rate: boqItem?.rate != null ? parseFloat(boqItem.rate) : null,
               });
-              // recalculate qty with empty dims (will be 0)
-              void wt;
             }}
             options={(boqItems ?? []).map((b) => ({ value: b.id, label: `${b.item_no} — ${b.description}` }))}
           />
         ),
+    },
+    {
+      title: 'Template',
+      key: 'template',
+      width: 150,
+      ellipsis: true,
+      render: (_: unknown, row: MeasRow) => {
+        if (row._kind === 'existing') {
+          return row.entry.boq_template_name
+            ? <Typography.Text style={{ fontSize: 12 }}>{row.entry.boq_template_name}</Typography.Text>
+            : <Typography.Text type="secondary" style={{ fontSize: 11 }}>—</Typography.Text>;
+        }
+        const boqItem = row.draft.boq_item_id ? boqById.get(row.draft.boq_item_id) : undefined;
+        const cType = boqItem?.construction_type;
+        if (!cType || cType === 'GENERAL') {
+          return <Typography.Text type="secondary" style={{ fontSize: 11 }}>—</Typography.Text>;
+        }
+        const opts = (allTemplates ?? []).filter((t) => t.construction_type === cType && t.is_active);
+        return (
+          <Select
+            size="small" style={inp}
+            placeholder="Select template…"
+            value={row.draft.boq_template_id ?? undefined}
+            onChange={(v) => patchDraft(row.draft.key, { boq_template_id: v })}
+            options={opts.map((t) => ({ value: t.id, label: t.name }))}
+          />
+        );
+      },
     },
     // All 7 dimension columns; inactive ones dimmed with placeholder
     ...ALL_DIM_FIELDS.map((field) => ({
@@ -1967,7 +1996,7 @@ function MeasurementsTab({
           {!isSubmitted && (
             <Button
               size="small" icon={<PlusOutlined />}
-              onClick={() => setDrafts((p) => [...p, { key: nextMeasKey(), boq_item_id: null, dimensions: {}, chainage: '', qty: null, rate: null }])}
+              onClick={() => setDrafts((p) => [...p, { key: nextMeasKey(), boq_item_id: null, boq_template_id: null, dimensions: {}, chainage: '', qty: null, rate: null }])}
             >
               Add Measurement
             </Button>
@@ -1982,16 +2011,16 @@ function MeasurementsTab({
           dataSource={rows}
           columns={columns}
           pagination={false}
-          scroll={{ x: 1000 }}
+          scroll={{ x: 1150 }}
           locale={{ emptyText: `No measurements for ${fmtDate(entryDate)}` }}
           summary={totalQty > 0 ? () => (
             <Table.Summary>
               <Table.Summary.Row style={{ fontWeight: 700 }}>
-                <Table.Summary.Cell index={0} colSpan={9}>Total</Table.Summary.Cell>
-                <Table.Summary.Cell index={9} align="right">{fmtQty(totalQty)}</Table.Summary.Cell>
-                <Table.Summary.Cell index={10} />
-                <Table.Summary.Cell index={11} align="right">{fmtAmt(totalAmount)}</Table.Summary.Cell>
-                <Table.Summary.Cell index={12} />
+                <Table.Summary.Cell index={0} colSpan={10}>Total</Table.Summary.Cell>
+                <Table.Summary.Cell index={10} align="right">{fmtQty(totalQty)}</Table.Summary.Cell>
+                <Table.Summary.Cell index={11} />
+                <Table.Summary.Cell index={12} align="right">{fmtAmt(totalAmount)}</Table.Summary.Cell>
+                <Table.Summary.Cell index={13} />
               </Table.Summary.Row>
             </Table.Summary>
           ) : undefined}
@@ -2091,8 +2120,8 @@ function ProductionTab({
       await bulkUpsert.mutateAsync({ headerId, data: { daily_work_summary: activitySummary.trim() || null, entries } });
       touchedRef.current.clear();
       message.success('Production entries saved');
-    } catch {
-      message.error('Could not save production entries');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not save production entries'));
     }
   };
 
@@ -2801,8 +2830,8 @@ export function DprTodayPage() {
         no_work_reason: noWork ? computedNoWorkReason : null,
       });
       setCurrentDprHeaderId(created.id);
-    } catch {
-      message.error(`Could not start the DPR for ${fmtDate(entryDateStr)}`);
+    } catch (err) {
+      message.error(getApiErrorMessage(err, `Could not start the DPR for ${fmtDate(entryDateStr)}`));
     }
   };
 
@@ -2811,8 +2840,8 @@ export function DprTodayPage() {
     if (checked && !computedNoWorkReason) { message.error('Please select a reason for the no-work day'); return; }
     try {
       await updateHeader.mutateAsync({ headerId: currentDprHeaderId, data: { no_work: checked, no_work_reason: checked ? computedNoWorkReason : null } });
-    } catch {
-      message.error(checked ? 'Cannot mark as no-work: DPR has production/material/machinery entries.' : 'Could not update');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, checked ? 'Cannot mark as no-work' : 'Could not update'));
     }
   };
 
@@ -2822,8 +2851,8 @@ export function DprTodayPage() {
     if (trimmed === header.supervisor_name) return;
     try {
       await updateHeader.mutateAsync({ headerId: currentDprHeaderId, data: { supervisor_name: trimmed } });
-    } catch {
-      message.error('Could not update supervisor name');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not update supervisor name'));
     }
   };
 
@@ -2833,8 +2862,7 @@ export function DprTodayPage() {
       await submitDpr.mutateAsync(currentDprHeaderId);
       message.success("Today's DPR submitted");
     } catch (err) {
-      const detail = isAxiosError(err) ? err.response?.data?.message : null;
-      message.error(detail ?? 'Could not submit DPR');
+      message.error(getApiErrorMessage(err, 'Could not submit DPR'));
     }
   };
 
@@ -2845,8 +2873,7 @@ export function DprTodayPage() {
       setCurrentDprHeaderId(null);
       message.success('DPR deleted');
     } catch (err) {
-      const detail = isAxiosError(err) ? err.response?.data?.message : null;
-      message.error(detail ?? 'Could not delete DPR');
+      message.error(getApiErrorMessage(err, 'Could not delete DPR'));
     }
   };
 

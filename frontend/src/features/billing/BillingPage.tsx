@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getApiErrorMessage } from '@/utils/api-error';
 import {
   Button,
   DatePicker,
@@ -80,8 +81,8 @@ export function BillingPage() {
       message.success('Running bill generated');
       setModalOpen(false);
       form.resetFields();
-    } catch {
-      message.error('Could not generate bill');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not generate bill'));
     }
   };
 
@@ -99,8 +100,8 @@ export function BillingPage() {
       message.success('Payment recorded');
       setPaymentBill(null);
       paymentForm.resetFields();
-    } catch {
-      message.error('Could not record payment — check it does not exceed the remaining balance');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not record payment'));
     }
   };
 

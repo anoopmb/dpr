@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, Button, Card, Form, Input, List, Select, Space, Tag, Typography, message } from 'antd';
 import { AimOutlined, WarningOutlined } from '@ant-design/icons';
-import { isAxiosError } from 'axios';
+import { getApiErrorMessage } from '@/utils/api-error';
 import { Link } from 'react-router-dom';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
@@ -125,8 +125,8 @@ export function AttendanceCheckInPage() {
       if (verificationRequired) setSelectedWorkerId(worker.id);
       setAddingWorker(false);
       newWorkerForm.resetFields();
-    } catch {
-      message.error('Could not add worker');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not add worker'));
     }
   };
 
@@ -166,12 +166,10 @@ export function AttendanceCheckInPage() {
       setSelectedWorkerId(null);
       setPhoto(null);
     } catch (error: unknown) {
-      if (isAxiosError(error) && error.response?.data?.code === 'ALREADY_CHECKED_IN') {
-        message.error('This worker is already checked in for today.');
-      } else if (error instanceof GeolocationPositionError || (error instanceof Error && error.message.includes('Geolocation'))) {
+      if (error instanceof GeolocationPositionError || (error instanceof Error && error.message.includes('Geolocation'))) {
         message.error(describeLocationError(error));
       } else {
-        message.error('Check-in failed');
+        message.error(getApiErrorMessage(error, 'Check-in failed'));
       }
     }
   };
@@ -192,8 +190,8 @@ export function AttendanceCheckInPage() {
       });
       message.success(`${result.length} worker(s) marked present`);
       setBulkWorkerIds([]);
-    } catch {
-      message.error('Could not mark workers present');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not mark workers present'));
     }
   };
 

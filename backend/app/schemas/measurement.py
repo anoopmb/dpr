@@ -41,7 +41,7 @@ class MeasurementCreate(BaseModel):
     dimensions: dict[str, Decimal] = Field(default_factory=dict)
     chainage: str | None = Field(default=None, max_length=100)
     rate: Decimal | None = Field(default=None, ge=0)
-    construction_subtype: str | None = None
+    boq_template_id: uuid.UUID | None = None
     steel_lines: list[SteelLineCreate] = Field(default_factory=list)
 
 
@@ -49,7 +49,7 @@ class MeasurementUpdate(BaseModel):
     dimensions: dict[str, Decimal] = Field(default_factory=dict)
     chainage: str | None = Field(default=None, max_length=100)
     rate: Decimal | None = Field(default=None, ge=0)
-    construction_subtype: str | None = None
+    boq_template_id: uuid.UUID | None = None
     steel_lines: list[SteelLineCreate] = Field(default_factory=list)
 
 
@@ -71,6 +71,7 @@ class MeasurementRead(BaseModel):
     billed: bool
     chainage: str | None
     rate: Decimal | None
-    construction_subtype: str | None = None
+    boq_template_id: uuid.UUID | None = None
+    boq_template_name: str | None = None
     steel_lines: list[SteelLineRead] = []
     auto_materials: list[AutoMaterialRead] = []

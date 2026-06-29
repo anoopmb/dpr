@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getApiErrorMessage } from '@/utils/api-error';
 import {
   Alert,
   Button,
@@ -287,8 +288,8 @@ export function DprHistoryPage() {
     try {
       await approveDpr.mutateAsync({ headerId: header.id });
       message.success(`DPR for ${fmtDate(header.report_date)} approved`);
-    } catch {
-      message.error('Could not approve DPR');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not approve DPR'));
     }
   };
 
@@ -299,8 +300,8 @@ export function DprHistoryPage() {
       message.success(`DPR for ${fmtDate(rejectingHeader.report_date)} returned for correction`);
       setRejectingHeader(null);
       setRejectRemarks('');
-    } catch {
-      message.error('Could not reject DPR');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not reject DPR'));
     }
   };
 

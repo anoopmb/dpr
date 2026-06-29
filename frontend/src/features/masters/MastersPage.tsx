@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tabs, Typography, message } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
-import type { AxiosError } from 'axios';
+import { getApiErrorMessage } from '@/utils/api-error';
 import {
   useCreateMaster,
   useDeleteMaster,
@@ -28,9 +28,7 @@ import { useNumberFormat } from '@/utils/format';
 import { useIsMobile } from '@/hooks/useIsMobile';
 
 function fkError(err: unknown, label: string) {
-  const status = (err as AxiosError)?.response?.status;
-  if (status === 409) message.error(`Cannot delete — this ${label} is referenced by existing data.`);
-  else message.error(`Could not delete ${label}`);
+  message.error(getApiErrorMessage(err, `Could not delete ${label}`));
 }
 
 interface WorkTypeFormValues {
@@ -86,7 +84,7 @@ function WorkTypesTab() {
       }
       setModalOpen(false);
       form.resetFields();
-    } catch { message.error('Could not save work type'); }
+    } catch (err) { message.error(getApiErrorMessage(err, 'Could not save work type')); }
   };
 
   const handleDelete = async (id: string) => {
@@ -184,7 +182,7 @@ function MaterialsTab() {
         message.success('Material added');
       }
       setModalOpen(false); form.resetFields();
-    } catch { message.error('Could not save material'); }
+    } catch (err) { message.error(getApiErrorMessage(err, 'Could not save material')); }
   };
 
   const handleDelete = async (id: string) => {
@@ -300,7 +298,7 @@ function MachineryTab() {
         message.success('Machinery added');
       }
       setModalOpen(false); form.resetFields();
-    } catch { message.error('Could not save machinery'); }
+    } catch (err) { message.error(getApiErrorMessage(err, 'Could not save machinery')); }
   };
 
   const handleDelete = async (id: string) => {
@@ -412,7 +410,7 @@ function WorkerCategoryTab() {
         message.success('Worker category added');
       }
       setModalOpen(false); form.resetFields();
-    } catch { message.error('Could not save worker category'); }
+    } catch (err) { message.error(getApiErrorMessage(err, 'Could not save worker category')); }
   };
 
   const handleDelete = async (id: string) => {
@@ -506,7 +504,7 @@ function StockLocationsTab() {
         message.success('Stock location added');
       }
       setModalOpen(false); form.resetFields();
-    } catch { message.error('Could not save stock location'); }
+    } catch (err) { message.error(getApiErrorMessage(err, 'Could not save stock location')); }
   };
 
   const handleDelete = async (id: string) => {

@@ -103,6 +103,8 @@ class DprMaterialRead(BaseModel):
     qty_consumed: Decimal
     uom_id: uuid.UUID
     rate: Decimal | None
+    manually_edited: bool
+    source_measurement_id: uuid.UUID | None
 
 
 class DprMaterialUpdate(BaseModel):

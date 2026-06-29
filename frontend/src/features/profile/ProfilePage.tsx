@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Avatar, Button, Card, Empty, Form, Input, List, Tabs, Tag, Typography, message } from 'antd';
 import { IdcardOutlined, MailOutlined, UserOutlined } from '@ant-design/icons';
-import { isAxiosError } from 'axios';
+import { getApiErrorMessage } from '@/utils/api-error';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore, type UserRole } from '@/store/auth-store';
 import { useUpdateMyProfile, useChangeMyPassword } from '@/api/hooks/useUsers';
@@ -92,8 +92,8 @@ function ProfileInfoTab() {
       }
       message.success('Profile updated');
       setPhoto(null);
-    } catch {
-      message.error('Could not update profile');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not update profile'));
     }
   };
 
@@ -134,11 +134,7 @@ function ChangePasswordTab() {
       message.success('Password changed');
       form.resetFields();
     } catch (error) {
-      if (isAxiosError(error) && error.response?.status === 403) {
-        message.error('Current password is incorrect');
-      } else {
-        message.error('Could not change password');
-      }
+      message.error(getApiErrorMessage(error, 'Could not change password'));
     }
   };
 

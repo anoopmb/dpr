@@ -65,6 +65,7 @@ import { useUoms, useWorkTypes } from '@/api/hooks/useMasters';
 import { useThemeMode } from '@/theme/theme-context';
 import { useDateFormat, useNumberFormat } from '@/utils/format';
 import { useAuthStore } from '@/store/auth-store';
+import { getApiErrorMessage } from '@/utils/api-error';
 import {
   useApplyBoqTemplate,
   useBoqImport,
@@ -444,8 +445,8 @@ export function BoqPage() {
       });
       message.success('BOQ item added');
       setItemModal({ open: false });
-    } catch {
-      message.error('Could not add BOQ item');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not add BOQ item'));
     }
   };
 
@@ -460,8 +461,8 @@ export function BoqPage() {
         message.success('Section created');
       }
       setSectionModal({ open: false });
-    } catch {
-      message.error('Could not save section');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not save section'));
     }
   };
 
@@ -469,8 +470,8 @@ export function BoqPage() {
     try {
       await deleteSection.mutateAsync({ id: section.id, projectId: section.project_id });
       message.success('Section deleted');
-    } catch {
-      message.error('Cannot delete section — reassign its items first');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Cannot delete section — reassign its items first'));
     }
   };
 
@@ -502,8 +503,8 @@ export function BoqPage() {
       });
       message.success('BOQ item updated');
       setEditItemModal({ open: false });
-    } catch {
-      message.error('Could not update BOQ item');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not update BOQ item'));
     }
   };
 
@@ -525,9 +526,8 @@ export function BoqPage() {
       await createRevision.mutateAsync({ boqItemId: revisionModal.item.id, data });
       message.success('Revision submitted for approval');
       setRevisionModal({ open: false });
-    } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      message.error(detail ?? 'Could not create revision');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not create revision'));
     }
   };
 
@@ -535,8 +535,8 @@ export function BoqPage() {
     try {
       await approveRevision.mutateAsync(id);
       message.success('Revision approved');
-    } catch {
-      message.error('Could not approve revision');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not approve revision'));
     }
   };
 
@@ -547,8 +547,8 @@ export function BoqPage() {
       message.success('Revision rejected');
       setRejectDrawerRevision(null);
       setRejectReason('');
-    } catch {
-      message.error('Could not reject revision');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not reject revision'));
     }
   };
 
@@ -556,8 +556,8 @@ export function BoqPage() {
     try {
       await deleteItem.mutateAsync({ id: item.id, projectId: item.project_id });
       message.success('BOQ item deleted');
-    } catch {
-      message.error('Cannot delete — this item has recorded measurements against it.');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Cannot delete — this item has recorded measurements against it'));
     }
   };
 
@@ -593,8 +593,8 @@ export function BoqPage() {
       setImportParsed([]);
       setImportErrors([]);
       setImportFileName('');
-    } catch {
-      message.error('Import failed. Please try again.');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Import failed. Please try again.'));
     }
   };
 
@@ -608,9 +608,8 @@ export function BoqPage() {
       message.success('Template saved');
       setSaveTemplateModal(false);
       saveTemplateForm.resetFields();
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      message.error(msg ?? 'Could not save template');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not save template'));
     }
   };
 
@@ -623,8 +622,8 @@ export function BoqPage() {
       );
       setApplyTemplateModal(false);
       setSelectedTemplateId(null);
-    } catch {
-      message.error('Could not apply template');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not apply template'));
     }
   };
 
@@ -632,8 +631,8 @@ export function BoqPage() {
     try {
       await deleteTemplate.mutateAsync(id);
       message.success('Template deleted');
-    } catch {
-      message.error('Could not delete template');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not delete template'));
     }
   };
 

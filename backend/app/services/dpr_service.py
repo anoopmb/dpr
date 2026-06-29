@@ -262,6 +262,7 @@ class DprService:
         material.qty_consumed = data.qty_consumed
         material.uom_id = data.uom_id
         material.rate = data.rate
+        material.manually_edited = True
         await self.session.flush()
         await self.audit.record(
             entity_type="DPR_MATERIAL",

@@ -36,6 +36,8 @@ async def _to_read(session: SessionDep, measurement: Measurement) -> Measurement
         billed=measurement.billed,
         chainage=measurement.chainage,
         rate=measurement.rate,
+        boq_template_id=measurement.boq_template_id,
+        boq_template_name=measurement.boq_template_name,
     )
 
 
@@ -62,6 +64,8 @@ async def _to_read_many(session: SessionDep, measurements: list[Measurement]) ->
             billed=m.billed,
             chainage=m.chainage,
             rate=m.rate,
+            boq_template_id=m.boq_template_id,
+            boq_template_name=m.boq_template_name,
         )
         for m in measurements
     ]

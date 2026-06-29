@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getApiErrorMessage } from '@/utils/api-error';
 import {
   Alert, Button, InputNumber, Popconfirm, Select, Skeleton, Table, Tag,
   Typography, message, theme,
@@ -77,8 +78,8 @@ export function MaterialsUsedPage() {
         },
       });
       removeDraft(draft.key);
-    } catch {
-      message.error('Could not add entry');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not add entry'));
     } finally {
       setSavingKeys((p) => { const s = new Set(p); s.delete(draft.key); return s; });
     }
@@ -89,7 +90,7 @@ export function MaterialsUsedPage() {
     if (isNaN(qty) || qty === parseFloat(entry.qty_consumed)) return;
     try {
       await updateMaterial.mutateAsync({ itemId: entry.id, data: { qty_consumed: String(qty), uom_id: entry.uom_id, rate: entry.rate ?? undefined } });
-    } catch { message.error('Could not update'); }
+    } catch (err) { message.error(getApiErrorMessage(err, 'Could not update')); }
   };
 
   const saveRate = async (entry: DprMaterialRead, raw: string) => {
@@ -98,20 +99,20 @@ export function MaterialsUsedPage() {
     if (rate === cur) return;
     try {
       await updateMaterial.mutateAsync({ itemId: entry.id, data: { qty_consumed: entry.qty_consumed, uom_id: entry.uom_id, rate: rate != null ? String(rate) : undefined } });
-    } catch { message.error('Could not update'); }
+    } catch (err) { message.error(getApiErrorMessage(err, 'Could not update')); }
   };
 
   const saveUom = async (entry: DprMaterialRead, uomId: string) => {
     if (uomId === entry.uom_id) return;
     try {
       await updateMaterial.mutateAsync({ itemId: entry.id, data: { qty_consumed: entry.qty_consumed, uom_id: uomId, rate: entry.rate ?? undefined } });
-    } catch { message.error('Could not update'); }
+    } catch (err) { message.error(getApiErrorMessage(err, 'Could not update')); }
   };
 
   const handleDelete = async (entry: DprMaterialRead) => {
     if (!headerId) return;
     try { await deleteMaterial.mutateAsync({ itemId: entry.id, headerId }); }
-    catch { message.error('Could not delete'); }
+    catch (err) { message.error(getApiErrorMessage(err, 'Could not delete')); }
   };
 
   const rows: Row[] = [

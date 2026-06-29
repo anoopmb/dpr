@@ -46,7 +46,8 @@ export interface MeasurementRead {
   billed: boolean;
   chainage: string | null;
   rate: string | null;
-  construction_subtype: string | null;
+  boq_template_id: string | null;
+  boq_template_name: string | null;
   steel_lines: SteelLineRead[];
   auto_materials: AutoMaterialRead[];
 }
@@ -58,7 +59,7 @@ export interface MeasurementCreateInput {
   dimensions?: Record<string, string>;
   chainage?: string | null;
   rate?: string | null;
-  construction_subtype?: string | null;
+  boq_template_id?: string | null;
   steel_lines?: SteelLineInput[];
 }
 
@@ -79,6 +80,7 @@ export function useCreateMeasurement() {
       queryClient.invalidateQueries({ queryKey: ['measurements', measurement.project_id] });
       queryClient.invalidateQueries({ queryKey: ['dpr-production'] });
       queryClient.invalidateQueries({ queryKey: ['dpr'] });
+      queryClient.invalidateQueries({ queryKey: ['dpr-header'] });
     },
   });
 }
@@ -95,7 +97,7 @@ export function useUpdateMeasurement() {
         dimensions?: Record<string, string>;
         chainage?: string | null;
         rate?: string | null;
-        construction_subtype?: string | null;
+        boq_template_id?: string | null;
         steel_lines?: SteelLineInput[];
       };
     }) => (await apiClient.patch<MeasurementRead>(`/measurements/${id}`, data)).data,
@@ -103,6 +105,7 @@ export function useUpdateMeasurement() {
       queryClient.invalidateQueries({ queryKey: ['measurements', measurement.project_id] });
       queryClient.invalidateQueries({ queryKey: ['dpr-production'] });
       queryClient.invalidateQueries({ queryKey: ['dpr'] });
+      queryClient.invalidateQueries({ queryKey: ['dpr-header'] });
     },
   });
 }
@@ -118,23 +121,21 @@ export function useDeleteMeasurement() {
       queryClient.invalidateQueries({ queryKey: ['measurements', projectId] });
       queryClient.invalidateQueries({ queryKey: ['dpr-production'] });
       queryClient.invalidateQueries({ queryKey: ['dpr'] });
+      queryClient.invalidateQueries({ queryKey: ['dpr-header'] });
     },
   });
 }
 
 export function useMaterialTemplatePreview(params: {
-  construction_type: string;
+  template_id: string;
   qty: number;
-  construction_subtype?: string | null;
 } | null) {
   return useQuery({
     queryKey: ['material-preview', params],
     queryFn: async () =>
-      (await apiClient.get<AutoMaterialRead[]>('/material-templates/preview', { params: {
-        construction_type: params!.construction_type,
-        qty: params!.qty,
-        ...(params!.construction_subtype ? { construction_subtype: params!.construction_subtype } : {}),
-      }})).data,
-    enabled: !!params && params.qty > 0 && params.construction_type !== 'GENERAL' && params.construction_type !== 'STEEL',
+      (await apiClient.get<AutoMaterialRead[]>('/material-templates/preview', {
+        params: { template_id: params!.template_id, qty: params!.qty },
+      })).data,
+    enabled: !!params && !!params.template_id && params.qty > 0,
   });
 }

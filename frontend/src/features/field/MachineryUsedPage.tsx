@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getApiErrorMessage } from '@/utils/api-error';
 import {
   Alert, Button, InputNumber, Popconfirm, Select, Skeleton, Table, Tag,
   Typography, message, theme,
@@ -75,8 +76,8 @@ export function MachineryUsedPage() {
         },
       });
       removeDraft(draft.key);
-    } catch {
-      message.error('Could not add entry');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not add entry'));
     } finally {
       setSavingKeys((p) => { const s = new Set(p); s.delete(draft.key); return s; });
     }
@@ -90,7 +91,7 @@ export function MachineryUsedPage() {
         itemId: entry.id,
         data: { quantity_used: String(qty), hire_rate: entry.hire_unit === 'OWNED' ? null : (entry.hire_rate ?? null) },
       });
-    } catch { message.error('Could not update'); }
+    } catch (err) { message.error(getApiErrorMessage(err, 'Could not update')); }
   };
 
   const saveRate = async (entry: DprMachineryRead, raw: string) => {
@@ -103,13 +104,13 @@ export function MachineryUsedPage() {
         itemId: entry.id,
         data: { quantity_used: entry.quantity_used, hire_rate: rate != null ? String(rate) : null },
       });
-    } catch { message.error('Could not update'); }
+    } catch (err) { message.error(getApiErrorMessage(err, 'Could not update')); }
   };
 
   const handleDelete = async (entry: DprMachineryRead) => {
     if (!headerId) return;
     try { await deleteMachinery.mutateAsync({ itemId: entry.id, headerId }); }
-    catch { message.error('Could not delete'); }
+    catch (err) { message.error(getApiErrorMessage(err, 'Could not delete')); }
   };
 
   const rows: Row[] = [

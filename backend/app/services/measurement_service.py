@@ -8,6 +8,7 @@ from app.core.exceptions import DomainError, NotFoundError, PermissionDeniedErro
 from app.domain.measurement.calculators import calculate_quantity
 from app.domain.measurement.validators import BoqItemSnapshot, validate_measurement_against_boq
 from app.models.audit import AuditAction
+from app.models.boq_construction_template import BoqConstructionTemplate
 from app.models.dpr import DprHeader, DprMaterial
 from app.models.master_data import WorkTypeMaster
 from app.models.measurement import Measurement
@@ -41,6 +42,33 @@ class MeasurementService:
             raise NotFoundError(f"Work type {work_type_id} not found.")
         return work_type
 
+    async def _load_and_validate_template(
+        self, template_id: uuid.UUID | None, construction_type: str
+    ) -> BoqConstructionTemplate | None:
+        if construction_type == "GENERAL":
+            return None
+        if template_id is None:
+            raise DomainError(
+                f"A construction template is required for {construction_type} measurements. "
+                "Add one in Settings → Construction Templates."
+            )
+        template = await self.session.get(BoqConstructionTemplate, template_id)
+        if template is None:
+            raise DomainError("The selected construction template does not exist.")
+        if not template.is_active:
+            raise DomainError(f"Template '{template.name}' is inactive. Select an active template.")
+        if template.construction_type != construction_type:
+            raise DomainError(
+                f"Template type mismatch: selected template is for {template.construction_type}, "
+                f"but this BOQ item is {construction_type}."
+            )
+        if not template.items:
+            raise DomainError(
+                f"Template '{template.name}' has no items configured. "
+                "Add materials to the template first."
+            )
+        return template
+
     async def create(self, data: MeasurementCreate, recorded_by: uuid.UUID) -> Measurement:
         boq_item = await self.boq_repo.get(data.boq_item_id)
         if boq_item is None or boq_item.project_id != data.project_id:
@@ -48,30 +76,31 @@ class MeasurementService:
 
         construction_type = boq_item.construction_type
         org_settings = await self.settings_service.get()
-
         template_svc = MaterialTemplateService(self.session)
+
+        template = await self._load_and_validate_template(data.boq_template_id, construction_type)
+
         if construction_type == "STEEL":
             if not data.steel_lines:
                 raise DomainError("Steel measurements require at least one bar entry.")
-            coeff_map = await template_svc.get_steel_coeff_map()
+            coeff_map = template_svc.build_steel_coeff_map(template)
             computed_qty = Decimal("0")
             for line in data.steel_lines:
-                t = coeff_map.get(line.diameter_mm)
-                if t is None:
+                t_item = coeff_map.get(line.diameter_mm)
+                if t_item is None:
                     raise DomainError(
-                        f"No steel template configured for {line.diameter_mm}mm. "
+                        f"No item configured for {line.diameter_mm}mm in template '{template.name}'. "
                         "Add it in Settings → Construction Templates."
                     )
-                computed_qty += MaterialTemplateService.line_weight(line.bar_count, line.length_m, t.coefficient)
+                computed_qty += MaterialTemplateService.line_weight(
+                    line.bar_count, line.length_m, t_item.coefficient
+                )
             computed_qty = computed_qty.quantize(Decimal("0.001"))
         else:
             coeff_map = {}
             work_type = await self._get_work_type(boq_item.work_type_id)
-            if construction_type == "CONCRETE":
-                if not data.construction_subtype:
-                    raise DomainError("Concrete grade is required (e.g. M20).")
-                if not data.dimensions:
-                    raise DomainError("Dimensions are required for concrete measurements.")
+            if not data.dimensions:
+                raise DomainError("Dimensions are required.")
             computed_qty = calculate_quantity(
                 work_type.formula, work_type.dimension_fields, data.dimensions
             ).quantize(Decimal("0.001"))
@@ -86,7 +115,9 @@ class MeasurementService:
         )
 
         from app.services.boq_service import BoqService
-        effective_rate = await BoqService(self.session).get_effective_rate(data.boq_item_id, data.measurement_date)
+        effective_rate = await BoqService(self.session).get_effective_rate(
+            data.boq_item_id, data.measurement_date
+        )
         measurement = Measurement(
             project_id=data.project_id,
             boq_item_id=data.boq_item_id,
@@ -98,24 +129,27 @@ class MeasurementService:
             recorded_by=recorded_by,
             chainage=data.chainage,
             rate=data.rate if data.rate is not None else effective_rate,
-            construction_subtype=data.construction_subtype,
+            boq_template_id=template.id if template else None,
+            boq_template_name=template.name if template else None,
         )
         self.repo.add(measurement)
         await self.session.flush()
 
         if construction_type == "STEEL":
             for line in data.steel_lines:
-                t = coeff_map.get(line.diameter_mm)
-                if t is None:
+                t_item = coeff_map.get(line.diameter_mm)
+                if t_item is None:
                     continue
-                weight = MaterialTemplateService.line_weight(line.bar_count, line.length_m, t.coefficient)
+                weight = MaterialTemplateService.line_weight(
+                    line.bar_count, line.length_m, t_item.coefficient
+                )
                 self.session.add(MeasurementSteelLine(
                     measurement_id=measurement.id,
                     description=line.description,
                     diameter_mm=line.diameter_mm,
                     bar_count=line.bar_count,
                     length_m=line.length_m,
-                    coefficient=t.coefficient,
+                    coefficient=t_item.coefficient,
                     computed_weight_mt=weight,
                 ))
 
@@ -158,30 +192,32 @@ class MeasurementService:
 
         construction_type = boq_item.construction_type
         org_settings = await self.settings_service.get()
-
         template_svc = MaterialTemplateService(self.session)
+
+        template_id = data.boq_template_id if data.boq_template_id is not None else measurement.boq_template_id
+        template = await self._load_and_validate_template(template_id, construction_type)
+
         if construction_type == "STEEL":
             if not data.steel_lines:
                 raise DomainError("Steel measurements require at least one bar entry.")
-            coeff_map = await template_svc.get_steel_coeff_map()
+            coeff_map = template_svc.build_steel_coeff_map(template)
             computed_qty = Decimal("0")
             for line in data.steel_lines:
-                t = coeff_map.get(line.diameter_mm)
-                if t is None:
+                t_item = coeff_map.get(line.diameter_mm)
+                if t_item is None:
                     raise DomainError(
-                        f"No steel template configured for {line.diameter_mm}mm. "
+                        f"No item configured for {line.diameter_mm}mm in template '{template.name}'. "
                         "Add it in Settings → Construction Templates."
                     )
-                computed_qty += MaterialTemplateService.line_weight(line.bar_count, line.length_m, t.coefficient)
+                computed_qty += MaterialTemplateService.line_weight(
+                    line.bar_count, line.length_m, t_item.coefficient
+                )
             computed_qty = computed_qty.quantize(Decimal("0.001"))
         else:
             coeff_map = {}
             work_type = await self._get_work_type(measurement.work_type_id)
-            if construction_type == "CONCRETE":
-                if not data.construction_subtype:
-                    raise DomainError("Concrete grade is required (e.g. M20).")
-                if not data.dimensions:
-                    raise DomainError("Dimensions are required for concrete measurements.")
+            if not data.dimensions:
+                raise DomainError("Dimensions are required.")
             computed_qty = calculate_quantity(
                 work_type.formula, work_type.dimension_fields, data.dimensions
             ).quantize(Decimal("0.001"))
@@ -199,7 +235,8 @@ class MeasurementService:
         measurement.dimensions = {k: str(v) for k, v in data.dimensions.items()} if data.dimensions else {}
         measurement.computed_qty = computed_qty
         measurement.chainage = data.chainage
-        measurement.construction_subtype = data.construction_subtype
+        measurement.boq_template_id = template.id if template else None
+        measurement.boq_template_name = template.name if template else None
         if data.rate is not None:
             measurement.rate = data.rate
 
@@ -208,17 +245,19 @@ class MeasurementService:
                 delete(MeasurementSteelLine).where(MeasurementSteelLine.measurement_id == measurement.id)
             )
             for line in data.steel_lines:
-                t = coeff_map.get(line.diameter_mm)
-                if t is None:
+                t_item = coeff_map.get(line.diameter_mm)
+                if t_item is None:
                     continue
-                weight = MaterialTemplateService.line_weight(line.bar_count, line.length_m, t.coefficient)
+                weight = MaterialTemplateService.line_weight(
+                    line.bar_count, line.length_m, t_item.coefficient
+                )
                 self.session.add(MeasurementSteelLine(
                     measurement_id=measurement.id,
                     description=line.description,
                     diameter_mm=line.diameter_mm,
                     bar_count=line.bar_count,
                     length_m=line.length_m,
-                    coefficient=t.coefficient,
+                    coefficient=t_item.coefficient,
                     computed_weight_mt=weight,
                 ))
 
@@ -284,7 +323,7 @@ class MeasurementService:
                 DprMaterial.manually_edited.is_(False),
             )
         )
-        if construction_type == "GENERAL":
+        if construction_type == "GENERAL" or measurement.boq_template_id is None:
             await self.session.commit()
             return
 
@@ -309,13 +348,13 @@ class MeasurementService:
                 )
             )
             steel_lines = lines_row.scalars().all()
-            materials = await svc.compute_steel_materials(steel_lines, steel_uom)
-        elif construction_type == "CONCRETE" and measurement.construction_subtype:
-            materials = await svc.compute_concrete_materials(
-                measurement.construction_subtype, measurement.computed_qty
+            materials = await svc.compute_materials(
+                measurement.boq_template_id, Decimal("0"), steel_lines=steel_lines, steel_uom=steel_uom
             )
-        elif construction_type in BITUMINOUS_TYPES:
-            materials = await svc.compute_bituminous_materials(construction_type, measurement.computed_qty)
+        else:
+            materials = await svc.compute_materials(
+                measurement.boq_template_id, measurement.computed_qty
+            )
 
         for m in materials:
             if m.computed_qty <= 0:

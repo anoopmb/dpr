@@ -37,6 +37,7 @@ import {
 import { useAuthStore, type UserRole } from '@/store/auth-store';
 import { useDateFormat, useNumberFormat } from '@/utils/format';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { getApiErrorMessage } from '@/utils/api-error';
 
 const STATUS_COLOR: Record<string, string> = { ACTIVE: 'green', COMPLETED: 'blue', SUSPENDED: 'orange' };
 
@@ -86,8 +87,8 @@ function AssignmentsModal({ project, onClose }: { project: ProjectRead; onClose:
       await createAssignment.mutateAsync({ projectId: project.id, user_id: userId, role });
       message.success('Assignment added');
       setUserId(undefined);
-    } catch {
-      message.error('Could not add assignment — this user may already be assigned to this role');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not add assignment'));
     }
   };
 
@@ -95,8 +96,8 @@ function AssignmentsModal({ project, onClose }: { project: ProjectRead; onClose:
     try {
       await deleteAssignment.mutateAsync({ projectId: project.id, assignmentId });
       message.success('Assignment removed');
-    } catch {
-      message.error('Could not remove assignment');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not remove assignment'));
     }
   };
 
@@ -104,8 +105,8 @@ function AssignmentsModal({ project, onClose }: { project: ProjectRead; onClose:
     try {
       await updateProject.mutateAsync({ id: project.id, data: { [field]: value } });
       message.success('Updated');
-    } catch {
-      message.error('Could not update');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not update'));
     }
   };
 
@@ -208,8 +209,8 @@ function ProjectSettingsDrawer({ project, onClose }: { project: ProjectRead; onC
     try {
       await updateProject.mutateAsync({ id: project.id, data: { attendance_photo_required: checked } });
       message.success('Setting updated');
-    } catch {
-      message.error('Could not update setting');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not update setting'));
     }
   };
 
@@ -217,8 +218,8 @@ function ProjectSettingsDrawer({ project, onClose }: { project: ProjectRead; onC
     try {
       await updateProject.mutateAsync({ id: project.id, data: { attendance_gps_required: checked } });
       message.success('Setting updated');
-    } catch {
-      message.error('Could not update setting');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not update setting'));
     }
   };
 
@@ -239,8 +240,8 @@ function ProjectSettingsDrawer({ project, onClose }: { project: ProjectRead; onC
     try {
       await updateProject.mutateAsync({ id: project.id, data: { site_latitude: geoLat, site_longitude: geoLng, geofence_radius_meters: geoRadius } });
       message.success('Site boundary saved');
-    } catch {
-      message.error('Could not save boundary');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not save boundary'));
     }
   };
 
@@ -346,8 +347,8 @@ export function ProjectsListPage() {
       message.success('Project created');
       setModalOpen(false);
       form.resetFields();
-    } catch {
-      message.error('Could not create project');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not create project'));
     }
   };
 
@@ -378,8 +379,8 @@ export function ProjectsListPage() {
       message.success('Project updated');
       setEditingProject(null);
       editForm.resetFields();
-    } catch {
-      message.error('Could not update project');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not update project'));
     }
   };
 
@@ -387,13 +388,8 @@ export function ProjectsListPage() {
     try {
       await deleteProject.mutateAsync(project.id);
       message.success('Project deleted');
-    } catch (err: unknown) {
-      const status = (err as { response?: { status?: number } })?.response?.status;
-      if (status === 409) {
-        message.error('Cannot delete — this project has related data (BOQ items, DPR records, measurements, etc.).');
-      } else {
-        message.error('Could not delete project');
-      }
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not delete project'));
     }
   };
 

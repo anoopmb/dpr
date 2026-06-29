@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { getApiErrorMessage } from '@/utils/api-error';
 import {
   Alert,
   Button,
@@ -32,7 +33,7 @@ import {
   useUpdateMeasurement,
   type MeasurementRead,
 } from '@/api/hooks/useMeasurements';
-import { useBoqItems } from '@/api/hooks/useBoq';
+import { useBoqItems, useConstructionTemplates } from '@/api/hooks/useBoq';
 import { useWorkTypes } from '@/api/hooks/useMasters';
 import { useDprList } from '@/api/hooks/useDpr';
 import { useAttachPhoto } from '@/api/hooks/usePhotos';
@@ -71,10 +72,12 @@ export function MyMeasurementsPage() {
   const deleteMeasurement = useDeleteMeasurement();
   const uploadPhoto = useUploadPhoto();
   const attachPhoto = useAttachPhoto();
+  const { data: allTemplates } = useConstructionTemplates();
 
   // add form state
   const [showAddForm, setShowAddForm] = useState(false);
   const [addBoqItemId, setAddBoqItemId] = useState<string | null>(null);
+  const [addTemplateId, setAddTemplateId] = useState<string | null>(null);
   const [addDimensions, setAddDimensions] = useState<Record<string, number>>({});
   const [addChainage, setAddChainage] = useState('');
   const [addPhoto, setAddPhoto] = useState<File | null>(null);
@@ -96,6 +99,9 @@ export function MyMeasurementsPage() {
   const addComputedQty = addWorkType
     ? calculateQuantity(addWorkType.formula, addDimFields, addDimensions)
     : 0;
+  const addConstructionType = addBoqItem?.construction_type ?? null;
+  const addNeedsTemplate = !!addConstructionType && addConstructionType !== 'GENERAL';
+  const addTemplateOptions = (allTemplates ?? []).filter((t) => t.construction_type === addConstructionType && t.is_active);
 
   const editWorkType = useMemo(
     () => (editingMeasurement ? (workTypes ?? []).find((w) => w.id === editingMeasurement.work_type_id) : undefined),
@@ -131,6 +137,7 @@ export function MyMeasurementsPage() {
 
   const resetAddForm = () => {
     setAddBoqItemId(null);
+    setAddTemplateId(null);
     setAddDimensions({});
     setAddChainage('');
     setAddPhoto(null);
@@ -145,6 +152,10 @@ export function MyMeasurementsPage() {
       message.warning('No dimension fields configured for this work type');
       return;
     }
+    if (addNeedsTemplate && !addTemplateId) {
+      message.warning('Select a construction template for this measurement');
+      return;
+    }
     try {
       const measurement = await createMeasurement.mutateAsync({
         project_id: selectedProjectId,
@@ -152,6 +163,7 @@ export function MyMeasurementsPage() {
         measurement_date: selectedEntryDate,
         dimensions: Object.fromEntries(addDimFields.map((f) => [f, String(addDimensions[f] ?? 0)])),
         chainage: addChainage.trim() || null,
+        boq_template_id: addTemplateId ?? null,
       });
       if (addPhoto) {
         try {
@@ -171,8 +183,8 @@ export function MyMeasurementsPage() {
       }
       message.success(`Measurement recorded — qty: ${measurement.computed_qty}`);
       resetAddForm();
-    } catch {
-      message.error('Could not save — check it does not exceed the BOQ tolerance.');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not save measurement'));
     }
   };
 
@@ -194,12 +206,12 @@ export function MyMeasurementsPage() {
       });
       message.success('Updated');
       setEditingMeasurement(null);
-    } catch { message.error('Could not update — check it does not exceed the BOQ tolerance.'); }
+    } catch (err) { message.error(getApiErrorMessage(err, 'Could not update measurement')); }
   };
 
   const handleDelete = async (record: MeasurementRead) => {
     try { await deleteMeasurement.mutateAsync({ id: record.id, projectId: record.project_id }); message.success('Deleted'); }
-    catch { message.error('Could not delete'); }
+    catch (err) { message.error(getApiErrorMessage(err, 'Could not delete')); }
   };
 
   // ── columns ───────────────────────────────────────────────────────────────
@@ -320,7 +332,7 @@ export function MyMeasurementsPage() {
                       style={{ width: '100%' }}
                       placeholder="Select BOQ item"
                       value={addBoqItemId ?? undefined}
-                      onChange={(v) => { setAddBoqItemId(v); setAddDimensions({}); }}
+                      onChange={(v) => { setAddBoqItemId(v); setAddTemplateId(null); setAddDimensions({}); }}
                       options={(boqItems ?? []).map((b) => ({ value: b.id, label: `${b.item_no} — ${b.description}` }))}
                     />
                   </div>
@@ -333,6 +345,23 @@ export function MyMeasurementsPage() {
                     />
                   </div>
                 </div>
+
+                {addNeedsTemplate && (
+                  <div style={{ marginBottom: 12 }}>
+                    <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                      Construction Template <Typography.Text type="danger">*</Typography.Text>
+                    </Typography.Text>
+                    <Select
+                      showSearch
+                      optionFilterProp="label"
+                      style={{ width: '100%', maxWidth: 400 }}
+                      placeholder="Select construction template"
+                      value={addTemplateId ?? undefined}
+                      onChange={setAddTemplateId}
+                      options={addTemplateOptions.map((t) => ({ value: t.id, label: t.name }))}
+                    />
+                  </div>
+                )}
 
                 {addDimFields.length > 0 && (
                   <>
@@ -376,7 +405,7 @@ export function MyMeasurementsPage() {
                   <Button
                     type="primary"
                     loading={createMeasurement.isPending || uploadPhoto.isPending}
-                    disabled={!addBoqItemId || addDimFields.length === 0}
+                    disabled={!addBoqItemId || addDimFields.length === 0 || (addNeedsTemplate && !addTemplateId)}
                     onClick={handleAdd}
                   >
                     Save Measurement

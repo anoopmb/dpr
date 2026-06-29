@@ -32,6 +32,7 @@ import { getCurrentPosition } from '@/utils/geolocation';
 import { RequireAttendance } from '@/components/field/RequireAttendance';
 import { useThemeMode } from '@/theme/theme-context';
 import { useDateFormat, useNumberFormat } from '@/utils/format';
+import { getApiErrorMessage } from '@/utils/api-error';
 import { CONSTRUCTION_TYPE_LABELS, useConstructionTemplates } from '@/api/hooks/useBoq';
 import type { BoqConstructionType } from '@/api/hooks/useBoq';
 
@@ -66,16 +67,13 @@ function computeSteelWeight(rows: SteelRow[], coeffMap: Record<number, number>):
 }
 
 interface MaterialPreviewCardProps {
-  constructionType: string;
+  templateId: string | null;
   qty: number;
-  constructionSubtype?: string | null;
 }
 
-function MaterialPreviewCard({ constructionType, qty, constructionSubtype }: MaterialPreviewCardProps) {
+function MaterialPreviewCard({ templateId, qty }: MaterialPreviewCardProps) {
   const { data: preview } = useMaterialTemplatePreview(
-    qty > 0 && constructionType !== 'GENERAL' && constructionType !== 'STEEL'
-      ? { construction_type: constructionType, qty, construction_subtype: constructionSubtype }
-      : null,
+    templateId && qty > 0 ? { template_id: templateId, qty } : null,
   );
 
   if (!preview || preview.length === 0) return null;
@@ -121,7 +119,7 @@ export function MeasurementEntryPage() {
 
   const [boqItemId, setBoqItemId] = useState<string | null>(null);
   const [dimensions, setDimensions] = useState<Record<string, number>>({});
-  const [concreteGrade, setConcreteGrade] = useState<string | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [steelRows, setSteelRows] = useState<SteelRow[]>([{ key: nextSteelKey(), description: '', diameter_mm: 0, bar_count: null, length_m: null }]);
   const [chainage, setChainage] = useState<string>('');
   const [photo, setPhoto] = useState<File | null>(null);
@@ -132,27 +130,40 @@ export function MeasurementEntryPage() {
   const workType = (workTypes ?? []).find((w) => w.id === boqItem?.work_type_id);
   const dimensionFields = useMemo(() => workType?.dimension_fields ?? [], [workType]);
 
-  const { data: steelTemplates } = useConstructionTemplates('STEEL');
-  const { data: concreteTemplates } = useConstructionTemplates('CONCRETE');
+  const { data: allTemplates } = useConstructionTemplates();
+
+  const activeTemplates = useMemo(
+    () => (allTemplates ?? []).filter((t) => t.is_active && t.construction_type === constructionType),
+    [allTemplates, constructionType],
+  );
+
+  const selectedTemplate = useMemo(
+    () => activeTemplates.find((t) => t.id === selectedTemplateId) ?? null,
+    [activeTemplates, selectedTemplateId],
+  );
 
   const steelCoeffMap = useMemo<Record<number, number>>(() => {
+    if (!selectedTemplate || selectedTemplate.construction_type !== 'STEEL') return {};
     const map: Record<number, number> = {};
-    (steelTemplates ?? []).filter((t) => t.is_active && t.construction_subtype).forEach((t) => {
-      map[parseInt(t.construction_subtype!)] = parseFloat(t.coefficient);
+    selectedTemplate.items.forEach((item) => {
+      if (item.bar_diameter_mm != null) {
+        map[item.bar_diameter_mm] = parseFloat(item.coefficient);
+      }
     });
     return map;
-  }, [steelTemplates]);
+  }, [selectedTemplate]);
 
   const steelDiameters = useMemo(
     () => Object.keys(steelCoeffMap).map(Number).sort((a, b) => a - b),
     [steelCoeffMap],
   );
 
-  const concreteGrades = useMemo(() => {
-    const grades = new Set<string>();
-    (concreteTemplates ?? []).filter((t) => t.is_active && t.construction_subtype).forEach((t) => grades.add(t.construction_subtype!));
-    return Array.from(grades).sort();
-  }, [concreteTemplates]);
+  const templateOptions = useMemo(() => {
+    return activeTemplates.map((t) => ({
+      value: t.id,
+      label: t.construction_subtype ? `${t.construction_subtype} — ${t.name}` : t.name,
+    }));
+  }, [activeTemplates]);
 
   const isSteel = constructionType === 'STEEL';
   const isConcrete = constructionType === 'CONCRETE';
@@ -171,7 +182,7 @@ export function MeasurementEntryPage() {
   const handleSelectBoq = (value: string) => {
     setBoqItemId(value);
     setDimensions({});
-    setConcreteGrade(null);
+    setSelectedTemplateId(null);
     setSteelRows([{ key: nextSteelKey(), description: '', diameter_mm: 0, bar_count: null, length_m: null }]);
   };
 
@@ -285,8 +296,8 @@ export function MeasurementEntryPage() {
       message.warning('No dimension fields available for this work type');
       return;
     }
-    if (isConcrete && !concreteGrade) {
-      message.warning('Select a concrete grade');
+    if (constructionType !== 'GENERAL' && !selectedTemplateId) {
+      message.warning('Select a construction template');
       return;
     }
 
@@ -308,7 +319,7 @@ export function MeasurementEntryPage() {
         measurement_date: selectedEntryDate,
         dimensions: isSteel ? {} : Object.fromEntries(dimensionFields.map((f) => [f, String(dimensions[f] ?? 0)])),
         chainage: chainage.trim() || null,
-        construction_subtype: isConcrete ? concreteGrade : null,
+        boq_template_id: selectedTemplateId,
         steel_lines: isSteel ? steelLines : undefined,
       });
 
@@ -336,20 +347,22 @@ export function MeasurementEntryPage() {
       ]);
       setBoqItemId(null);
       setDimensions({});
-      setConcreteGrade(null);
+      setSelectedTemplateId(null);
       setSteelRows([{ key: nextSteelKey(), description: '', diameter_mm: 0, bar_count: null, length_m: null }]);
       setChainage('');
       setPhoto(null);
-    } catch {
-      message.error('Could not save measurement — check it does not exceed the BOQ tolerance.');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not save measurement'));
     }
   };
 
   const showForm = boqItemId && (!isSteel ? true : true);
   const submitReady = boqItemId && (
-    isSteel
-      ? steelRows.some((r) => r.bar_count && r.length_m)
-      : dimensionFields.length > 0 && (!isConcrete || !!concreteGrade)
+    constructionType === 'GENERAL'
+      ? dimensionFields.length > 0
+      : isSteel
+        ? !!selectedTemplateId && steelRows.some((r) => r.bar_count && r.length_m)
+        : !!selectedTemplateId && dimensionFields.length > 0
   );
 
   return (
@@ -447,8 +460,30 @@ export function MeasurementEntryPage() {
               />
             </Form.Item>
 
-            {/* STEEL: Bar entry table */}
-            {showForm && isSteel && (
+            {/* Template selector — all non-GENERAL types */}
+            {showForm && constructionType !== 'GENERAL' && (
+              <Form.Item label="Construction Template" required>
+                <Select
+                  size="large"
+                  placeholder={
+                    activeTemplates.length === 0
+                      ? 'No templates configured — add one in Settings → Construction Templates'
+                      : 'Select template'
+                  }
+                  value={selectedTemplateId ?? undefined}
+                  onChange={(v) => {
+                    setSelectedTemplateId(v);
+                    setSteelRows([{ key: nextSteelKey(), description: '', diameter_mm: 0, bar_count: null, length_m: null }]);
+                  }}
+                  options={templateOptions}
+                  disabled={activeTemplates.length === 0}
+                  style={{ width: '100%' }}
+                />
+              </Form.Item>
+            )}
+
+            {/* STEEL: Bar entry table — shown after template is selected */}
+            {showForm && isSteel && selectedTemplateId && (
               <>
                 <Form.Item label="Bar Entries">
                   <Table<SteelRow>
@@ -480,19 +515,9 @@ export function MeasurementEntryPage() {
               </>
             )}
 
-            {/* CONCRETE: Grade selector + dimension form */}
+            {/* CONCRETE: dimension form after template selected */}
             {showForm && isConcrete && (
               <>
-                <Form.Item label="Concrete Grade" required>
-                  <Select
-                    size="large"
-                    placeholder="Select grade"
-                    value={concreteGrade ?? undefined}
-                    onChange={setConcreteGrade}
-                    options={concreteGrades.map((g) => ({ value: g, label: g }))}
-                    style={{ width: 200 }}
-                  />
-                </Form.Item>
                 {dimensionFields.map((field) => (
                   <Form.Item key={field} label={FIELD_LABELS[field] ?? field}>
                     <InputNumber
@@ -509,12 +534,8 @@ export function MeasurementEntryPage() {
                     <Statistic title="Computed Volume (m³)" value={fmtQty(regularQty)} />
                   </Card>
                 )}
-                {concreteGrade && regularQty > 0 && (
-                  <MaterialPreviewCard
-                    constructionType="CONCRETE"
-                    qty={regularQty}
-                    constructionSubtype={concreteGrade}
-                  />
+                {selectedTemplateId && regularQty > 0 && (
+                  <MaterialPreviewCard templateId={selectedTemplateId} qty={regularQty} />
                 )}
               </>
             )}
@@ -538,8 +559,8 @@ export function MeasurementEntryPage() {
                     <Statistic title="Computed Quantity" value={fmtQty(regularQty)} />
                   </Card>
                 )}
-                {regularQty > 0 && (
-                  <MaterialPreviewCard constructionType={constructionType} qty={regularQty} />
+                {selectedTemplateId && regularQty > 0 && (
+                  <MaterialPreviewCard templateId={selectedTemplateId} qty={regularQty} />
                 )}
               </>
             )}

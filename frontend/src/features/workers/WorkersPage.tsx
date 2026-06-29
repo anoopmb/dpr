@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getApiErrorMessage } from '@/utils/api-error';
 import {
   Alert,
   Button,
@@ -102,8 +103,8 @@ function LedgerTab({ projectId }: { projectId: string }) {
       message.success('Transaction recorded');
       setPaymentModalOpen(false);
       payForm.resetFields();
-    } catch {
-      message.error('Could not record transaction');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not record transaction'));
     }
   };
 
@@ -111,8 +112,8 @@ function LedgerTab({ projectId }: { projectId: string }) {
     try {
       await deletePayment.mutateAsync({ paymentId: p.id, projectId, workerId: p.worker_id });
       message.success('Transaction deleted');
-    } catch {
-      message.error('Could not delete transaction');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not delete transaction'));
     }
   };
 
@@ -326,8 +327,8 @@ export function WorkersPage() {
       setCreateModalOpen(false);
       createForm.resetFields();
       setCreateType('NORMAL');
-    } catch {
-      message.error('Could not add worker');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not add worker'));
     }
   };
 
@@ -365,8 +366,8 @@ export function WorkersPage() {
       message.success('Worker updated');
       setEditingWorker(null);
       editForm.resetFields();
-    } catch {
-      message.error('Could not update worker');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not update worker'));
     }
   };
 

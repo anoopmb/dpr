@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getApiErrorMessage } from '@/utils/api-error';
 import { Button, Form, Input, Modal, Select, Space, Switch, Table, Tag, Typography, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import {
@@ -75,8 +76,8 @@ export function UsersPage() {
       message.success('User created');
       setCreateOpen(false);
       createForm.resetFields();
-    } catch {
-      message.error('Could not create user — User ID or email may already be taken');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not create user'));
     }
   };
 
@@ -98,8 +99,8 @@ export function UsersPage() {
       await updateUser.mutateAsync({ id: editingUser.id, data: payload });
       message.success('User updated');
       setEditingUser(null);
-    } catch {
-      message.error('Could not update user');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not update user'));
     }
   };
 
@@ -110,8 +111,8 @@ export function UsersPage() {
       message.success(`Password reset for ${resetPasswordUser.full_name}`);
       setResetPasswordUser(null);
       resetPasswordForm.resetFields();
-    } catch {
-      message.error('Could not reset password');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not reset password'));
     }
   };
 

@@ -4,7 +4,7 @@ import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { useCreateMaster, useDeleteMaster, useUpdateMaster, type MasterRow } from '@/api/hooks/useMasters';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import type { UseQueryResult } from '@tanstack/react-query';
-import type { AxiosError } from 'axios';
+import { getApiErrorMessage } from '@/utils/api-error';
 
 interface ExtraNumberField {
   name: string;
@@ -75,8 +75,8 @@ export function SimpleCodeNameTab<TRow extends MasterRow = MasterRow>({
       }
       setModalOpen(false);
       form.resetFields();
-    } catch {
-      message.error(`Could not save ${label.toLowerCase()}`);
+    } catch (err) {
+      message.error(getApiErrorMessage(err, `Could not save ${label.toLowerCase()}`));
     }
   };
 
@@ -85,12 +85,7 @@ export function SimpleCodeNameTab<TRow extends MasterRow = MasterRow>({
       await deleteMaster.mutateAsync(id);
       message.success(`${label} deleted`);
     } catch (err) {
-      const status = (err as AxiosError)?.response?.status;
-      if (status === 409) {
-        message.error(`Cannot delete — this ${label.toLowerCase()} is referenced by existing data.`);
-      } else {
-        message.error(`Could not delete ${label.toLowerCase()}`);
-      }
+      message.error(getApiErrorMessage(err, `Could not delete ${label.toLowerCase()}`));
     }
   };
 
