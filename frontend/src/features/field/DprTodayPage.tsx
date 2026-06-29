@@ -1376,7 +1376,6 @@ function ExpensesTab({ projectId, headerId, entryDate }: { projectId: string; he
   const updateExpense = useUpdateExpense();
   const deleteExpense = useDeleteExpense();
   const { fmtAmt, symbol } = useNumberFormat();
-  const { fmtDate } = useDateFormat();
 
   const [drafts, setDrafts] = useState<ExpenseDraft[]>([]);
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
@@ -2443,7 +2442,7 @@ function DprPreviewModal({
       {/* Attendance */}
       {(attendance ?? []).length > 0 && (
         <>
-          <Divider orientation="left" style={{ margin: '12px 0 8px' }}>
+          <Divider titlePlacement="left" style={{ margin: '12px 0 8px' }}>
             Attendance — {(attendance ?? []).length} present
           </Divider>
           <Table
@@ -2474,7 +2473,7 @@ function DprPreviewModal({
       {/* Labour */}
       {(labour ?? []).length > 0 && (
         <>
-          <Divider orientation="left" style={{ margin: '12px 0 8px' }}>Labour</Divider>
+          <Divider titlePlacement="left" style={{ margin: '12px 0 8px' }}>Labour</Divider>
           <Table
             size="small" rowKey="id" dataSource={labour ?? []} pagination={false} scroll={{ x: 660 }}
             summary={() => (
@@ -2515,7 +2514,7 @@ function DprPreviewModal({
       {/* Materials */}
       {(header?.materials ?? []).length > 0 && (
         <>
-          <Divider orientation="left" style={{ margin: '12px 0 8px' }}>Materials</Divider>
+          <Divider titlePlacement="left" style={{ margin: '12px 0 8px' }}>Materials</Divider>
           <Table
             size="small" rowKey="id" dataSource={header?.materials ?? []} pagination={false} scroll={{ x: 500 }}
             summary={() => (
@@ -2546,7 +2545,7 @@ function DprPreviewModal({
       {/* Machinery */}
       {(header?.machinery_entries ?? []).length > 0 && (
         <>
-          <Divider orientation="left" style={{ margin: '12px 0 8px' }}>Machinery</Divider>
+          <Divider titlePlacement="left" style={{ margin: '12px 0 8px' }}>Machinery</Divider>
           <Table
             size="small" rowKey="id" dataSource={header?.machinery_entries ?? []} pagination={false} scroll={{ x: 520 }}
             summary={() => (
@@ -2588,7 +2587,7 @@ function DprPreviewModal({
       {/* Measurements */}
       {forDateMeasurements.length > 0 && (
         <>
-          <Divider orientation="left" style={{ margin: '12px 0 8px' }}>
+          <Divider titlePlacement="left" style={{ margin: '12px 0 8px' }}>
             Measurements — {forDateMeasurements.length} record{forDateMeasurements.length !== 1 ? 's' : ''}
           </Divider>
           <Table
@@ -2628,7 +2627,7 @@ function DprPreviewModal({
       {/* Expenses */}
       {(expenses ?? []).length > 0 && (
         <>
-          <Divider orientation="left" style={{ margin: '12px 0 8px' }}>Expenses</Divider>
+          <Divider titlePlacement="left" style={{ margin: '12px 0 8px' }}>Expenses</Divider>
           <Table
             size="small" rowKey="id" dataSource={expenses ?? []} pagination={false}
             summary={() => (
@@ -2657,7 +2656,7 @@ function DprPreviewModal({
       {/* Issues */}
       {(header?.issues ?? []).length > 0 && (
         <>
-          <Divider orientation="left" style={{ margin: '12px 0 8px' }}>Issues</Divider>
+          <Divider titlePlacement="left" style={{ margin: '12px 0 8px' }}>Issues</Divider>
           <Table
             size="small" rowKey="id" dataSource={header?.issues ?? []} pagination={false}
             columns={[
@@ -2678,7 +2677,7 @@ function DprPreviewModal({
       {/* Production */}
       {(productionWithQty.length > 0 || header?.daily_work_summary) && (
         <>
-          <Divider orientation="left" style={{ margin: '12px 0 8px' }}>Production</Divider>
+          <Divider titlePlacement="left" style={{ margin: '12px 0 8px' }}>Production</Divider>
           {header?.daily_work_summary && (
             <Descriptions size="small" bordered column={1} style={{ marginBottom: 8 }}>
               <Descriptions.Item label="Daily Work Summary">{header.daily_work_summary}</Descriptions.Item>

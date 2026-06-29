@@ -765,7 +765,7 @@ export function BoqPage() {
         return {};
       },
       render: (_, row) => {
-        if (row._type === 'item') return fmtQtyByUnit(row.item.tendered_qty, row.item.unit);
+        if (row._type === 'item') return fmtQtyByUnit(row.item.tendered_qty, uomById.get(row.item.uom_id) ?? '');
         if (row._type === 'subtotal') return fmtQty(sectionQty(row.section.items, 'tendered_qty'));
         return null;
       },
@@ -781,7 +781,7 @@ export function BoqPage() {
         return {};
       },
       render: (_, row) => {
-        if (row._type === 'item') return fmtQtyByUnit(row.item.consumed_qty, row.item.unit);
+        if (row._type === 'item') return fmtQtyByUnit(row.item.consumed_qty, uomById.get(row.item.uom_id) ?? '');
         if (row._type === 'subtotal') return fmtQty(sectionQty(row.section.items, 'consumed_qty'));
         return null;
       },
@@ -835,7 +835,7 @@ export function BoqPage() {
         return isRevised ? (
           <Space size={4}>
             <Tag color="orange" style={{ marginRight: 0 }}>Revised</Tag>
-            {fmtQtyByUnit(row.item.current_tendered_qty, row.item.unit)}
+            {fmtQtyByUnit(row.item.current_tendered_qty, uomById.get(row.item.uom_id) ?? '')}
           </Space>
         ) : <Typography.Text type="secondary">—</Typography.Text>;
       },
@@ -1376,8 +1376,8 @@ export function BoqPage() {
           <Descriptions size="small" column={2} style={{ marginBottom: 16 }}>
             <Descriptions.Item label="Contract Rate">{fmtQty(revisionModal.item.rate, 2)}</Descriptions.Item>
             <Descriptions.Item label="Current Rate">{fmtQty(revisionModal.item.current_rate, 2)}</Descriptions.Item>
-            <Descriptions.Item label="Contract Qty">{fmtQtyByUnit(revisionModal.item.tendered_qty, revisionModal.item.unit)}</Descriptions.Item>
-            <Descriptions.Item label="Current Qty">{fmtQtyByUnit(revisionModal.item.current_tendered_qty, revisionModal.item.unit)}</Descriptions.Item>
+            <Descriptions.Item label="Contract Qty">{fmtQtyByUnit(revisionModal.item.tendered_qty, uomById.get(revisionModal.item.uom_id) ?? '')}</Descriptions.Item>
+            <Descriptions.Item label="Current Qty">{fmtQtyByUnit(revisionModal.item.current_tendered_qty, uomById.get(revisionModal.item.uom_id) ?? '')}</Descriptions.Item>
           </Descriptions>
         )}
         <Form form={revisionForm} layout="vertical" onFinish={handleCreateRevision}>

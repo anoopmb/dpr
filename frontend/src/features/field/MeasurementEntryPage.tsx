@@ -168,8 +168,6 @@ export function MeasurementEntryPage() {
     [isSteel, steelRows, steelCoeffMap],
   );
 
-  const quantity = isSteel ? steelWeightMt : regularQty;
-
   const handleSelectBoq = (value: string) => {
     setBoqItemId(value);
     setDimensions({});

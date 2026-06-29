@@ -191,19 +191,6 @@ function WorkflowEditor({
           </Typography.Text>
         </div>
 
-        {false && (
-          <div>
-            <Select
-              mode="multiple"
-              style={{ width: '100%', maxWidth: 480 }}
-              value={lockAllowedRoles}
-              onChange={(v) => setLockAllowedRoles(v)}
-              options={ROLE_OPTIONS}
-              placeholder="Select role(s)"
-            />
-          </div>
-        )}
-
         <div>
           <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
             Approval levels
