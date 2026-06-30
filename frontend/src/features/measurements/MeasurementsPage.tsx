@@ -31,13 +31,11 @@ import { useThemeMode } from '@/theme/theme-context';
 import { useDateFormat, useNumberFormat } from '@/utils/format';
 
 const FIELD_LABELS: Record<string, string> = {
-  length: 'Length (m)',
-  width: 'Width (m)',
-  depth: 'Depth (m)',
-  breadth: 'Breadth (m)',
-  height: 'Height (m)',
-  thickness: 'Thickness (m)',
-  diameter: 'Diameter (mm)',
+  nos: 'No.',
+  l: 'L (m)',
+  b: 'B (m)',
+  d: 'D (m)',
+  h: 'H (m)',
 };
 
 const NCOLS = 7;
