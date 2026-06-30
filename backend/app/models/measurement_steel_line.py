@@ -18,7 +18,7 @@ class MeasurementSteelLine(TimestampedBase):
     measurement_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("measurements.id", ondelete="CASCADE"), nullable=False
     )
-    description: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(200), nullable=True)
     diameter_mm: Mapped[int] = mapped_column(Integer, nullable=False)
     bar_count: Mapped[Decimal] = mapped_column(Numeric(10, 0), nullable=False)
     length_m: Mapped[Decimal] = mapped_column(Numeric(10, 3), nullable=False)

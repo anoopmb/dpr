@@ -783,7 +783,16 @@ const nextIssueKey = () => `iss-${++_issueSeq}`;
 interface LabourDraftRow { key: string; worker_id: string | null; quantity: number | null; rate: number | null; overtime_amount: number | null; }
 interface MatDraftRow { key: string; material_id: string | null; qty: number | null; uom_id: string | null; rate: number | null; }
 interface MachDraftRow { key: string; machinery_id: string | null; qty: number | null; hire_rate: number | null; hire_unit: string | null; }
-interface MeasDraftRow { key: string; boq_item_id: string | null; boq_template_id: string | null; dimensions: Record<string, number>; chainage: string; qty: number | null; rate: number | null; }
+interface SteelLineDraft { key: string; description: string; diameter_mm: number | null; bar_count: number | null; length_m: number | null; }
+let steelDraftKeyCounter = 0;
+const nextSteelDraftKey = () => `sl-${++steelDraftKeyCounter}`;
+function computeSteelTotalMt(lines: SteelLineDraft[], coeffMap: Record<number, number>): number {
+  return lines.reduce((sum, l) => {
+    if (!l.diameter_mm || !l.bar_count || !l.length_m) return sum;
+    return sum + l.bar_count * l.length_m * (coeffMap[l.diameter_mm] ?? 0);
+  }, 0);
+}
+interface MeasDraftRow { key: string; boq_item_id: string | null; boq_template_id: string | null; dimensions: Record<string, number>; steel_lines: SteelLineDraft[]; chainage: string; qty: number | null; rate: number | null; }
 interface IssueDraftRow { key: string; description: string; severity: IssueSeverity | null; }
 type LabourRow = { _kind: 'existing'; entry: DprLabourRead } | { _kind: 'draft'; draft: LabourDraftRow };
 type MatRow = { _kind: 'existing'; entry: DprMaterialRead } | { _kind: 'draft'; draft: MatDraftRow };
@@ -1639,6 +1648,8 @@ function MeasurementsTab({
   const [photoFiles, setPhotoFiles] = useState<Record<string, File>>({});
   const photoInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
+  const [steelModalDraftKey, setSteelModalDraftKey] = useState<string | null>(null);
+
   const [editingMeasurement, setEditingMeasurement] = useState<MeasurementRead | null>(null);
   const [editDimensions, setEditDimensions] = useState<Record<string, number>>({});
   const [editChainage, setEditChainage] = useState('');
@@ -1669,16 +1680,40 @@ function MeasurementsTab({
       if (d.key !== draftKey) return d;
       const newDims = { ...d.dimensions, [field]: value ?? 0 };
       const boqItem = boqById.get(d.boq_item_id ?? '');
-      if (boqItem?.construction_type === 'STEEL') {
-        const tmpl = (allTemplates ?? []).find((t) => t.id === d.boq_template_id);
-        const tmplItem = tmpl?.items?.find((i) => i.bar_diameter_mm != null);
-        const coeff = tmplItem ? parseFloat(tmplItem.coefficient) : 0;
-        const newQty = (newDims['nos'] ?? 0) * (newDims['l'] ?? 0) * coeff;
-        return { ...d, dimensions: newDims, qty: newQty };
-      }
       const wt = (workTypes ?? []).find((w) => w.id === boqItem?.work_type_id);
       const newQty = wt ? calculateQuantity(wt.formula, wt.dimension_fields, newDims) : d.qty;
       return { ...d, dimensions: newDims, qty: newQty };
+    }));
+  };
+
+  const patchSteelLine = (draftKey: string, lineKey: string, patch: Partial<SteelLineDraft>) => {
+    setDrafts((prev) => prev.map((d) => {
+      if (d.key !== draftKey) return d;
+      const newLines = d.steel_lines.map((l) => (l.key === lineKey ? { ...l, ...patch } : l));
+      const boqItem = boqById.get(d.boq_item_id ?? '');
+      const tmpl = (allTemplates ?? []).find((t) => t.id === d.boq_template_id);
+      const coeffMap: Record<number, number> = {};
+      (tmpl?.items ?? []).forEach((i) => { if (i.bar_diameter_mm != null) coeffMap[i.bar_diameter_mm] = parseFloat(i.coefficient); });
+      void boqItem;
+      return { ...d, steel_lines: newLines, qty: computeSteelTotalMt(newLines, coeffMap) };
+    }));
+  };
+
+  const addSteelLine = (draftKey: string, defaultDia: number | null) => {
+    setDrafts((prev) => prev.map((d) => {
+      if (d.key !== draftKey) return d;
+      return { ...d, steel_lines: [...d.steel_lines, { key: nextSteelDraftKey(), description: '', diameter_mm: defaultDia, bar_count: null, length_m: null }] };
+    }));
+  };
+
+  const removeSteelLine = (draftKey: string, lineKey: string) => {
+    setDrafts((prev) => prev.map((d) => {
+      if (d.key !== draftKey) return d;
+      const newLines = d.steel_lines.filter((l) => l.key !== lineKey);
+      const tmpl = (allTemplates ?? []).find((t) => t.id === d.boq_template_id);
+      const coeffMap: Record<number, number> = {};
+      (tmpl?.items ?? []).forEach((i) => { if (i.bar_diameter_mm != null) coeffMap[i.bar_diameter_mm] = parseFloat(i.coefficient); });
+      return { ...d, steel_lines: newLines, qty: computeSteelTotalMt(newLines, coeffMap) };
     }));
   };
 
@@ -1701,13 +1736,9 @@ function MeasurementsTab({
       return;
     }
     if (isSteel) {
-      const tmpl = (allTemplates ?? []).find((t) => t.id === draft.boq_template_id);
-      if (!tmpl?.items?.some((i) => i.bar_diameter_mm != null)) {
-        message.warning('Template has no bar diameter configured');
-        return;
-      }
-      if ((draft.dimensions['l'] ?? 0) <= 0) {
-        message.warning('Enter bar length (L) for steel measurement');
+      const validLines = draft.steel_lines.filter((l) => l.diameter_mm != null && l.bar_count && l.length_m);
+      if (validLines.length === 0) {
+        message.warning('Add at least one bar entry via the steel lines button');
         return;
       }
     }
@@ -1715,9 +1746,7 @@ function MeasurementsTab({
     try {
       let created;
       if (isSteel) {
-        const tmplItem = (allTemplates ?? [])
-          .find((t) => t.id === draft.boq_template_id)
-          ?.items?.find((i) => i.bar_diameter_mm != null);
+        const validLines = draft.steel_lines.filter((l) => l.diameter_mm != null && l.bar_count && l.length_m);
         created = await createMeasurement.mutateAsync({
           project_id: projectId,
           boq_item_id: draft.boq_item_id,
@@ -1726,11 +1755,12 @@ function MeasurementsTab({
           chainage: draft.chainage.trim() || null,
           rate: draft.rate != null ? String(draft.rate) : null,
           boq_template_id: draft.boq_template_id ?? null,
-          steel_lines: [{
-            diameter_mm: tmplItem!.bar_diameter_mm!,
-            bar_count: draft.dimensions['nos'] ?? 1,
-            length_m: draft.dimensions['l'] ?? 0,
-          }],
+          steel_lines: validLines.map((l) => ({
+            diameter_mm: l.diameter_mm!,
+            bar_count: l.bar_count!,
+            length_m: l.length_m!,
+            description: l.description || null,
+          })),
         });
       } else {
         created = await createMeasurement.mutateAsync({
@@ -1830,6 +1860,7 @@ function MeasurementsTab({
                 boq_item_id: v,
                 boq_template_id: null,
                 dimensions: {},
+                steel_lines: [],
                 qty: 0,
                 rate: boqItem?.rate != null ? parseFloat(boqItem.rate) : null,
               });
@@ -1882,7 +1913,19 @@ function MeasurementsTab({
         const boqItem = row.draft.boq_item_id ? boqById.get(row.draft.boq_item_id) : undefined;
         const wt = (workTypes ?? []).find((w) => w.id === boqItem?.work_type_id);
         const isSteel = boqItem?.construction_type === 'STEEL';
-        const active = isSteel ? (field === 'nos' || field === 'l') : (wt?.dimension_fields ?? []).includes(field);
+        if (isSteel) {
+          if (field === 'nos') {
+            const count = row.draft.steel_lines.filter((l) => l.bar_count && l.length_m).length;
+            return (
+              <Button size="small" type={count > 0 ? 'default' : 'dashed'}
+                onClick={() => setSteelModalDraftKey(row.draft.key)}>
+                {count > 0 ? `${count} line${count !== 1 ? 's' : ''}` : '+ bars'}
+              </Button>
+            );
+          }
+          return <Typography.Text type="secondary" style={{ fontSize: 11 }}>—</Typography.Text>;
+        }
+        const active = (wt?.dimension_fields ?? []).includes(field);
         return (
           <div style={{ opacity: active ? 1 : 0.28 }}>
             <InputNumber
@@ -2034,7 +2077,7 @@ function MeasurementsTab({
           {!isSubmitted && (
             <Button
               size="small" icon={<PlusOutlined />}
-              onClick={() => setDrafts((p) => [...p, { key: nextMeasKey(), boq_item_id: null, boq_template_id: null, dimensions: {}, chainage: '', qty: null, rate: null }])}
+              onClick={() => setDrafts((p) => [...p, { key: nextMeasKey(), boq_item_id: null, boq_template_id: null, dimensions: {}, steel_lines: [], chainage: '', qty: null, rate: null }])}
             >
               Add Measurement
             </Button>
@@ -2100,6 +2143,119 @@ function MeasurementsTab({
           </Form>
         )}
       </Modal>
+
+      {/* Steel lines modal */}
+      {(() => {
+        const steelDraft = drafts.find((d) => d.key === steelModalDraftKey);
+        const boqItem = steelDraft?.boq_item_id ? boqById.get(steelDraft.boq_item_id) : undefined;
+        const tmpl = (allTemplates ?? []).find((t) => t.id === steelDraft?.boq_template_id);
+        const coeffMap: Record<number, number> = {};
+        (tmpl?.items ?? []).forEach((i) => { if (i.bar_diameter_mm != null) coeffMap[i.bar_diameter_mm] = parseFloat(i.coefficient); });
+        const diameters = Object.keys(coeffMap).map(Number).sort((a, b) => a - b);
+        const totalMt = steelDraft ? computeSteelTotalMt(steelDraft.steel_lines, coeffMap) : 0;
+        const steelLines = steelDraft?.steel_lines ?? [];
+        return (
+          <Modal
+            title={boqItem ? `Steel Bar Entries — ${boqItem.item_no} ${boqItem.description}` : 'Steel Bar Entries'}
+            open={steelModalDraftKey != null}
+            onCancel={() => setSteelModalDraftKey(null)}
+            onOk={() => setSteelModalDraftKey(null)}
+            okText="Done"
+            width={680}
+            destroyOnHidden
+          >
+            <Table<SteelLineDraft>
+              rowKey="key"
+              size="small"
+              dataSource={steelLines}
+              pagination={false}
+              locale={{ emptyText: 'No bar entries yet — click Add Row below' }}
+              columns={[
+                {
+                  title: 'Description / Mark',
+                  key: 'description',
+                  render: (_, row) => (
+                    <Input
+                      size="small" placeholder="e.g. Main Bar, Dist. Bar"
+                      value={row.description}
+                      onChange={(e) => patchSteelLine(steelModalDraftKey!, row.key, { description: e.target.value })}
+                    />
+                  ),
+                },
+                {
+                  title: 'Dia (mm)',
+                  key: 'diameter_mm',
+                  width: 100,
+                  render: (_, row) => (
+                    <Select
+                      size="small" style={{ width: '100%' }}
+                      placeholder="Dia"
+                      value={row.diameter_mm ?? undefined}
+                      onChange={(v) => patchSteelLine(steelModalDraftKey!, row.key, { diameter_mm: v })}
+                      options={diameters.map((d) => ({ value: d, label: `${d} mm` }))}
+                    />
+                  ),
+                },
+                {
+                  title: 'Nos',
+                  key: 'bar_count',
+                  width: 80,
+                  render: (_, row) => (
+                    <InputNumber
+                      size="small" style={{ width: '100%' }} min={1} precision={0}
+                      placeholder="0"
+                      value={row.bar_count ?? undefined}
+                      onChange={(v) => patchSteelLine(steelModalDraftKey!, row.key, { bar_count: v ?? null })}
+                    />
+                  ),
+                },
+                {
+                  title: 'L (m)',
+                  key: 'length_m',
+                  width: 90,
+                  render: (_, row) => (
+                    <InputNumber
+                      size="small" style={{ width: '100%' }} min={0} precision={3}
+                      placeholder="0.000"
+                      value={row.length_m ?? undefined}
+                      onChange={(v) => patchSteelLine(steelModalDraftKey!, row.key, { length_m: v ?? null })}
+                    />
+                  ),
+                },
+                {
+                  title: 'Wt (MT)',
+                  key: 'weight',
+                  width: 90,
+                  align: 'right' as const,
+                  render: (_, row) => {
+                    if (!row.bar_count || !row.length_m || !row.diameter_mm) return <Typography.Text type="secondary">—</Typography.Text>;
+                    const w = row.bar_count * row.length_m * (coeffMap[row.diameter_mm] ?? 0);
+                    return <Typography.Text strong style={{ fontSize: 12 }}>{w.toFixed(4)}</Typography.Text>;
+                  },
+                },
+                {
+                  title: '',
+                  key: 'del',
+                  width: 36,
+                  render: (_, row) => steelLines.length > 1 ? (
+                    <Button size="small" type="text" danger icon={<DeleteOutlined />}
+                      onClick={() => removeSteelLine(steelModalDraftKey!, row.key)} />
+                  ) : null,
+                },
+              ]}
+              footer={() => (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Button size="small" icon={<PlusOutlined />}
+                    onClick={() => addSteelLine(steelModalDraftKey!, diameters[0] ?? null)}>
+                    Add Row
+                  </Button>
+                  <Statistic title="Total Weight" value={`${totalMt.toFixed(4)} MT`} valueStyle={{ fontSize: 16 }} />
+                </div>
+              )}
+            />
+          </Modal>
+        );
+      })()}
     </>
   );
 }

@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class SteelLineCreate(BaseModel):
-    description: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=200)
     diameter_mm: int = Field(ge=6, le=50)
     bar_count: Decimal = Field(gt=0)
     length_m: Decimal = Field(gt=0, description="Length in metres")
@@ -16,7 +16,7 @@ class SteelLineRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    description: str
+    description: str | None
     diameter_mm: int
     bar_count: Decimal
     length_m: Decimal
