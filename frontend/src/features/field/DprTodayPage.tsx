@@ -1669,6 +1669,13 @@ function MeasurementsTab({
       if (d.key !== draftKey) return d;
       const newDims = { ...d.dimensions, [field]: value ?? 0 };
       const boqItem = boqById.get(d.boq_item_id ?? '');
+      if (boqItem?.construction_type === 'STEEL') {
+        const tmpl = (allTemplates ?? []).find((t) => t.id === d.boq_template_id);
+        const tmplItem = tmpl?.items?.find((i) => i.bar_diameter_mm != null);
+        const coeff = tmplItem ? parseFloat(tmplItem.coefficient) : 0;
+        const newQty = (newDims['nos'] ?? 0) * (newDims['l'] ?? 0) * coeff;
+        return { ...d, dimensions: newDims, qty: newQty };
+      }
       const wt = (workTypes ?? []).find((w) => w.id === boqItem?.work_type_id);
       const newQty = wt ? calculateQuantity(wt.formula, wt.dimension_fields, newDims) : d.qty;
       return { ...d, dimensions: newDims, qty: newQty };
@@ -1684,7 +1691,8 @@ function MeasurementsTab({
     if (!draft.boq_item_id) { message.warning('Select a BOQ item'); return; }
     const boqItem = boqById.get(draft.boq_item_id);
     const workType = (workTypes ?? []).find((w) => w.id === boqItem?.work_type_id);
-    if (!workType || workType.dimension_fields.length === 0) {
+    const isSteel = boqItem?.construction_type === 'STEEL';
+    if (!isSteel && (!workType || workType.dimension_fields.length === 0)) {
       message.warning('No dimension fields configured for this BOQ item');
       return;
     }
@@ -1692,17 +1700,49 @@ function MeasurementsTab({
       message.warning('Select a construction template for this measurement');
       return;
     }
+    if (isSteel) {
+      const tmpl = (allTemplates ?? []).find((t) => t.id === draft.boq_template_id);
+      if (!tmpl?.items?.some((i) => i.bar_diameter_mm != null)) {
+        message.warning('Template has no bar diameter configured');
+        return;
+      }
+      if ((draft.dimensions['l'] ?? 0) <= 0) {
+        message.warning('Enter bar length (L) for steel measurement');
+        return;
+      }
+    }
     setSavingKeys((p) => new Set(p).add(draft.key));
     try {
-      const created = await createMeasurement.mutateAsync({
-        project_id: projectId,
-        boq_item_id: draft.boq_item_id,
-        measurement_date: entryDate,
-        dimensions: Object.fromEntries(workType.dimension_fields.map((f) => [f, String(draft.dimensions[f] ?? 0)])),
-        chainage: draft.chainage.trim() || null,
-        rate: draft.rate != null ? String(draft.rate) : null,
-        boq_template_id: draft.boq_template_id ?? null,
-      });
+      let created;
+      if (isSteel) {
+        const tmplItem = (allTemplates ?? [])
+          .find((t) => t.id === draft.boq_template_id)
+          ?.items?.find((i) => i.bar_diameter_mm != null);
+        created = await createMeasurement.mutateAsync({
+          project_id: projectId,
+          boq_item_id: draft.boq_item_id,
+          measurement_date: entryDate,
+          dimensions: {},
+          chainage: draft.chainage.trim() || null,
+          rate: draft.rate != null ? String(draft.rate) : null,
+          boq_template_id: draft.boq_template_id ?? null,
+          steel_lines: [{
+            diameter_mm: tmplItem!.bar_diameter_mm!,
+            bar_count: draft.dimensions['nos'] ?? 1,
+            length_m: draft.dimensions['l'] ?? 0,
+          }],
+        });
+      } else {
+        created = await createMeasurement.mutateAsync({
+          project_id: projectId,
+          boq_item_id: draft.boq_item_id,
+          measurement_date: entryDate,
+          dimensions: Object.fromEntries(workType!.dimension_fields.map((f) => [f, String(draft.dimensions[f] ?? 0)])),
+          chainage: draft.chainage.trim() || null,
+          rate: draft.rate != null ? String(draft.rate) : null,
+          boq_template_id: draft.boq_template_id ?? null,
+        });
+      }
       const photoFile = photoFiles[draft.key];
       if (photoFile) {
         try {
@@ -1841,7 +1881,8 @@ function MeasurementsTab({
         }
         const boqItem = row.draft.boq_item_id ? boqById.get(row.draft.boq_item_id) : undefined;
         const wt = (workTypes ?? []).find((w) => w.id === boqItem?.work_type_id);
-        const active = (wt?.dimension_fields ?? []).includes(field);
+        const isSteel = boqItem?.construction_type === 'STEEL';
+        const active = isSteel ? (field === 'nos' || field === 'l') : (wt?.dimension_fields ?? []).includes(field);
         return (
           <div style={{ opacity: active ? 1 : 0.28 }}>
             <InputNumber
