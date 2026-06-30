@@ -1916,9 +1916,15 @@ function MeasurementsTab({
         if (isSteel) {
           if (field === 'nos') {
             const count = row.draft.steel_lines.filter((l) => l.bar_count && l.length_m).length;
+            const hasTemplate = !!row.draft.boq_template_id;
             return (
               <Button size="small" type={count > 0 ? 'default' : 'dashed'}
-                onClick={() => setSteelModalDraftKey(row.draft.key)}>
+                disabled={!hasTemplate}
+                title={hasTemplate ? undefined : 'Select a template first'}
+                onClick={() => {
+                  if (!hasTemplate) { message.warning('Select a construction template first'); return; }
+                  setSteelModalDraftKey(row.draft.key);
+                }}>
                 {count > 0 ? `${count} line${count !== 1 ? 's' : ''}` : '+ bars'}
               </Button>
             );
