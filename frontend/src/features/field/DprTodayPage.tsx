@@ -111,20 +111,17 @@ interface CapturedLocation {
 const NO_WORK_REASONS = ['Rain', 'Holiday', 'Sunday', 'Other'] as const;
 
 const FIELD_LABELS: Record<string, string> = {
-  length: 'Length (m)',
-  width: 'Width (m)',
-  depth: 'Depth (m)',
-  breadth: 'Breadth (m)',
-  height: 'Height (m)',
-  thickness: 'Thickness (m)',
-  diameter: 'Diameter (mm)',
+  nos: 'No.',
+  l: 'L (m)',
+  b: 'B (m)',
+  d: 'D (m)',
+  h: 'H (m)',
 };
 
-const ALL_DIM_FIELDS = ['length', 'width', 'depth', 'breadth', 'height', 'thickness', 'diameter'] as const;
+const ALL_DIM_FIELDS = ['nos', 'l', 'b', 'd', 'h'] as const;
 
 const DIM_ABBREV: Record<string, string> = {
-  length: 'L', width: 'W', depth: 'D', breadth: 'Br',
-  height: 'H', thickness: 'T', diameter: 'Dia',
+  nos: 'No', l: 'L', b: 'B', d: 'D', h: 'H',
 };
 
 type ProductionRow =

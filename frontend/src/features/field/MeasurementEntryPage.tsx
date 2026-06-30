@@ -37,13 +37,11 @@ import { CONSTRUCTION_TYPE_LABELS, useConstructionTemplates } from '@/api/hooks/
 import type { BoqConstructionType } from '@/api/hooks/useBoq';
 
 const FIELD_LABELS: Record<string, string> = {
-  length: 'Length (m)',
-  width: 'Width (m)',
-  depth: 'Depth (m)',
-  breadth: 'Breadth (m)',
-  height: 'Height (m)',
-  thickness: 'Thickness (m)',
-  diameter: 'Diameter (mm)',
+  nos: 'No.',
+  l: 'L (m)',
+  b: 'B (m)',
+  d: 'D (m)',
+  h: 'H (m)',
 };
 
 const BITUMINOUS_TYPES = new Set(['PRIME_COAT', 'TACK_COAT', 'BM', 'DBM', 'BC']);

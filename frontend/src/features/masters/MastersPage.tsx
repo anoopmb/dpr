@@ -124,7 +124,7 @@ function WorkTypesTab() {
         <Form form={form} layout="vertical" onFinish={handleSave}>
           <Form.Item name="code" label="Code" rules={[{ required: true }]}><Input placeholder="EARTHWORK" /></Form.Item>
           <Form.Item name="name" label="Name" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="dimension_fields" label="Dimension Fields (comma-separated)" rules={[{ required: true }]}><Input placeholder="length, width, depth" /></Form.Item>
+          <Form.Item name="dimension_fields" label="Dimension Fields (comma-separated)" rules={[{ required: true }]}><Input placeholder="e.g. nos, l, b, d" /></Form.Item>
           <Form.Item name="formula" label="Formula" rules={[{ required: true }]}>
             <Select options={[{ value: 'PRODUCT', label: 'PRODUCT (multiply all dimensions)' }, { value: 'AREA_LH', label: 'AREA_LH (length × height)' }, { value: 'LENGTH_ONLY', label: 'LENGTH_ONLY (billed by running length)' }]} />
           </Form.Item>
