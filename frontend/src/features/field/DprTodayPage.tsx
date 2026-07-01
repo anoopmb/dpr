@@ -110,14 +110,6 @@ interface CapturedLocation {
 
 const NO_WORK_REASONS = ['Rain', 'Holiday', 'Sunday', 'Other'] as const;
 
-const FIELD_LABELS: Record<string, string> = {
-  nos: 'No.',
-  l: 'L (m)',
-  b: 'B (m)',
-  d: 'D (m)',
-  h: 'H (m)',
-};
-
 const ALL_DIM_FIELDS = ['nos', 'l', 'b', 'd', 'h'] as const;
 
 const DIM_ABBREV: Record<string, string> = {
