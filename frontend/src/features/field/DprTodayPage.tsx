@@ -1845,6 +1845,7 @@ function MeasurementsTab({
     {
       title: 'BOQ Item',
       key: 'boq',
+      width: 220,
       ellipsis: true,
       render: (_: unknown, row: MeasRow) =>
         row._kind === 'existing' ? (
@@ -1872,7 +1873,7 @@ function MeasurementsTab({
     {
       title: 'Template',
       key: 'template',
-      width: 150,
+      width: 160,
       ellipsis: true,
       render: (_: unknown, row: MeasRow) => {
         if (row._kind === 'existing') {
@@ -1901,7 +1902,7 @@ function MeasurementsTab({
     ...ALL_DIM_FIELDS.map((field) => ({
       title: DIM_ABBREV[field],
       key: field,
-      width: 62,
+      width: 66,
       align: 'right' as const,
       render: (_: unknown, row: MeasRow) => {
         if (row._kind === 'existing') {
@@ -1948,7 +1949,7 @@ function MeasurementsTab({
     {
       title: 'Chainage',
       key: 'chainage',
-      width: 90,
+      width: 96,
       render: (_: unknown, row: MeasRow) =>
         row._kind === 'existing' ? (
           <Typography.Text style={{ fontSize: 12 }}>{row.entry.chainage ?? '—'}</Typography.Text>
@@ -1960,7 +1961,7 @@ function MeasurementsTab({
     {
       title: 'Qty',
       key: 'qty',
-      width: 78,
+      width: 84,
       align: 'right' as const,
       render: (_: unknown, row: MeasRow) =>
         row._kind === 'existing' ? (
@@ -1977,7 +1978,7 @@ function MeasurementsTab({
     {
       title: `Rate (${symbol})`,
       key: 'rate',
-      width: 90,
+      width: 96,
       align: 'right' as const,
       render: (_: unknown, row: MeasRow) => {
         if (row._kind === 'existing') {
@@ -2005,7 +2006,7 @@ function MeasurementsTab({
     {
       title: `Amount (${symbol})`,
       key: 'amount',
-      width: 100,
+      width: 108,
       align: 'right' as const,
       render: (_: unknown, row: MeasRow) => {
         if (row._kind === 'existing') {
@@ -2098,7 +2099,12 @@ function MeasurementsTab({
           dataSource={rows}
           columns={columns}
           pagination={false}
-          scroll={{ x: 1150 }}
+          scroll={{ x: true }}
+          components={{
+            table: ({ style, ...rest }: React.HTMLAttributes<HTMLTableElement>) => (
+              <table {...rest} style={{ ...style, tableLayout: 'fixed', width: '100%', minWidth: 1214 }} />
+            ),
+          }}
           locale={{ emptyText: `No measurements for ${fmtDate(entryDate)}` }}
           summary={totalQty > 0 ? () => (
             <Table.Summary>
