@@ -2098,21 +2098,16 @@ function MeasurementsTab({
           dataSource={rows}
           columns={columns}
           pagination={false}
-          scroll={{ x: true }}
-          components={{
-            table: ({ style, ...rest }: React.HTMLAttributes<HTMLTableElement>) => (
-              <table {...rest} style={{ ...style, tableLayout: 'fixed', width: '100%', minWidth: 950 }} />
-            ),
-          }}
+          scroll={{ x: 1150 }}
           locale={{ emptyText: `No measurements for ${fmtDate(entryDate)}` }}
           summary={totalQty > 0 ? () => (
             <Table.Summary>
               <Table.Summary.Row style={{ fontWeight: 700 }}>
-                <Table.Summary.Cell index={0} colSpan={10}>Total</Table.Summary.Cell>
-                <Table.Summary.Cell index={10} align="right">{fmtQty(totalQty)}</Table.Summary.Cell>
+                <Table.Summary.Cell index={0} colSpan={8}>Total</Table.Summary.Cell>
+                <Table.Summary.Cell index={8} align="right">{fmtQty(totalQty)}</Table.Summary.Cell>
+                <Table.Summary.Cell index={9} />
+                <Table.Summary.Cell index={10} align="right">{fmtAmt(totalAmount)}</Table.Summary.Cell>
                 <Table.Summary.Cell index={11} />
-                <Table.Summary.Cell index={12} align="right">{fmtAmt(totalAmount)}</Table.Summary.Cell>
-                <Table.Summary.Cell index={13} />
               </Table.Summary.Row>
             </Table.Summary>
           ) : undefined}
