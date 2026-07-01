@@ -2004,7 +2004,7 @@ function MeasurementsTab({
           if (boqItem2?.construction_type === 'STEEL' && field === 'nos') {
             const cnt2 = row.entry.steel_lines.length;
             return cnt2 > 0
-              ? <Button size="small" type="link" style={{ padding: 0, fontSize: 11, height: 'auto' }} onClick={() => setViewSteelEntryId(row.entry.id)}>{cnt2} bar{cnt2 !== 1 ? 's' : ''}</Button>
+              ? <Typography.Text style={{ fontSize: 11 }}>{cnt2}</Typography.Text>
               : <Typography.Text type="secondary" style={{ fontSize: 11 }}>—</Typography.Text>;
           }
           const val = row.entry.dimensions[field];
@@ -2136,7 +2136,7 @@ function MeasurementsTab({
     {
       title: '',
       key: 'actions',
-      width: 90,
+      width: 110,
       render: (_: unknown, row: MeasRow) => {
         if (row._kind === 'existing') {
           if (editingRowId === row.entry.id) {
@@ -2148,19 +2148,27 @@ function MeasurementsTab({
               </Space>
             );
           }
-          return row.entry.recorded_by === user?.id ? (
+          const isSteelEntry = boqById.get(row.entry.boq_item_id)?.construction_type === 'STEEL';
+          return (
             <Space size={4}>
-              <Button size="small" icon={<EditOutlined />} onClick={() => startEditRow(row.entry)} />
-              <Popconfirm
-                title="Delete measurement?"
-                description="Removes its contribution from DPR production."
-                onConfirm={() => handleDelete(row.entry)}
-                okText="Delete" okButtonProps={{ danger: true }}
-              >
-                <Button size="small" danger icon={<DeleteOutlined />} loading={deleteMeasurement.isPending} />
-              </Popconfirm>
+              {isSteelEntry && (
+                <Button size="small" onClick={() => setViewSteelEntryId(row.entry.id)}>Bars</Button>
+              )}
+              {row.entry.recorded_by === user?.id && (
+                <>
+                  <Button size="small" icon={<EditOutlined />} onClick={() => startEditRow(row.entry)} />
+                  <Popconfirm
+                    title="Delete measurement?"
+                    description="Removes its contribution from DPR production."
+                    onConfirm={() => handleDelete(row.entry)}
+                    okText="Delete" okButtonProps={{ danger: true }}
+                  >
+                    <Button size="small" danger icon={<DeleteOutlined />} loading={deleteMeasurement.isPending} />
+                  </Popconfirm>
+                </>
+              )}
             </Space>
-          ) : null;
+          );
         }
         return (
           <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
@@ -2219,7 +2227,7 @@ function MeasurementsTab({
           scroll={{ x: true }}
           components={{
             table: ({ style, ...rest }: React.HTMLAttributes<HTMLTableElement>) => (
-              <table {...rest} style={{ ...style, tableLayout: 'fixed', width: '100%', minWidth: 936 }} />
+              <table {...rest} style={{ ...style, tableLayout: 'fixed', width: '100%', minWidth: 956 }} />
             ),
           }}
           locale={{ emptyText: `No measurements for ${fmtDate(entryDate)}` }}
