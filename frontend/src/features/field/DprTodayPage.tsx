@@ -2099,6 +2099,11 @@ function MeasurementsTab({
           columns={columns}
           pagination={false}
           scroll={{ x: true }}
+          components={{
+            table: ({ style, ...rest }: React.HTMLAttributes<HTMLTableElement>) => (
+              <table {...rest} style={{ ...style, tableLayout: 'fixed', width: '100%', minWidth: 950 }} />
+            ),
+          }}
           locale={{ emptyText: `No measurements for ${fmtDate(entryDate)}` }}
           summary={totalQty > 0 ? () => (
             <Table.Summary>
