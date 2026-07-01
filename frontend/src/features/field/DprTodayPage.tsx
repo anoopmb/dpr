@@ -2072,7 +2072,7 @@ function MeasurementsTab({
   ];
 
   return (
-    <>
+    <div style={{ width: '100%' }}>
       <div style={{ border: `1px solid ${token.colorBorderSecondary}`, borderRadius: token.borderRadiusLG, overflow: 'hidden' }}>
         {/* Header bar */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: token.colorFillAlter, borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
@@ -2098,7 +2098,7 @@ function MeasurementsTab({
           dataSource={rows}
           columns={columns}
           pagination={false}
-          scroll={{ x: 1150 }}
+          scroll={{ x: 'max-content' }}
           locale={{ emptyText: `No measurements for ${fmtDate(entryDate)}` }}
           summary={totalQty > 0 ? () => (
             <Table.Summary>
@@ -2262,7 +2262,7 @@ function MeasurementsTab({
           </Modal>
         );
       })()}
-    </>
+    </div>
   );
 }
 
