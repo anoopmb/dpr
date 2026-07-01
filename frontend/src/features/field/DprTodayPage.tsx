@@ -1663,6 +1663,7 @@ function MeasurementsTab({
   const [editRow, setEditRow] = useState<{ chainage: string; rate: number | null; dimensions: Record<string, number>; steel_lines: SteelLineDraft[]; boq_template_id: string | null; boq_item_id: string | null; work_type_id: string | null; }>({ chainage: '', rate: null, dimensions: {}, steel_lines: [], boq_template_id: null, boq_item_id: null, work_type_id: null });
   const [editSteelModalOpen, setEditSteelModalOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
+  const [viewSteelEntryId, setViewSteelEntryId] = useState<string | null>(null);
 
   const boqById = useMemo(() => new Map((boqItems ?? []).map((b) => [b.id, b])), [boqItems]);
 
@@ -2003,7 +2004,7 @@ function MeasurementsTab({
           if (boqItem2?.construction_type === 'STEEL' && field === 'nos') {
             const cnt2 = row.entry.steel_lines.length;
             return cnt2 > 0
-              ? <Typography.Text style={{ fontSize: 11 }}>{cnt2} bar{cnt2 !== 1 ? 's' : ''}</Typography.Text>
+              ? <Button size="small" type="link" style={{ padding: 0, fontSize: 11, height: 'auto' }} onClick={() => setViewSteelEntryId(row.entry.id)}>{cnt2} bar{cnt2 !== 1 ? 's' : ''}</Button>
               : <Typography.Text type="secondary" style={{ fontSize: 11 }}>—</Typography.Text>;
           }
           const val = row.entry.dimensions[field];
@@ -2440,6 +2441,43 @@ function MeasurementsTab({
                     Add Row
                   </Button>
                   <Statistic title="Total Weight" value={`${editTotalMt.toFixed(4)} MT`} valueStyle={{ fontSize: 16 }} />
+                </div>
+              )}
+            />
+          </Modal>
+        );
+      })()}
+
+      {/* Read-only steel bar detail view */}
+      {(() => {
+        const viewEntry = viewSteelEntryId ? forDate.find((m) => m.id === viewSteelEntryId) : null;
+        if (!viewEntry) return null;
+        const viewBoqItem = boqById.get(viewEntry.boq_item_id);
+        const totalMtView = viewEntry.steel_lines.reduce((s, l) => s + parseFloat(String(l.computed_weight_mt)), 0);
+        return (
+          <Modal
+            title={viewBoqItem ? `Steel Bars — ${viewBoqItem.item_no} ${viewBoqItem.description}` : 'Steel Bars'}
+            open={!!viewSteelEntryId}
+            onCancel={() => setViewSteelEntryId(null)}
+            footer={<Button onClick={() => setViewSteelEntryId(null)}>Close</Button>}
+            width={620}
+            destroyOnHidden
+          >
+            <Table<(typeof viewEntry.steel_lines)[number]>
+              rowKey="id"
+              size="small"
+              dataSource={viewEntry.steel_lines}
+              pagination={false}
+              columns={[
+                { title: 'Description', dataIndex: 'description', key: 'desc', render: (v) => v ?? <Typography.Text type="secondary">—</Typography.Text> },
+                { title: 'Dia (mm)', dataIndex: 'diameter_mm', key: 'dia', width: 80, align: 'right' as const },
+                { title: 'Nos', dataIndex: 'bar_count', key: 'nos', width: 70, align: 'right' as const },
+                { title: 'L (m)', dataIndex: 'length_m', key: 'len', width: 80, align: 'right' as const, render: (v) => parseFloat(String(v)).toFixed(3) },
+                { title: 'Wt (MT)', dataIndex: 'computed_weight_mt', key: 'wt', width: 90, align: 'right' as const, render: (v) => <Typography.Text strong>{parseFloat(String(v)).toFixed(4)}</Typography.Text> },
+              ]}
+              footer={() => (
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <Statistic title="Total Weight" value={`${totalMtView.toFixed(4)} MT`} valueStyle={{ fontSize: 15 }} />
                 </div>
               )}
             />
