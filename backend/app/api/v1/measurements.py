@@ -10,6 +10,7 @@ from app.schemas.measurement import (
     MeasurementCreate,
     MeasurementRead,
     MeasurementUpdate,
+    SteelLineRead,
 )
 from app.services.measurement_service import MeasurementService
 
@@ -19,6 +20,7 @@ _RECORDER_ROLES = (UserRole.SITE_ENGINEER, UserRole.PROJECT_MANAGER, UserRole.QU
 
 
 async def _to_read(session: SessionDep, measurement: Measurement) -> MeasurementRead:
+    await session.refresh(measurement, attribute_names=["steel_lines"])
     user = await session.get(User, measurement.recorded_by)
     return MeasurementRead(
         id=measurement.id,
@@ -38,6 +40,7 @@ async def _to_read(session: SessionDep, measurement: Measurement) -> Measurement
         rate=measurement.rate,
         boq_template_id=measurement.boq_template_id,
         boq_template_name=measurement.boq_template_name,
+        steel_lines=[SteelLineRead.model_validate(l) for l in measurement.steel_lines],
     )
 
 
@@ -66,6 +69,7 @@ async def _to_read_many(session: SessionDep, measurements: list[Measurement]) ->
             rate=m.rate,
             boq_template_id=m.boq_template_id,
             boq_template_name=m.boq_template_name,
+            steel_lines=[SteelLineRead.model_validate(l) for l in m.steel_lines],
         )
         for m in measurements
     ]
