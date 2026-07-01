@@ -12,6 +12,7 @@ import {
   Popconfirm,
   Radio,
   Select,
+  Skeleton,
   Space,
   Statistic,
   Switch,
@@ -181,7 +182,7 @@ function LedgerTab({ projectId }: { projectId: string }) {
           ) : null
         }
       >
-        {ledgerLoading && <Typography.Text type="secondary">Loading…</Typography.Text>}
+        {ledgerLoading && <Skeleton active />}
         {ledger && (
           <>
             <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>

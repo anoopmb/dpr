@@ -9,6 +9,7 @@ import {
   Modal,
   Popconfirm,
   Select,
+  Skeleton,
   Space,
   Table,
   Tabs,
@@ -463,6 +464,7 @@ function TemplatesTab({ config, isActive }: TemplatesTabProps) {
         </Button>
       </div>
 
+      {isLoading && <Skeleton active />}
       {!isLoading && filtered.length === 0 && (
         <Alert
           type="info"

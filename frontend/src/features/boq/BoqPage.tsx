@@ -12,6 +12,7 @@ import {
   Modal,
   Popconfirm,
   Select,
+  Skeleton,
   Space,
   Table,
   Tabs,
@@ -139,8 +140,8 @@ function RevisionHistoryDrawer({
       destroyOnHidden
     >
       {isLoading ? (
-        <Typography.Text type="secondary">Loading...</Typography.Text>
-      ) : (revisions ?? []).length === 0 ? (
+        <Skeleton active />
+      ) :(revisions ?? []).length === 0 ? (
         <Typography.Text type="secondary">No revisions yet for this item.</Typography.Text>
       ) : (
         <Timeline
