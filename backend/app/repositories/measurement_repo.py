@@ -3,6 +3,7 @@ from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from app.models.measurement import Measurement
 from app.repositories.base import BaseRepository
@@ -13,16 +14,20 @@ class MeasurementRepository(BaseRepository[Measurement]):
 
     async def list_for_project_and_date(self, project_id: uuid.UUID, measurement_date: date) -> list[Measurement]:
         result = await self.session.execute(
-            select(Measurement).where(
+            select(Measurement)
+            .where(
                 Measurement.project_id == project_id,
                 Measurement.measurement_date == measurement_date,
             )
+            .options(selectinload(Measurement.steel_lines))
         )
         return list(result.scalars().all())
 
     async def list_for_project(self, project_id: uuid.UUID) -> list[Measurement]:
         result = await self.session.execute(
-            select(Measurement).where(Measurement.project_id == project_id)
+            select(Measurement)
+            .where(Measurement.project_id == project_id)
+            .options(selectinload(Measurement.steel_lines))
         )
         return list(result.scalars().all())
 
