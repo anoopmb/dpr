@@ -893,36 +893,46 @@ function MaterialsTab({
     },
     {
       title: 'Qty', key: 'qty', width: 100,
-      render: (_: unknown, row: MatRow) =>
-        row._kind === 'existing' ? (
-          <InputNumber key={`${row.entry.id}-q-${row.entry.qty_consumed}`} size="small" min={0} style={inp}
-            defaultValue={parseFloat(row.entry.qty_consumed)} onBlur={(e) => saveQty(row.entry, e.target.value)} disabled={isSubmitted} />
-        ) : (
-          <InputNumber size="small" min={0} style={inp} placeholder="0" value={row.draft.qty} onChange={(v) => patchDraft(row.draft.key, { qty: v })} />
-        ),
+      render: (_: unknown, row: MatRow) => {
+        if (row._kind === 'existing') {
+          const isAuto = !row.entry.manually_edited && !!row.entry.source_measurement_id;
+          if (isAuto || isSubmitted) return <Typography.Text style={{ fontSize: 12 }}>{parseFloat(row.entry.qty_consumed)}</Typography.Text>;
+          return <InputNumber key={`${row.entry.id}-q-${row.entry.qty_consumed}`} size="small" min={0} style={inp}
+            defaultValue={parseFloat(row.entry.qty_consumed)} onBlur={(e) => saveQty(row.entry, e.target.value)} />;
+        }
+        return <InputNumber size="small" min={0} style={inp} placeholder="0" value={row.draft.qty} onChange={(v) => patchDraft(row.draft.key, { qty: v })} />;
+      },
     },
     {
       title: 'Unit', key: 'uom', width: 90,
-      render: (_: unknown, row: MatRow) =>
-        row._kind === 'existing' ? (
-          <Select key={`${row.entry.id}-u-${row.entry.uom_id}`} size="small" showSearch optionFilterProp="label" style={inp}
+      render: (_: unknown, row: MatRow) => {
+        if (row._kind === 'existing') {
+          const isAuto = !row.entry.manually_edited && !!row.entry.source_measurement_id;
+          const uomCode = (uoms ?? []).find((u) => u.id === row.entry.uom_id)?.code ?? row.entry.uom_id;
+          if (isAuto || isSubmitted) return <Typography.Text style={{ fontSize: 12 }}>{uomCode}</Typography.Text>;
+          return <Select key={`${row.entry.id}-u-${row.entry.uom_id}`} size="small" showSearch optionFilterProp="label" style={inp}
             defaultValue={row.entry.uom_id} onChange={(v) => saveUom(row.entry, v)}
-            options={(uoms ?? []).map((u) => ({ value: u.id, label: u.code }))} disabled={isSubmitted} />
-        ) : (
-          <Select size="small" showSearch optionFilterProp="label" style={inp} placeholder="Unit" value={row.draft.uom_id}
-            onChange={(v) => patchDraft(row.draft.key, { uom_id: v })} options={(uoms ?? []).map((u) => ({ value: u.id, label: u.code }))} />
-        ),
+            options={(uoms ?? []).map((u) => ({ value: u.id, label: u.code }))} />;
+        }
+        return <Select size="small" showSearch optionFilterProp="label" style={inp} placeholder="Unit" value={row.draft.uom_id}
+          onChange={(v) => patchDraft(row.draft.key, { uom_id: v })} options={(uoms ?? []).map((u) => ({ value: u.id, label: u.code }))} />;
+      },
     },
     {
       title: `Rate (${symbol})`, key: 'rate', width: 110, align: 'right' as const,
-      render: (_: unknown, row: MatRow) =>
-        row._kind === 'existing' ? (
-          <InputNumber key={`${row.entry.id}-r-${row.entry.rate}`} size="small" min={0} precision={2} style={inp}
+      render: (_: unknown, row: MatRow) => {
+        if (row._kind === 'existing') {
+          const isAuto = !row.entry.manually_edited && !!row.entry.source_measurement_id;
+          if (isAuto || isSubmitted) {
+            const rateVal = row.entry.rate != null ? parseFloat(row.entry.rate) : null;
+            return <Typography.Text style={{ fontSize: 12 }}>{rateVal != null ? rateVal : '—'}</Typography.Text>;
+          }
+          return <InputNumber key={`${row.entry.id}-r-${row.entry.rate}`} size="small" min={0} precision={2} style={inp}
             defaultValue={row.entry.rate != null ? parseFloat(row.entry.rate) : undefined} placeholder="—"
-            onBlur={(e) => saveRate(row.entry, e.target.value)} disabled={isSubmitted} />
-        ) : (
-          <InputNumber size="small" min={0} precision={2} style={inp} placeholder="Rate (auto)" value={row.draft.rate} onChange={(v) => patchDraft(row.draft.key, { rate: v })} />
-        ),
+            onBlur={(e) => saveRate(row.entry, e.target.value)} />;
+        }
+        return <InputNumber size="small" min={0} precision={2} style={inp} placeholder="Rate (auto)" value={row.draft.rate} onChange={(v) => patchDraft(row.draft.key, { rate: v })} />;
+      },
     },
     {
       title: `Amount (${symbol})`, key: 'amount', width: 110, align: 'right' as const,
@@ -939,7 +949,8 @@ function MaterialsTab({
       title: '', key: 'actions', width: 68,
       render: (_: unknown, row: MatRow) => {
         if (row._kind === 'existing') {
-          if (isSubmitted) return null;
+          const isAuto = !row.entry.manually_edited && !!row.entry.source_measurement_id;
+          if (isAuto || isSubmitted) return null;
           return (
             <Popconfirm title="Delete this entry?" onConfirm={() => handleDelete(row.entry)} okText="Delete" okButtonProps={{ danger: true }}>
               <Button size="small" type="text" danger icon={<DeleteOutlined />} loading={deleteMaterial.isPending} />
@@ -1364,13 +1375,6 @@ type ExpRow =
   | { _kind: 'existing'; entry: ExpenseRead }
   | { _kind: 'draft'; draft: ExpenseDraft };
 
-interface ExpenseEditValues {
-  expense_category_id: string;
-  amount: number;
-  vendor_name?: string;
-  remarks?: string;
-}
-
 function ExpensesTab({ projectId, headerId, entryDate }: { projectId: string; headerId: string; entryDate: string }) {
   const { token } = theme.useToken();
   const { data: expenses, isLoading } = useExpensesByHeader(headerId);
@@ -1382,8 +1386,9 @@ function ExpensesTab({ projectId, headerId, entryDate }: { projectId: string; he
 
   const [drafts, setDrafts] = useState<ExpenseDraft[]>([]);
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
-  const [editingExpense, setEditingExpense] = useState<ExpenseRead | null>(null);
-  const [editForm] = Form.useForm<ExpenseEditValues>();
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+  const [editExpRow, setEditExpRow] = useState<{ expense_category_id: string | null; amount: number | null; vendor_name: string; remarks: string; }>({ expense_category_id: null, amount: null, vendor_name: '', remarks: '' });
+  const [editExpSaving, setEditExpSaving] = useState(false);
 
   const forDate = expenses ?? [];
   const categoryById = new Map((categories ?? []).map((c) => [c.id, c.name]));
@@ -1417,32 +1422,38 @@ function ExpensesTab({ projectId, headerId, entryDate }: { projectId: string; he
     }
   };
 
-  const openEdit = (expense: ExpenseRead) => {
-    editForm.setFieldsValue({
+  const startEditExpense = (expense: ExpenseRead) => {
+    setEditingExpenseId(expense.id);
+    setEditExpRow({
       expense_category_id: expense.expense_category_id,
       amount: parseFloat(expense.amount),
-      vendor_name: expense.vendor_name ?? undefined,
-      remarks: expense.remarks ?? undefined,
+      vendor_name: expense.vendor_name ?? '',
+      remarks: expense.remarks ?? '',
     });
-    setEditingExpense(expense);
   };
 
-  const handleEditSave = async (values: ExpenseEditValues) => {
-    if (!editingExpense) return;
+  const saveEditExpense = async (expense: ExpenseRead) => {
+    if (!editExpRow.expense_category_id || editExpRow.amount == null) {
+      message.warning('Category and amount are required');
+      return;
+    }
+    setEditExpSaving(true);
     try {
       await updateExpense.mutateAsync({
-        id: editingExpense.id,
+        id: expense.id,
         data: {
-          expense_category_id: values.expense_category_id,
-          amount: String(values.amount),
-          vendor_name: values.vendor_name?.trim() || undefined,
-          remarks: values.remarks?.trim() || undefined,
+          expense_category_id: editExpRow.expense_category_id,
+          amount: String(editExpRow.amount),
+          vendor_name: editExpRow.vendor_name.trim() || undefined,
+          remarks: editExpRow.remarks.trim() || undefined,
         },
       });
       message.success('Updated');
-      setEditingExpense(null);
+      setEditingExpenseId(null);
     } catch (err) {
       message.error(getApiErrorMessage(err, 'Could not update expense'));
+    } finally {
+      setEditExpSaving(false);
     }
   };
 
@@ -1466,62 +1477,85 @@ function ExpensesTab({ projectId, headerId, entryDate }: { projectId: string; he
     {
       title: 'Category',
       key: 'category',
-      render: (_: unknown, row: ExpRow) =>
-        row._kind === 'existing' ? (
-          <Typography.Text>{categoryById.get(row.entry.expense_category_id) ?? row.entry.expense_category_id}</Typography.Text>
-        ) : (
-          <Select
-            size="small" style={inp} showSearch optionFilterProp="label" placeholder="Select category…"
+      render: (_: unknown, row: ExpRow) => {
+        if (row._kind === 'existing') {
+          if (editingExpenseId === row.entry.id) {
+            return (
+              <Select size="small" style={inp} showSearch optionFilterProp="label" placeholder="Select category…"
+                value={editExpRow.expense_category_id ?? undefined}
+                onChange={(v) => setEditExpRow((p) => ({ ...p, expense_category_id: v }))}
+                options={(categories ?? []).map((c) => ({ value: c.id, label: c.name }))} />
+            );
+          }
+          return <Typography.Text>{categoryById.get(row.entry.expense_category_id) ?? row.entry.expense_category_id}</Typography.Text>;
+        }
+        return (
+          <Select size="small" style={inp} showSearch optionFilterProp="label" placeholder="Select category…"
             value={row.draft.expense_category_id ?? undefined}
             onChange={(v) => patchDraft(row.draft.key, { expense_category_id: v })}
-            options={(categories ?? []).map((c) => ({ value: c.id, label: c.name }))}
-          />
-        ),
+            options={(categories ?? []).map((c) => ({ value: c.id, label: c.name }))} />
+        );
+      },
     },
     {
       title: `Amount (${symbol})`,
       key: 'amount',
       width: 130,
       align: 'right' as const,
-      render: (_: unknown, row: ExpRow) =>
-        row._kind === 'existing' ? (
-          <Typography.Text strong style={{ fontSize: 12 }}>{fmtAmt(parseFloat(row.entry.amount))}</Typography.Text>
-        ) : (
-          <InputNumber
-            size="small" style={inp} min={0} precision={2} placeholder="0.00"
+      render: (_: unknown, row: ExpRow) => {
+        if (row._kind === 'existing') {
+          if (editingExpenseId === row.entry.id) {
+            return <InputNumber size="small" style={inp} min={0} precision={2} placeholder="0.00"
+              value={editExpRow.amount ?? undefined}
+              onChange={(v) => setEditExpRow((p) => ({ ...p, amount: v }))} />;
+          }
+          return <Typography.Text strong style={{ fontSize: 12 }}>{fmtAmt(parseFloat(row.entry.amount))}</Typography.Text>;
+        }
+        return (
+          <InputNumber size="small" style={inp} min={0} precision={2} placeholder="0.00"
             value={row.draft.amount ?? undefined}
-            onChange={(v) => patchDraft(row.draft.key, { amount: v })}
-          />
-        ),
+            onChange={(v) => patchDraft(row.draft.key, { amount: v })} />
+        );
+      },
     },
     {
       title: 'Vendor',
       key: 'vendor',
       width: 160,
-      render: (_: unknown, row: ExpRow) =>
-        row._kind === 'existing' ? (
-          <Typography.Text style={{ fontSize: 12 }}>{row.entry.vendor_name || '—'}</Typography.Text>
-        ) : (
-          <Input
-            size="small" style={inp} placeholder="Vendor (optional)"
+      render: (_: unknown, row: ExpRow) => {
+        if (row._kind === 'existing') {
+          if (editingExpenseId === row.entry.id) {
+            return <Input size="small" style={inp} placeholder="Vendor (optional)"
+              value={editExpRow.vendor_name}
+              onChange={(e) => setEditExpRow((p) => ({ ...p, vendor_name: e.target.value }))} />;
+          }
+          return <Typography.Text style={{ fontSize: 12 }}>{row.entry.vendor_name || '—'}</Typography.Text>;
+        }
+        return (
+          <Input size="small" style={inp} placeholder="Vendor (optional)"
             value={row.draft.vendor_name}
-            onChange={(e) => patchDraft(row.draft.key, { vendor_name: e.target.value })}
-          />
-        ),
+            onChange={(e) => patchDraft(row.draft.key, { vendor_name: e.target.value })} />
+        );
+      },
     },
     {
       title: 'Remarks',
       key: 'remarks',
-      render: (_: unknown, row: ExpRow) =>
-        row._kind === 'existing' ? (
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>{row.entry.remarks || '—'}</Typography.Text>
-        ) : (
-          <Input
-            size="small" style={inp} placeholder="Remarks (optional)"
+      render: (_: unknown, row: ExpRow) => {
+        if (row._kind === 'existing') {
+          if (editingExpenseId === row.entry.id) {
+            return <Input size="small" style={inp} placeholder="Remarks (optional)"
+              value={editExpRow.remarks}
+              onChange={(e) => setEditExpRow((p) => ({ ...p, remarks: e.target.value }))} />;
+          }
+          return <Typography.Text type="secondary" style={{ fontSize: 12 }}>{row.entry.remarks || '—'}</Typography.Text>;
+        }
+        return (
+          <Input size="small" style={inp} placeholder="Remarks (optional)"
             value={row.draft.remarks}
-            onChange={(e) => patchDraft(row.draft.key, { remarks: e.target.value })}
-          />
-        ),
+            onChange={(e) => patchDraft(row.draft.key, { remarks: e.target.value })} />
+        );
+      },
     },
     {
       title: '',
@@ -1529,9 +1563,18 @@ function ExpensesTab({ projectId, headerId, entryDate }: { projectId: string; he
       width: 80,
       render: (_: unknown, row: ExpRow) => {
         if (row._kind === 'existing') {
+          if (editingExpenseId === row.entry.id) {
+            return (
+              <Space size={4}>
+                <Button size="small" type="primary" icon={<CheckOutlined />}
+                  loading={editExpSaving} onClick={() => saveEditExpense(row.entry)} />
+                <Button size="small" icon={<CloseOutlined />} onClick={() => setEditingExpenseId(null)} />
+              </Space>
+            );
+          }
           return (
             <Space size={4}>
-              <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(row.entry)} />
+              <Button size="small" icon={<EditOutlined />} onClick={() => startEditExpense(row.entry)} />
               <Popconfirm
                 title="Delete this expense?"
                 onConfirm={() => handleDelete(row.entry)}
@@ -1554,67 +1597,41 @@ function ExpensesTab({ projectId, headerId, entryDate }: { projectId: string; he
   ];
 
   return (
-    <>
-      <div style={{ border: `1px solid ${token.colorBorderSecondary}`, borderRadius: token.borderRadiusLG, overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: token.colorFillAlter, borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Typography.Text strong style={{ fontSize: 14 }}>Expenses</Typography.Text>
-            <Tag style={{ margin: 0, fontSize: 11 }}>{forDate.length} item{forDate.length !== 1 ? 's' : ''}</Tag>
-          </span>
-          <Button
-            size="small" icon={<PlusOutlined />}
-            onClick={() => setDrafts((p) => [...p, { key: nextExpenseKey(), expense_category_id: null, amount: null, vendor_name: '', remarks: '' }])}
-          >
-            Add Expense
-          </Button>
-        </div>
-        <Table<ExpRow>
-          rowKey={(row) => row._kind === 'existing' ? row.entry.id : row.draft.key}
-          size="small"
-          loading={isLoading}
-          dataSource={rows}
-          columns={columns}
-          pagination={false}
-          scroll={{ x: 600 }}
-          locale={{ emptyText: 'No expenses recorded for this DPR' }}
-          summary={totalAmount > 0 ? () => (
-            <Table.Summary>
-              <Table.Summary.Row style={{ fontWeight: 700 }}>
-                <Table.Summary.Cell index={0}>Total</Table.Summary.Cell>
-                <Table.Summary.Cell index={1} align="right">{fmtAmt(totalAmount)}</Table.Summary.Cell>
-                <Table.Summary.Cell index={2} />
-                <Table.Summary.Cell index={3} />
-                <Table.Summary.Cell index={4} />
-              </Table.Summary.Row>
-            </Table.Summary>
-          ) : undefined}
-        />
+    <div style={{ border: `1px solid ${token.colorBorderSecondary}`, borderRadius: token.borderRadiusLG, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: token.colorFillAlter, borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Typography.Text strong style={{ fontSize: 14 }}>Expenses</Typography.Text>
+          <Tag style={{ margin: 0, fontSize: 11 }}>{forDate.length} item{forDate.length !== 1 ? 's' : ''}</Tag>
+        </span>
+        <Button
+          size="small" icon={<PlusOutlined />}
+          onClick={() => setDrafts((p) => [...p, { key: nextExpenseKey(), expense_category_id: null, amount: null, vendor_name: '', remarks: '' }])}
+        >
+          Add Expense
+        </Button>
       </div>
-
-      <Modal
-        title="Edit Expense"
-        open={!!editingExpense}
-        onCancel={() => setEditingExpense(null)}
-        onOk={() => editForm.submit()}
-        confirmLoading={updateExpense.isPending}
-        destroyOnHidden
-      >
-        <Form form={editForm} layout="vertical" onFinish={handleEditSave}>
-          <Form.Item name="expense_category_id" label="Category" rules={[{ required: true }]}>
-            <Select showSearch optionFilterProp="label" options={(categories ?? []).map((c) => ({ value: c.id, label: c.name }))} />
-          </Form.Item>
-          <Form.Item name="amount" label={`Amount (${symbol})`} rules={[{ required: true }]}>
-            <InputNumber min={0} precision={2} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="vendor_name" label="Vendor">
-            <Input />
-          </Form.Item>
-          <Form.Item name="remarks" label="Remarks">
-            <Input.TextArea rows={2} />
-          </Form.Item>
-        </Form>
-      </Modal>
-    </>
+      <Table<ExpRow>
+        rowKey={(row) => row._kind === 'existing' ? row.entry.id : row.draft.key}
+        size="small"
+        loading={isLoading}
+        dataSource={rows}
+        columns={columns}
+        pagination={false}
+        scroll={{ x: 600 }}
+        locale={{ emptyText: 'No expenses recorded for this DPR' }}
+        summary={totalAmount > 0 ? () => (
+          <Table.Summary>
+            <Table.Summary.Row style={{ fontWeight: 700 }}>
+              <Table.Summary.Cell index={0}>Total</Table.Summary.Cell>
+              <Table.Summary.Cell index={1} align="right">{fmtAmt(totalAmount)}</Table.Summary.Cell>
+              <Table.Summary.Cell index={2} />
+              <Table.Summary.Cell index={3} />
+              <Table.Summary.Cell index={4} />
+            </Table.Summary.Row>
+          </Table.Summary>
+        ) : undefined}
+      />
+    </div>
   );
 }
 
@@ -1650,21 +1667,24 @@ function MeasurementsTab({
 
   const [steelModalDraftKey, setSteelModalDraftKey] = useState<string | null>(null);
 
-  const [editingMeasurement, setEditingMeasurement] = useState<MeasurementRead | null>(null);
-  const [editDimensions, setEditDimensions] = useState<Record<string, number>>({});
-  const [editChainage, setEditChainage] = useState('');
-  const [editRate, setEditRate] = useState<number | null>(null);
+  const [editingRowId, setEditingRowId] = useState<string | null>(null);
+  const [editRow, setEditRow] = useState<{ chainage: string; rate: number | null; dimensions: Record<string, number>; steel_lines: SteelLineDraft[]; boq_template_id: string | null; boq_item_id: string | null; work_type_id: string | null; }>({ chainage: '', rate: null, dimensions: {}, steel_lines: [], boq_template_id: null, boq_item_id: null, work_type_id: null });
+  const [editSteelModalOpen, setEditSteelModalOpen] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
 
   const boqById = useMemo(() => new Map((boqItems ?? []).map((b) => [b.id, b])), [boqItems]);
 
   const editWorkType = useMemo(
-    () => (editingMeasurement ? (workTypes ?? []).find((w) => w.id === editingMeasurement.work_type_id) : undefined),
-    [editingMeasurement, workTypes],
+    () => editRow.work_type_id ? (workTypes ?? []).find((w) => w.id === editRow.work_type_id) : undefined,
+    [editRow.work_type_id, workTypes],
   );
-  const editComputedQty = useMemo(() => {
-    if (!editWorkType) return 0;
-    return calculateQuantity(editWorkType.formula, editWorkType.dimension_fields, editDimensions);
-  }, [editWorkType, editDimensions]);
+  const editTemplateCoeffMap = useMemo(() => {
+    const tmpl = (allTemplates ?? []).find((t) => t.id === editRow.boq_template_id);
+    const m: Record<number, number> = {};
+    (tmpl?.items ?? []).forEach((i) => { if (i.bar_diameter_mm != null) m[i.bar_diameter_mm] = parseFloat(i.coefficient); });
+    return m;
+  }, [allTemplates, editRow.boq_template_id]);
+  const editSteelDiameters = useMemo(() => Object.keys(editTemplateCoeffMap).map(Number).sort((a, b) => a - b), [editTemplateCoeffMap]);
 
   const forDate = useMemo(
     () => (measurements ?? []).filter((m) => m.measurement_date === entryDate),
@@ -1799,27 +1819,71 @@ function MeasurementsTab({
     }
   };
 
-  const handleEditSave = async () => {
-    if (!editingMeasurement || !editWorkType) return;
-    try {
-      await updateMeasurement.mutateAsync({
-        id: editingMeasurement.id,
-        data: {
-          dimensions: Object.fromEntries(editWorkType.dimension_fields.map((f) => [f, String(editDimensions[f] ?? 0)])),
-          chainage: editChainage.trim() || null,
-          rate: editRate != null ? String(editRate) : null,
-        },
-      });
-      message.success('Updated');
-      setEditingMeasurement(null);
-    } catch (err) { message.error(getApiErrorMessage(err, 'Could not update measurement')); }
+  const startEditRow = (entry: MeasurementRead) => {
+    setEditingRowId(entry.id);
+    setEditRow({
+      chainage: entry.chainage ?? '',
+      rate: entry.rate != null ? parseFloat(String(entry.rate)) : null,
+      dimensions: Object.fromEntries(Object.entries(entry.dimensions).map(([k, v]) => [k, parseFloat(String(v))])),
+      steel_lines: entry.steel_lines.map((l) => ({
+        key: nextSteelDraftKey(),
+        description: l.description ?? '',
+        diameter_mm: l.diameter_mm,
+        bar_count: parseFloat(String(l.bar_count)),
+        length_m: parseFloat(String(l.length_m)),
+      })),
+      boq_template_id: entry.boq_template_id ?? null,
+      boq_item_id: entry.boq_item_id,
+      work_type_id: entry.work_type_id,
+    });
   };
 
-  const openEditModal = (record: MeasurementRead) => {
-    setEditDimensions(Object.fromEntries(Object.entries(record.dimensions).map(([k, v]) => [k, parseFloat(v) || 0])));
-    setEditChainage(record.chainage ?? '');
-    setEditRate(record.rate != null ? parseFloat(record.rate) : null);
-    setEditingMeasurement(record);
+  const saveEditRow = async (entry: MeasurementRead) => {
+    const isSteel = boqById.get(entry.boq_item_id)?.construction_type === 'STEEL';
+    setEditSaving(true);
+    try {
+      if (isSteel) {
+        const validLines = editRow.steel_lines.filter((l) => l.diameter_mm != null && l.bar_count && l.length_m);
+        await updateMeasurement.mutateAsync({
+          id: entry.id,
+          data: {
+            dimensions: {},
+            chainage: editRow.chainage.trim() || null,
+            rate: editRow.rate != null ? String(editRow.rate) : null,
+            boq_template_id: editRow.boq_template_id ?? null,
+            steel_lines: validLines.map((l) => ({
+              diameter_mm: l.diameter_mm!,
+              bar_count: l.bar_count!,
+              length_m: l.length_m!,
+              description: l.description || null,
+            })),
+          },
+        });
+      } else {
+        await updateMeasurement.mutateAsync({
+          id: entry.id,
+          data: {
+            dimensions: Object.fromEntries((editWorkType?.dimension_fields ?? []).map((f) => [f, String(editRow.dimensions[f] ?? 0)])),
+            chainage: editRow.chainage.trim() || null,
+            rate: editRow.rate != null ? String(editRow.rate) : null,
+            boq_template_id: editRow.boq_template_id ?? null,
+          },
+        });
+      }
+      message.success('Updated');
+      setEditingRowId(null);
+    } catch (err) { message.error(getApiErrorMessage(err, 'Could not update measurement')); }
+    finally { setEditSaving(false); }
+  };
+
+  const patchEditSteelLine = (lineKey: string, patch: Partial<SteelLineDraft>) => {
+    setEditRow((prev) => ({ ...prev, steel_lines: prev.steel_lines.map((l) => (l.key === lineKey ? { ...l, ...patch } : l)) }));
+  };
+  const addEditSteelLine = (defaultDia: number | null) => {
+    setEditRow((prev) => ({ ...prev, steel_lines: [...prev.steel_lines, { key: nextSteelDraftKey(), description: '', diameter_mm: defaultDia, bar_count: null, length_m: null }] }));
+  };
+  const removeEditSteelLine = (lineKey: string) => {
+    setEditRow((prev) => ({ ...prev, steel_lines: prev.steel_lines.filter((l) => l.key !== lineKey) }));
   };
 
   const handleDelete = async (record: MeasurementRead) => {
@@ -1845,7 +1909,7 @@ function MeasurementsTab({
     {
       title: 'BOQ Item',
       key: 'boq',
-      width: 220,
+      width: 160,
       ellipsis: true,
       render: (_: unknown, row: MeasRow) =>
         row._kind === 'existing' ? (
@@ -1873,10 +1937,20 @@ function MeasurementsTab({
     {
       title: 'Template',
       key: 'template',
-      width: 160,
+      width: 120,
       ellipsis: true,
       render: (_: unknown, row: MeasRow) => {
         if (row._kind === 'existing') {
+          const isEditing = editingRowId === row.entry.id;
+          const cType2 = boqById.get(row.entry.boq_item_id)?.construction_type;
+          if (isEditing && cType2 && cType2 !== 'GENERAL') {
+            const opts2 = (allTemplates ?? []).filter((t) => t.construction_type === cType2 && t.is_active);
+            return (
+              <Select size="small" style={inp} value={editRow.boq_template_id ?? undefined}
+                onChange={(v) => setEditRow((p) => ({ ...p, boq_template_id: v }))}
+                options={opts2.map((t) => ({ value: t.id, label: t.name }))} />
+            );
+          }
           return row.entry.boq_template_name
             ? <Typography.Text style={{ fontSize: 12 }}>{row.entry.boq_template_name}</Typography.Text>
             : <Typography.Text type="secondary" style={{ fontSize: 11 }}>—</Typography.Text>;
@@ -1898,14 +1972,48 @@ function MeasurementsTab({
         );
       },
     },
-    // All 7 dimension columns; inactive ones dimmed with placeholder
+    // All 5 dimension columns; inactive ones dimmed with placeholder
     ...ALL_DIM_FIELDS.map((field) => ({
       title: DIM_ABBREV[field],
       key: field,
-      width: 66,
+      width: 50,
       align: 'right' as const,
       render: (_: unknown, row: MeasRow) => {
         if (row._kind === 'existing') {
+          const isEditing = editingRowId === row.entry.id;
+          if (isEditing) {
+            const isSteel2 = boqById.get(row.entry.boq_item_id)?.construction_type === 'STEEL';
+            if (isSteel2) {
+              if (field === 'nos') {
+                const cnt = editRow.steel_lines.filter((l) => l.bar_count && l.length_m).length;
+                return (
+                  <Button size="small" type={cnt > 0 ? 'default' : 'dashed'}
+                    onClick={() => setEditSteelModalOpen(true)}>
+                    {cnt > 0 ? `${cnt}lns/+` : '+ bars'}
+                  </Button>
+                );
+              }
+              return <Typography.Text type="secondary" style={{ fontSize: 11 }}>—</Typography.Text>;
+            }
+            const active2 = (editWorkType?.dimension_fields ?? []).includes(field);
+            return (
+              <div style={{ opacity: active2 ? 1 : 0.28 }}>
+                <InputNumber size="small" style={inp} min={0}
+                  disabled={!active2}
+                  placeholder={active2 ? '0' : '—'}
+                  value={active2 ? (editRow.dimensions[field] ?? null) : null}
+                  onChange={(v) => { if (active2) setEditRow((p) => ({ ...p, dimensions: { ...p.dimensions, [field]: v ?? 0 } })); }}
+                />
+              </div>
+            );
+          }
+          const boqItem2 = boqById.get(row.entry.boq_item_id);
+          if (boqItem2?.construction_type === 'STEEL' && field === 'nos') {
+            const cnt2 = row.entry.steel_lines.length;
+            return cnt2 > 0
+              ? <Typography.Text style={{ fontSize: 11 }}>{cnt2} bar{cnt2 !== 1 ? 's' : ''}</Typography.Text>
+              : <Typography.Text type="secondary" style={{ fontSize: 11 }}>—</Typography.Text>;
+          }
           const val = row.entry.dimensions[field];
           return val
             ? <Typography.Text style={{ fontSize: 12 }}>{parseFloat(val).toFixed(2)}</Typography.Text>
@@ -1949,10 +2057,12 @@ function MeasurementsTab({
     {
       title: 'Chainage',
       key: 'chainage',
-      width: 96,
+      width: 72,
       render: (_: unknown, row: MeasRow) =>
         row._kind === 'existing' ? (
-          <Typography.Text style={{ fontSize: 12 }}>{row.entry.chainage ?? '—'}</Typography.Text>
+          editingRowId === row.entry.id
+            ? <Input size="small" placeholder="—" value={editRow.chainage} onChange={(e) => setEditRow((p) => ({ ...p, chainage: e.target.value }))} />
+            : <Typography.Text style={{ fontSize: 12 }}>{row.entry.chainage ?? '—'}</Typography.Text>
         ) : (
           <Input size="small" placeholder="—" value={row.draft.chainage}
             onChange={(e) => patchDraft(row.draft.key, { chainage: e.target.value })} />
@@ -1961,7 +2071,7 @@ function MeasurementsTab({
     {
       title: 'Qty',
       key: 'qty',
-      width: 84,
+      width: 70,
       align: 'right' as const,
       render: (_: unknown, row: MeasRow) =>
         row._kind === 'existing' ? (
@@ -1978,10 +2088,15 @@ function MeasurementsTab({
     {
       title: `Rate (${symbol})`,
       key: 'rate',
-      width: 96,
+      width: 84,
       align: 'right' as const,
       render: (_: unknown, row: MeasRow) => {
         if (row._kind === 'existing') {
+          if (editingRowId === row.entry.id) {
+            return <InputNumber size="small" style={inp} min={0} precision={2} placeholder="—"
+              value={editRow.rate ?? undefined}
+              onChange={(v) => setEditRow((p) => ({ ...p, rate: v }))} />;
+          }
           const item = boqById.get(row.entry.boq_item_id);
           const rate = row.entry.rate != null ? parseFloat(row.entry.rate) : item?.rate != null ? parseFloat(item.rate) : null;
           const isOverride = row.entry.rate != null && item?.rate != null && parseFloat(row.entry.rate) !== parseFloat(item.rate);
@@ -2006,7 +2121,7 @@ function MeasurementsTab({
     {
       title: `Amount (${symbol})`,
       key: 'amount',
-      width: 108,
+      width: 90,
       align: 'right' as const,
       render: (_: unknown, row: MeasRow) => {
         if (row._kind === 'existing') {
@@ -2028,12 +2143,21 @@ function MeasurementsTab({
     {
       title: '',
       key: 'actions',
-      width: 120,
+      width: 90,
       render: (_: unknown, row: MeasRow) => {
         if (row._kind === 'existing') {
+          if (editingRowId === row.entry.id) {
+            return (
+              <Space size={4}>
+                <Button size="small" type="primary" icon={<CheckOutlined />}
+                  loading={editSaving} onClick={() => saveEditRow(row.entry)} />
+                <Button size="small" icon={<CloseOutlined />} onClick={() => setEditingRowId(null)} />
+              </Space>
+            );
+          }
           return row.entry.recorded_by === user?.id ? (
             <Space size={4}>
-              <Button size="small" icon={<EditOutlined />} onClick={() => openEditModal(row.entry)} />
+              <Button size="small" icon={<EditOutlined />} onClick={() => startEditRow(row.entry)} />
               <Popconfirm
                 title="Delete measurement?"
                 description="Removes its contribution from DPR production."
@@ -2102,7 +2226,7 @@ function MeasurementsTab({
           scroll={{ x: true }}
           components={{
             table: ({ style, ...rest }: React.HTMLAttributes<HTMLTableElement>) => (
-              <table {...rest} style={{ ...style, tableLayout: 'fixed', width: '100%', minWidth: 1214 }} />
+              <table {...rest} style={{ ...style, tableLayout: 'fixed', width: '100%', minWidth: 936 }} />
             ),
           }}
           locale={{ emptyText: `No measurements for ${fmtDate(entryDate)}` }}
@@ -2120,43 +2244,7 @@ function MeasurementsTab({
         />
       </div>
 
-      {/* Edit modal */}
-      <Modal
-        title="Edit Measurement"
-        open={!!editingMeasurement}
-        onCancel={() => setEditingMeasurement(null)}
-        onOk={handleEditSave}
-        confirmLoading={updateMeasurement.isPending}
-        destroyOnHidden
-      >
-        {editingMeasurement && editWorkType && (
-          <Form layout="vertical">
-            <Form.Item label="Chainage / Location (optional)">
-              <Input value={editChainage} onChange={(e) => setEditChainage(e.target.value)} placeholder="e.g. 2/130–2/390" />
-            </Form.Item>
-            <Form.Item label="Rate (optional override)">
-              <InputNumber
-                style={{ width: '100%' }} min={0} precision={2}
-                value={editRate}
-                placeholder="BOQ item rate"
-                onChange={(v) => setEditRate(v)}
-              />
-            </Form.Item>
-            {editWorkType.dimension_fields.map((field) => (
-              <Form.Item key={field} label={FIELD_LABELS[field] ?? field}>
-                <InputNumber
-                  style={{ width: '100%' }} min={0}
-                  value={editDimensions[field] ?? 0}
-                  onChange={(v) => setEditDimensions((prev) => ({ ...prev, [field]: v ?? 0 }))}
-                />
-              </Form.Item>
-            ))}
-            <Statistic title="Computed Quantity" value={fmtQty(editComputedQty)} />
-          </Form>
-        )}
-      </Modal>
-
-      {/* Steel lines modal */}
+      {/* Steel lines modal for draft rows */}
       {(() => {
         const steelDraft = drafts.find((d) => d.key === steelModalDraftKey);
         const boqItem = steelDraft?.boq_item_id ? boqById.get(steelDraft.boq_item_id) : undefined;
@@ -2262,6 +2350,104 @@ function MeasurementsTab({
                     Add Row
                   </Button>
                   <Statistic title="Total Weight" value={`${totalMt.toFixed(4)} MT`} valueStyle={{ fontSize: 16 }} />
+                </div>
+              )}
+            />
+          </Modal>
+        );
+      })()}
+
+      {/* Steel lines modal for edit rows */}
+      {(() => {
+        if (!editSteelModalOpen || !editingRowId) return null;
+        const editEntry = forDate.find((m) => m.id === editingRowId);
+        const editBoqItem2 = editEntry ? boqById.get(editEntry.boq_item_id) : undefined;
+        const editTotalMt = computeSteelTotalMt(editRow.steel_lines, editTemplateCoeffMap);
+        return (
+          <Modal
+            title={editBoqItem2 ? `Steel Bar Entries — ${editBoqItem2.item_no} ${editBoqItem2.description}` : 'Steel Bar Entries'}
+            open={editSteelModalOpen}
+            onCancel={() => setEditSteelModalOpen(false)}
+            onOk={() => setEditSteelModalOpen(false)}
+            okText="Done"
+            width={680}
+            destroyOnHidden
+          >
+            <Table<SteelLineDraft>
+              rowKey="key"
+              size="small"
+              dataSource={editRow.steel_lines}
+              pagination={false}
+              locale={{ emptyText: 'No bar entries yet — click Add Row below' }}
+              columns={[
+                {
+                  title: 'Description / Mark',
+                  key: 'description',
+                  render: (_, row) => (
+                    <Input size="small" placeholder="e.g. Main Bar, Dist. Bar"
+                      value={row.description}
+                      onChange={(e) => patchEditSteelLine(row.key, { description: e.target.value })} />
+                  ),
+                },
+                {
+                  title: 'Dia (mm)',
+                  key: 'diameter_mm',
+                  width: 100,
+                  render: (_, row) => (
+                    <Select size="small" style={{ width: '100%' }} placeholder="Dia"
+                      value={row.diameter_mm ?? undefined}
+                      onChange={(v) => patchEditSteelLine(row.key, { diameter_mm: v })}
+                      options={editSteelDiameters.map((d) => ({ value: d, label: `${d} mm` }))} />
+                  ),
+                },
+                {
+                  title: 'Nos',
+                  key: 'bar_count',
+                  width: 80,
+                  render: (_, row) => (
+                    <InputNumber size="small" style={{ width: '100%' }} min={1} precision={0} placeholder="0"
+                      value={row.bar_count ?? undefined}
+                      onChange={(v) => patchEditSteelLine(row.key, { bar_count: v ?? null })} />
+                  ),
+                },
+                {
+                  title: 'L (m)',
+                  key: 'length_m',
+                  width: 90,
+                  render: (_, row) => (
+                    <InputNumber size="small" style={{ width: '100%' }} min={0} precision={3} placeholder="0.000"
+                      value={row.length_m ?? undefined}
+                      onChange={(v) => patchEditSteelLine(row.key, { length_m: v ?? null })} />
+                  ),
+                },
+                {
+                  title: 'Wt (MT)',
+                  key: 'weight',
+                  width: 90,
+                  align: 'right' as const,
+                  render: (_, row) => {
+                    if (!row.bar_count || !row.length_m || !row.diameter_mm) return <Typography.Text type="secondary">—</Typography.Text>;
+                    const w = row.bar_count * row.length_m * (editTemplateCoeffMap[row.diameter_mm] ?? 0);
+                    return <Typography.Text strong style={{ fontSize: 12 }}>{w.toFixed(4)}</Typography.Text>;
+                  },
+                },
+                {
+                  title: '',
+                  key: 'del',
+                  width: 36,
+                  render: (_, row) => editRow.steel_lines.length > 1 ? (
+                    <Button size="small" type="text" danger icon={<DeleteOutlined />}
+                      onClick={() => removeEditSteelLine(row.key)} />
+                  ) : null,
+                },
+              ]}
+              footer={() => (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Button size="small" icon={<PlusOutlined />}
+                    onClick={() => addEditSteelLine(editSteelDiameters[0] ?? null)}>
+                    Add Row
+                  </Button>
+                  <Statistic title="Total Weight" value={`${editTotalMt.toFixed(4)} MT`} valueStyle={{ fontSize: 16 }} />
                 </div>
               )}
             />
