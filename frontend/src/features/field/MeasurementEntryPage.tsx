@@ -41,7 +41,6 @@ const FIELD_LABELS: Record<string, string> = {
   l: 'L (m)',
   b: 'B (m)',
   d: 'D (m)',
-  h: 'H (m)',
 };
 
 const BITUMINOUS_TYPES = new Set(['PRIME_COAT', 'TACK_COAT', 'BM', 'DBM', 'BC']);
@@ -178,8 +177,13 @@ export function MeasurementEntryPage() {
   );
 
   const handleSelectBoq = (value: string) => {
+    const item = (boqItems ?? []).find((b) => b.id === value);
+    const wt = (workTypes ?? []).find((w) => w.id === item?.work_type_id);
+    // 'nos' defaults to 1 (not 0) since it's a multiplicand — a fresh entry
+    // with dims still unset should read as "1 unit", not silently zero out
+    // the whole product once the other dimensions are filled.
     setBoqItemId(value);
-    setDimensions({});
+    setDimensions(wt?.dimension_fields.includes('nos') ? { nos: 1 } : {});
     setSelectedTemplateId(null);
     setSteelRows([{ key: nextSteelKey(), description: '', diameter_mm: 0, bar_count: null, length_m: null }]);
   };

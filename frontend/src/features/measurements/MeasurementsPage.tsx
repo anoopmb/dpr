@@ -35,7 +35,6 @@ const FIELD_LABELS: Record<string, string> = {
   l: 'L (m)',
   b: 'B (m)',
   d: 'D (m)',
-  h: 'H (m)',
 };
 
 const NCOLS = 7;

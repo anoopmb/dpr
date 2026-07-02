@@ -46,8 +46,8 @@ UOMS = {
 
 # code -> (name, dimension_fields, formula, output_uom_code)
 WORK_TYPES = {
-    "GEN_VOLUME": ("Generic Volume (L x W x D)", ["length", "width", "depth"], WorkTypeFormula.PRODUCT, "CUM"),
-    "GEN_AREA": ("Generic Area (L x W)", ["length", "width"], WorkTypeFormula.PRODUCT, "SQM"),
+    "GEN_VOLUME": ("Generic Volume (L x W x D)", ["count", "length", "width", "depth"], WorkTypeFormula.PRODUCT, "CUM"),
+    "GEN_AREA": ("Generic Area (L x W)", ["count", "length", "width"], WorkTypeFormula.PRODUCT, "SQM"),
     "GEN_LENGTH": ("Generic Running Length", ["length"], WorkTypeFormula.LENGTH_ONLY, "RM"),
     "GEN_COUNT": ("Generic Count", ["count"], WorkTypeFormula.LENGTH_ONLY, "NOS"),
     "GEN_WEIGHT": ("Generic Weight", ["weight"], WorkTypeFormula.LENGTH_ONLY, "TON"),

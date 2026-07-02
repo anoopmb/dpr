@@ -126,7 +126,7 @@ function WorkTypesTab() {
           <Form.Item name="name" label="Name" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="dimension_fields" label="Dimension Fields (comma-separated)" rules={[{ required: true }]}><Input placeholder="e.g. nos, l, b, d" /></Form.Item>
           <Form.Item name="formula" label="Formula" rules={[{ required: true }]}>
-            <Select options={[{ value: 'PRODUCT', label: 'PRODUCT (multiply all dimensions)' }, { value: 'AREA_LH', label: 'AREA_LH (length × height)' }, { value: 'LENGTH_ONLY', label: 'LENGTH_ONLY (billed by running length)' }]} />
+            <Select options={[{ value: 'PRODUCT', label: 'PRODUCT (multiply all dimensions)' }, { value: 'AREA_LH', label: 'AREA_LH (1st × 2nd dimension)' }, { value: 'LENGTH_ONLY', label: 'LENGTH_ONLY (billed by running length)' }]} />
           </Form.Item>
           <Form.Item name="output_uom_id" label="Output Unit" rules={[{ required: true }]}>
             <Select showSearch optionFilterProp="label" options={(uoms ?? []).map((u) => ({ value: u.id, label: `${u.code} — ${u.name}` }))} />

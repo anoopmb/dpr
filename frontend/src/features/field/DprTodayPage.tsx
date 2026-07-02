@@ -110,10 +110,10 @@ interface CapturedLocation {
 
 const NO_WORK_REASONS = ['Rain', 'Holiday', 'Sunday', 'Other'] as const;
 
-const ALL_DIM_FIELDS = ['nos', 'l', 'b', 'd', 'h'] as const;
+const ALL_DIM_FIELDS = ['nos', 'l', 'b', 'd'] as const;
 
 const DIM_ABBREV: Record<string, string> = {
-  nos: 'No', l: 'L', b: 'B', d: 'D', h: 'H',
+  nos: 'No', l: 'L', b: 'B', d: 'D',
 };
 
 // Table `components.table` overrides MUST be referentially stable across
@@ -132,11 +132,11 @@ function makeFixedTableComponents(minWidth: number) {
   };
 }
 const LABOUR_TABLE_COMPONENTS = makeFixedTableComponents(968);
-const MATERIALS_TABLE_COMPONENTS = makeFixedTableComponents(698);
+const MATERIALS_TABLE_COMPONENTS = makeFixedTableComponents(710);
 const MACHINERY_TABLE_COMPONENTS = makeFixedTableComponents(728);
 const ISSUES_TABLE_COMPONENTS = makeFixedTableComponents(648);
 const EXPENSES_TABLE_COMPONENTS = makeFixedTableComponents(750);
-const MEASUREMENTS_TABLE_COMPONENTS = makeFixedTableComponents(956);
+const MEASUREMENTS_TABLE_COMPONENTS = makeFixedTableComponents(906);
 const PRODUCTION_TABLE_COMPONENTS = makeFixedTableComponents(1000);
 
 type ProductionRow =
@@ -240,7 +240,7 @@ function AttendanceTab({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- standard fetch-on-mount
     doFetchLocation();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);  
 
   const user = useAuthStore((s) => s.user);
   const myRecordsCount = (attendance ?? []).filter((a) => a.marked_by === user?.id).length;
@@ -526,6 +526,10 @@ function LabourTab({
   const [drafts, setDrafts] = useState<LabourDraftRow[]>([]);
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
   const fieldRefs = useRef<Record<string, { focus?: () => void } | null>>({});
+  // StrictMode double-invokes effects in dev; without this guard the
+  // "auto-create if empty" branch fires twice before `drafts` state from
+  // the first invocation is visible to the second, adding two blank rows.
+  const autoCreatedForActivationRef = useRef(false);
   const dropdownOpenRef = useRef<Record<string, boolean>>({});
 
   const focusField = (key: string, field: string) => {
@@ -607,11 +611,15 @@ function LabourTab({
   };
 
   useEffect(() => {
-    if (!isActive) return;
+    if (!isActive) { autoCreatedForActivationRef.current = false; return; }
     if (drafts.length === 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- ready-to-type on tab activation is the point; doesn't loop, addBlankDraft doesn't depend on isActive
-      addBlankDraftAndFocus();
+      if (!autoCreatedForActivationRef.current) {
+        autoCreatedForActivationRef.current = true;
+         
+        addBlankDraftAndFocus();
+      }
     } else {
+      autoCreatedForActivationRef.current = true;
       focusField(drafts[0].key, 'worker');
     }
     // Only react to this tab becoming active, not to every drafts change.
@@ -918,12 +926,25 @@ function MaterialsTab({
   const [drafts, setDrafts] = useState<MatDraftRow[]>([]);
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
   const fieldRefs = useRef<Record<string, { focus?: () => void } | null>>({});
+  // StrictMode double-invokes effects in dev; without this guard the
+  // "auto-create if empty" branch fires twice before `drafts` state from
+  // the first invocation is visible to the second, adding two blank rows.
+  const autoCreatedForActivationRef = useRef(false);
   const dropdownOpenRef = useRef<Record<string, boolean>>({});
 
   const focusField = (key: string, field: string) => {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         fieldRefs.current[`${key}:${field}`]?.focus?.();
+      });
+    });
+  };
+
+  const existingQtyRefs = useRef<Record<string, { focus?: () => void } | null>>({});
+  const focusExistingQty = (entryId: string) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        existingQtyRefs.current[entryId]?.focus?.();
       });
     });
   };
@@ -964,7 +985,7 @@ function MaterialsTab({
     if (ok) { addBlankDraftAndFocus(); }
   };
 
-  const MATERIAL_FIELD_ORDER = ['material', 'qty', 'uom', 'rate'];
+  const MATERIAL_FIELD_ORDER = ['material', 'qty', 'rate'];
   const handleDraftKeyDown = (e: React.KeyboardEvent, draft: MatDraftRow, field: string) => {
     if (e.key !== 'Enter') return;
     if (dropdownOpenRef.current[`${draft.key}:${field}`]) return; // let Select confirm its highlighted option first
@@ -978,11 +999,15 @@ function MaterialsTab({
   };
 
   useEffect(() => {
-    if (!isActive) return;
+    if (!isActive) { autoCreatedForActivationRef.current = false; return; }
     if (drafts.length === 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- ready-to-type on tab activation is the point; doesn't loop, addBlankDraft doesn't depend on isActive
-      addBlankDraftAndFocus();
+      if (!autoCreatedForActivationRef.current) {
+        autoCreatedForActivationRef.current = true;
+         
+        addBlankDraftAndFocus();
+      }
     } else {
+      autoCreatedForActivationRef.current = true;
       focusField(drafts[0].key, 'material');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -999,12 +1024,6 @@ function MaterialsTab({
     const rate = raw ? parseFloat(raw) : null;
     if (rate === (entry.rate != null ? parseFloat(entry.rate) : null)) return;
     try { await updateMaterial.mutateAsync({ itemId: entry.id, data: { qty_consumed: entry.qty_consumed, uom_id: entry.uom_id, rate: rate != null ? String(rate) : undefined } }); }
-    catch (err) { message.error(getApiErrorMessage(err, 'Could not update')); }
-  };
-
-  const saveUom = async (entry: DprMaterialRead, uomId: string) => {
-    if (uomId === entry.uom_id) return;
-    try { await updateMaterial.mutateAsync({ itemId: entry.id, data: { qty_consumed: entry.qty_consumed, uom_id: uomId, rate: entry.rate ?? undefined } }); }
     catch (err) { message.error(getApiErrorMessage(err, 'Could not update')); }
   };
 
@@ -1051,7 +1070,9 @@ function MaterialsTab({
         if (row._kind === 'existing') {
           const isAuto = !row.entry.manually_edited && !!row.entry.source_measurement_id;
           if (isAuto || isSubmitted) return <Typography.Text style={{ fontSize: 12 }}>{parseFloat(row.entry.qty_consumed)}</Typography.Text>;
-          return <InputNumber key={`${row.entry.id}-q-${row.entry.qty_consumed}`} size="small" min={0} style={inp}
+          return <InputNumber
+            ref={(el) => { existingQtyRefs.current[row.entry.id] = el; }}
+            key={`${row.entry.id}-q-${row.entry.qty_consumed}`} size="small" min={0} style={inp}
             defaultValue={parseFloat(row.entry.qty_consumed)} onBlur={(e) => saveQty(row.entry, e.target.value)} />;
         }
         return <InputNumber
@@ -1063,20 +1084,17 @@ function MaterialsTab({
     {
       title: 'Unit', key: 'uom', width: 90,
       render: (_: unknown, row: MatRow) => {
+        // Unit is always owned by the material master's default UOM — never
+        // user-selectable, for manual or auto entries alike.
         if (row._kind === 'existing') {
-          const isAuto = !row.entry.manually_edited && !!row.entry.source_measurement_id;
           const uomCode = (uoms ?? []).find((u) => u.id === row.entry.uom_id)?.code ?? row.entry.uom_id;
-          if (isAuto || isSubmitted) return <Typography.Text style={{ fontSize: 12 }}>{uomCode}</Typography.Text>;
-          return <Select key={`${row.entry.id}-u-${row.entry.uom_id}`} size="small" showSearch optionFilterProp="label" style={inp}
-            defaultValue={row.entry.uom_id} onChange={(v) => saveUom(row.entry, v)}
-            options={(uoms ?? []).map((u) => ({ value: u.id, label: u.code }))} />;
+          return <Typography.Text style={{ fontSize: 12 }}>{uomCode}</Typography.Text>;
         }
-        return <Select
-          ref={(el) => { fieldRefs.current[`${row.draft.key}:uom`] = el; }}
-          size="small" showSearch optionFilterProp="label" style={inp} placeholder="Unit" value={row.draft.uom_id}
-          onChange={(v) => patchDraft(row.draft.key, { uom_id: v })} options={(uoms ?? []).map((u) => ({ value: u.id, label: u.code }))}
-          onDropdownVisibleChange={(open) => { dropdownOpenRef.current[`${row.draft.key}:uom`] = open; }}
-          onKeyDown={(e) => handleDraftKeyDown(e, row.draft, 'uom')} />;
+        const material = row.draft.material_id ? materialById.get(row.draft.material_id) : undefined;
+        const uomCode = row.draft.uom_id ? (uoms ?? []).find((u) => u.id === row.draft.uom_id)?.code : undefined;
+        return uomCode
+          ? <Typography.Text style={{ fontSize: 12 }}>{uomCode}</Typography.Text>
+          : <Typography.Text type="secondary" style={{ fontSize: 11 }}>{material ? '—' : 'Select material first'}</Typography.Text>;
       },
     },
     {
@@ -1110,15 +1128,20 @@ function MaterialsTab({
       },
     },
     {
-      title: '', key: 'actions', width: 68,
+      title: '', key: 'actions', width: 80,
       render: (_: unknown, row: MatRow) => {
         if (row._kind === 'existing') {
           const isAuto = !row.entry.manually_edited && !!row.entry.source_measurement_id;
           if (isAuto || isSubmitted) return null;
           return (
-            <Popconfirm title="Delete this entry?" onConfirm={() => handleDelete(row.entry)} okText="Delete" okButtonProps={{ danger: true }}>
-              <Button size="small" type="text" danger icon={<DeleteOutlined />} loading={deleteMaterial.isPending} />
-            </Popconfirm>
+            <Space size={4}>
+              <Button size="small" type="text" icon={<EditOutlined />}
+                title="Edit quantity"
+                onClick={() => focusExistingQty(row.entry.id)} />
+              <Popconfirm title="Delete this entry?" onConfirm={() => handleDelete(row.entry)} okText="Delete" okButtonProps={{ danger: true }}>
+                <Button size="small" type="text" danger icon={<DeleteOutlined />} loading={deleteMaterial.isPending} />
+              </Popconfirm>
+            </Space>
           );
         }
         return (
@@ -1186,6 +1209,10 @@ function MachineryTab({
   const [drafts, setDrafts] = useState<MachDraftRow[]>([]);
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
   const fieldRefs = useRef<Record<string, { focus?: () => void } | null>>({});
+  // StrictMode double-invokes effects in dev; without this guard the
+  // "auto-create if empty" branch fires twice before `drafts` state from
+  // the first invocation is visible to the second, adding two blank rows.
+  const autoCreatedForActivationRef = useRef(false);
   const dropdownOpenRef = useRef<Record<string, boolean>>({});
 
   const focusField = (key: string, field: string) => {
@@ -1249,11 +1276,15 @@ function MachineryTab({
   };
 
   useEffect(() => {
-    if (!isActive) return;
+    if (!isActive) { autoCreatedForActivationRef.current = false; return; }
     if (drafts.length === 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- ready-to-type on tab activation is the point; doesn't loop, addBlankDraft doesn't depend on isActive
-      addBlankDraftAndFocus();
+      if (!autoCreatedForActivationRef.current) {
+        autoCreatedForActivationRef.current = true;
+         
+        addBlankDraftAndFocus();
+      }
     } else {
+      autoCreatedForActivationRef.current = true;
       focusField(drafts[0].key, 'machine');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1441,6 +1472,10 @@ function IssuesTab({
   const [photoFiles, setPhotoFiles] = useState<Record<string, File>>({});
   const photoInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const fieldRefs = useRef<Record<string, { focus?: () => void } | null>>({});
+  // StrictMode double-invokes effects in dev; without this guard the
+  // "auto-create if empty" branch fires twice before `drafts` state from
+  // the first invocation is visible to the second, adding two blank rows.
+  const autoCreatedForActivationRef = useRef(false);
   const dropdownOpenRef = useRef<Record<string, boolean>>({});
 
   const focusField = (key: string, field: string) => {
@@ -1513,11 +1548,15 @@ function IssuesTab({
   };
 
   useEffect(() => {
-    if (!isActive) return;
+    if (!isActive) { autoCreatedForActivationRef.current = false; return; }
     if (drafts.length === 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- ready-to-type on tab activation is the point; doesn't loop, addBlankDraft doesn't depend on isActive
-      addBlankDraftAndFocus();
+      if (!autoCreatedForActivationRef.current) {
+        autoCreatedForActivationRef.current = true;
+         
+        addBlankDraftAndFocus();
+      }
     } else {
+      autoCreatedForActivationRef.current = true;
       focusField(drafts[0].key, 'description');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1684,6 +1723,10 @@ function ExpensesTab({ projectId, headerId, entryDate, isActive }: { projectId: 
   const [editExpRow, setEditExpRow] = useState<{ expense_category_id: string | null; amount: number | null; vendor_name: string; remarks: string; }>({ expense_category_id: null, amount: null, vendor_name: '', remarks: '' });
   const [editExpSaving, setEditExpSaving] = useState(false);
   const fieldRefs = useRef<Record<string, { focus?: () => void } | null>>({});
+  // StrictMode double-invokes effects in dev; without this guard the
+  // "auto-create if empty" branch fires twice before `drafts` state from
+  // the first invocation is visible to the second, adding two blank rows.
+  const autoCreatedForActivationRef = useRef(false);
   const dropdownOpenRef = useRef<Record<string, boolean>>({});
 
   const focusField = (key: string, field: string) => {
@@ -1759,11 +1802,15 @@ function ExpensesTab({ projectId, headerId, entryDate, isActive }: { projectId: 
   };
 
   useEffect(() => {
-    if (!isActive) return;
+    if (!isActive) { autoCreatedForActivationRef.current = false; return; }
     if (drafts.length === 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- ready-to-type on tab activation is the point; doesn't loop, addBlankDraft doesn't depend on isActive
-      addBlankDraftAndFocus();
+      if (!autoCreatedForActivationRef.current) {
+        autoCreatedForActivationRef.current = true;
+         
+        addBlankDraftAndFocus();
+      }
     } else {
+      autoCreatedForActivationRef.current = true;
       focusField(drafts[0].key, 'category');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2030,6 +2077,10 @@ function MeasurementsTab({
   const [photoFiles, setPhotoFiles] = useState<Record<string, File>>({});
   const photoInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const fieldRefs = useRef<Record<string, { focus?: () => void } | null>>({});
+  // StrictMode double-invokes effects in dev; without this guard the
+  // "auto-create if empty" branch fires twice before `drafts` state from
+  // the first invocation is visible to the second, adding two blank rows.
+  const autoCreatedForActivationRef = useRef(false);
 
   const focusField = (key: string, field: string) => {
     requestAnimationFrame(() => {
@@ -2082,11 +2133,15 @@ function MeasurementsTab({
   };
 
   useEffect(() => {
-    if (!isActive) return;
+    if (!isActive) { autoCreatedForActivationRef.current = false; return; }
     if (drafts.length === 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- ready-to-type on tab activation is the point; doesn't loop, addBlankDraft doesn't depend on isActive
-      addBlankDraftAndFocus();
+      if (!autoCreatedForActivationRef.current) {
+        autoCreatedForActivationRef.current = true;
+         
+        addBlankDraftAndFocus();
+      }
     } else {
+      autoCreatedForActivationRef.current = true;
       focusField(drafts[0].key, 'boq');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2320,10 +2375,15 @@ function MeasurementsTab({
             value={row.draft.boq_item_id ?? undefined}
             onChange={(v) => {
               const boqItem = boqById.get(v);
+              const wt = (workTypes ?? []).find((w) => w.id === boqItem?.work_type_id);
+              // 'nos' defaults to 1 (not 0) since it's a multiplicand — a
+              // fresh draft with dims still unset should read as "1 unit",
+              // not silently zero out the whole product once others are filled.
+              const dimensions: Record<string, number> = wt?.dimension_fields.includes('nos') ? { nos: 1 } : {};
               patchDraft(row.draft.key, {
                 boq_item_id: v,
                 boq_template_id: null,
-                dimensions: {},
+                dimensions,
                 steel_lines: [],
                 qty: 0,
                 rate: boqItem?.rate != null ? parseFloat(boqItem.rate) : null,

@@ -111,10 +111,10 @@ async def main() -> None:
         work_type_repo = BaseRepository(session, model=WorkTypeMaster)
         work_types = [
             ("EARTHWORK", "Earthwork Excavation", ["length", "width", "depth"], WorkTypeFormula.PRODUCT, "M3"),
-            ("RCC", "RCC Concrete", ["length", "breadth", "height"], WorkTypeFormula.PRODUCT, "M3"),
+            ("RCC", "RCC Concrete", ["length", "breadth", "depth"], WorkTypeFormula.PRODUCT, "M3"),
             ("ROAD", "Road Work", ["length", "width", "thickness"], WorkTypeFormula.PRODUCT, "M3"),
-            ("BRICKWORK", "Brickwork", ["length", "height", "thickness"], WorkTypeFormula.PRODUCT, "M3"),
-            ("PLASTERING", "Plastering", ["length", "height"], WorkTypeFormula.AREA_LH, "M2"),
+            ("BRICKWORK", "Brickwork", ["length", "breadth", "thickness"], WorkTypeFormula.PRODUCT, "M3"),
+            ("PLASTERING", "Plastering", ["length", "depth"], WorkTypeFormula.AREA_LH, "M2"),
             ("PIPE_LAYING", "Pipe Laying", ["length", "diameter"], WorkTypeFormula.LENGTH_ONLY, "RM"),
         ]
         for code, name, dims, formula, uom_code in work_types:
