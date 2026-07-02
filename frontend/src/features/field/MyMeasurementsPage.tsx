@@ -39,7 +39,7 @@ import { useWorkTypes } from '@/api/hooks/useMasters';
 import { useDprList } from '@/api/hooks/useDpr';
 import { useAttachPhoto } from '@/api/hooks/usePhotos';
 import { useUploadPhoto } from '@/api/hooks/useUpload';
-import { calculateQuantity } from '@/features/measurements/formulaEngine';
+import { calculateQuantity, evaluateExpression, isArithmeticExpression, ExpressionError } from '@/features/measurements/formulaEngine';
 import { getCurrentPosition } from '@/utils/geolocation';
 import { useDateFormat, useNumberFormat } from '@/utils/format';
 
@@ -102,12 +102,14 @@ export function MyMeasurementsPage() {
   const [addBoqItemId, setAddBoqItemId] = useState<string | null>(null);
   const [addTemplateId, setAddTemplateId] = useState<string | null>(null);
   const [addDimensions, setAddDimensions] = useState<Record<string, number>>({});
+  const [addDimensionText, setAddDimensionText] = useState<Record<string, string>>({});
   const [addChainage, setAddChainage] = useState('');
   const [addPhoto, setAddPhoto] = useState<File | null>(null);
 
   // edit modal state
   const [editingMeasurement, setEditingMeasurement] = useState<MeasurementRead | null>(null);
   const [editDimensions, setEditDimensions] = useState<Record<string, number>>({});
+  const [editDimensionText, setEditDimensionText] = useState<Record<string, string>>({});
   const [editChainage, setEditChainage] = useState('');
 
   // search
@@ -162,8 +164,36 @@ export function MyMeasurementsPage() {
     setAddBoqItemId(null);
     setAddTemplateId(null);
     setAddDimensions({});
+    setAddDimensionText({});
     setAddChainage('');
     setAddPhoto(null);
+  };
+
+  // l/b/d accept a plain number or an arithmetic expression like "(1+2.5)/2".
+  const patchAddDimensionText = (field: string, text: string) => {
+    setAddDimensionText((prev) => ({ ...prev, [field]: text }));
+    let parsed: number | null;
+    try {
+      parsed = isArithmeticExpression(text) ? evaluateExpression(text) : (text.trim() === '' ? 0 : parseFloat(text));
+    } catch (err) {
+      if (err instanceof ExpressionError) return;
+      throw err;
+    }
+    if (parsed == null || Number.isNaN(parsed)) return;
+    setAddDimensions((prev) => ({ ...prev, [field]: parsed }));
+  };
+
+  const patchEditDimensionText = (field: string, text: string) => {
+    setEditDimensionText((prev) => ({ ...prev, [field]: text }));
+    let parsed: number | null;
+    try {
+      parsed = isArithmeticExpression(text) ? evaluateExpression(text) : (text.trim() === '' ? 0 : parseFloat(text));
+    } catch (err) {
+      if (err instanceof ExpressionError) return;
+      throw err;
+    }
+    if (parsed == null || Number.isNaN(parsed)) return;
+    setEditDimensions((prev) => ({ ...prev, [field]: parsed }));
   };
 
   const handleAdd = async () => {
@@ -180,11 +210,17 @@ export function MyMeasurementsPage() {
       return;
     }
     try {
+      const addDimensionExpressions = Object.fromEntries(
+        addDimFields
+          .filter((f) => f !== 'nos' && isArithmeticExpression(addDimensionText[f] ?? ''))
+          .map((f) => [f, addDimensionText[f]]),
+      );
       const measurement = await createMeasurement.mutateAsync({
         project_id: selectedProjectId,
         boq_item_id: addBoqItemId,
         measurement_date: selectedEntryDate,
         dimensions: Object.fromEntries(addDimFields.map((f) => [f, String(addDimensions[f] ?? 0)])),
+        dimension_expressions: Object.keys(addDimensionExpressions).length > 0 ? addDimensionExpressions : null,
         chainage: addChainage.trim() || null,
         boq_template_id: addTemplateId ?? null,
       });
@@ -213,6 +249,9 @@ export function MyMeasurementsPage() {
 
   const handleEditOpen = (record: MeasurementRead) => {
     setEditDimensions(Object.fromEntries(Object.entries(record.dimensions).map(([k, v]) => [k, parseFloat(v) || 0])));
+    setEditDimensionText(
+      Object.fromEntries(Object.entries(record.dimensions).map(([k, v]) => [k, record.dimension_expressions?.[k] ?? v])),
+    );
     setEditChainage(record.chainage ?? '');
     setEditingMeasurement(record);
   };
@@ -220,10 +259,16 @@ export function MyMeasurementsPage() {
   const handleEditSave = async () => {
     if (!editingMeasurement || !editWorkType) return;
     try {
+      const editDimensionExpressions = Object.fromEntries(
+        editWorkType.dimension_fields
+          .filter((f) => f !== 'nos' && isArithmeticExpression(editDimensionText[f] ?? ''))
+          .map((f) => [f, editDimensionText[f]]),
+      );
       await updateMeasurement.mutateAsync({
         id: editingMeasurement.id,
         data: {
           dimensions: Object.fromEntries(editWorkType.dimension_fields.map((f) => [f, String(editDimensions[f] ?? 0)])),
+          dimension_expressions: Object.keys(editDimensionExpressions).length > 0 ? editDimensionExpressions : null,
           chainage: editChainage.trim() || null,
         },
       });
@@ -361,7 +406,7 @@ export function MyMeasurementsPage() {
                       style={{ width: '100%' }}
                       placeholder="Select BOQ item"
                       value={addBoqItemId ?? undefined}
-                      onChange={(v) => { setAddBoqItemId(v); setAddTemplateId(null); setAddDimensions({}); }}
+                      onChange={(v) => { setAddBoqItemId(v); setAddTemplateId(null); setAddDimensions({}); setAddDimensionText({}); }}
                       options={(boqItems ?? []).map((b) => ({ value: b.id, label: `${b.item_no} — ${b.description}` }))}
                     />
                   </div>
@@ -400,12 +445,21 @@ export function MyMeasurementsPage() {
                           <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
                             {FIELD_LABELS[field] ?? field}
                           </Typography.Text>
-                          <InputNumber
-                            min={0}
-                            style={{ width: '100%' }}
-                            value={addDimensions[field]}
-                            onChange={(v) => setAddDimensions((prev) => ({ ...prev, [field]: v ?? 0 }))}
-                          />
+                          {field === 'nos' ? (
+                            <InputNumber
+                              min={0}
+                              style={{ width: '100%' }}
+                              value={addDimensions[field]}
+                              onChange={(v) => setAddDimensions((prev) => ({ ...prev, [field]: v ?? 0 }))}
+                            />
+                          ) : (
+                            <Input
+                              style={{ width: '100%' }}
+                              placeholder="0 or e.g. (1+2.5)/2"
+                              value={addDimensionText[field] ?? ''}
+                              onChange={(e) => patchAddDimensionText(field, e.target.value)}
+                            />
+                          )}
                         </div>
                       ))}
                       <div style={{ flex: '1 1 120px', display: 'flex', alignItems: 'flex-end' }}>
@@ -479,12 +533,21 @@ export function MyMeasurementsPage() {
             </Form.Item>
             {editWorkType.dimension_fields.map((field) => (
               <Form.Item key={field} label={FIELD_LABELS[field] ?? field}>
-                <InputNumber
-                  style={{ width: '100%' }}
-                  min={0}
-                  value={editDimensions[field] ?? 0}
-                  onChange={(v) => setEditDimensions((prev) => ({ ...prev, [field]: v ?? 0 }))}
-                />
+                {field === 'nos' ? (
+                  <InputNumber
+                    style={{ width: '100%' }}
+                    min={0}
+                    value={editDimensions[field] ?? 0}
+                    onChange={(v) => setEditDimensions((prev) => ({ ...prev, [field]: v ?? 0 }))}
+                  />
+                ) : (
+                  <Input
+                    style={{ width: '100%' }}
+                    placeholder="0 or e.g. (1+2.5)/2"
+                    value={editDimensionText[field] ?? ''}
+                    onChange={(e) => patchEditDimensionText(field, e.target.value)}
+                  />
+                )}
               </Form.Item>
             ))}
             <Statistic title="Computed Quantity" value={fmtQty(editComputedQty)} />

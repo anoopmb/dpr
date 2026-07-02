@@ -12,6 +12,8 @@ export interface ExpenseRead {
   bill_photo_url: string | null;
   remarks: string | null;
   paid_by: string;
+  edited_by: string | null;
+  edited_at: string | null;
 }
 
 export interface ExpenseCreateInput {

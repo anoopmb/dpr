@@ -1,11 +1,14 @@
 import uuid
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import delete, select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import DomainError, NotFoundError, PermissionDeniedError
+from app.domain.dpr.locking import LOCK_BYPASS_ROLES
 from app.domain.measurement.calculators import calculate_quantity
+from app.domain.measurement.expression import evaluate_expression
 from app.domain.measurement.validators import BoqItemSnapshot, validate_measurement_against_boq
 from app.models.audit import AuditAction
 from app.models.boq_construction_template import BoqConstructionTemplate
@@ -42,6 +45,65 @@ class MeasurementService:
             raise NotFoundError(f"Work type {work_type_id} not found.")
         return work_type
 
+    @staticmethod
+    def _resolve_dimensions(
+        dimensions: dict[str, Decimal], dimension_expressions: dict[str, str] | None
+    ) -> dict[str, Decimal]:
+        """Re-evaluates any l/b/d fields that were entered as an expression
+        server-side — the client's own computed decimal for those keys is
+        never trusted, only the expression text is (schema already rejects
+        expression keys outside l/b/d)."""
+        if not dimension_expressions:
+            return dimensions
+        resolved = dict(dimensions)
+        for field, expr in dimension_expressions.items():
+            resolved[field] = evaluate_expression(expr)
+        return resolved
+
+    async def _get_dpr_header_status(self, project_id: uuid.UUID, measurement_date: date) -> str | None:
+        # Measurements have no direct FK to dpr_headers — the relationship is
+        # by project + date, same lookup pattern _sync_auto_materials uses.
+        result = await self.session.execute(
+            sa_select(DprHeader.status).where(
+                DprHeader.project_id == project_id,
+                DprHeader.report_date == measurement_date,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def _authorize_create(self, project_id: uuid.UUID, measurement_date: date, actor_role: UserRole) -> bool:
+        """Returns True for a PM/Admin bypass create on an already-submitted
+        DPR (stamp edited_by/edited_at). Raises if new measurements aren't
+        allowed at all."""
+        status = await self._get_dpr_header_status(project_id, measurement_date)
+        if status is not None and status != "DRAFT":
+            if actor_role not in LOCK_BYPASS_ROLES:
+                raise PermissionDeniedError(
+                    "This DPR has been submitted — only a Project Manager or Admin can add measurements now."
+                )
+            return True
+        return False
+
+    async def _authorize_measurement_edit(
+        self, measurement: Measurement, actor_id: uuid.UUID, actor_role: UserRole
+    ) -> bool:
+        """Returns True for a PM/Admin bypass edit on an already-submitted
+        DPR (stamp edited_by/edited_at). While the DPR is still DRAFT (or
+        doesn't exist yet), the normal "only the recording engineer or an
+        Admin" ownership rule applies unchanged. Once submitted, ownership
+        stops mattering — only PM/Admin may touch it at all, recorder
+        included."""
+        status = await self._get_dpr_header_status(measurement.project_id, measurement.measurement_date)
+        if status is not None and status != "DRAFT":
+            if actor_role not in LOCK_BYPASS_ROLES:
+                raise PermissionDeniedError(
+                    "This DPR has been submitted — only a Project Manager or Admin can edit entries now."
+                )
+            return True
+        if measurement.recorded_by != actor_id and actor_role != UserRole.ADMIN:
+            raise PermissionDeniedError("Only the recording engineer can edit this measurement.")
+        return False
+
     async def _load_and_validate_template(
         self, template_id: uuid.UUID | None, construction_type: str
     ) -> BoqConstructionTemplate | None:
@@ -69,7 +131,8 @@ class MeasurementService:
             )
         return template
 
-    async def create(self, data: MeasurementCreate, recorded_by: uuid.UUID) -> Measurement:
+    async def create(self, data: MeasurementCreate, recorded_by: uuid.UUID, actor_role: UserRole) -> Measurement:
+        is_bypass_edit = await self._authorize_create(data.project_id, data.measurement_date, actor_role)
         boq_item = await self.boq_repo.get(data.boq_item_id)
         if boq_item is None or boq_item.project_id != data.project_id:
             raise NotFoundError("BOQ item not found for this project.")
@@ -80,6 +143,7 @@ class MeasurementService:
 
         template = await self._load_and_validate_template(data.boq_template_id, construction_type)
 
+        resolved_dimensions = data.dimensions
         if construction_type == "STEEL":
             if not data.steel_lines:
                 raise DomainError("Steel measurements require at least one bar entry.")
@@ -101,8 +165,9 @@ class MeasurementService:
             work_type = await self._get_work_type(boq_item.work_type_id)
             if not data.dimensions:
                 raise DomainError("Dimensions are required.")
+            resolved_dimensions = self._resolve_dimensions(data.dimensions, data.dimension_expressions)
             computed_qty = calculate_quantity(
-                work_type.formula, work_type.dimension_fields, data.dimensions
+                work_type.formula, work_type.dimension_fields, resolved_dimensions
             ).quantize(Decimal("0.001"))
 
         snapshot = BoqItemSnapshot(
@@ -123,7 +188,8 @@ class MeasurementService:
             boq_item_id=data.boq_item_id,
             work_type_id=boq_item.work_type_id,
             measurement_date=data.measurement_date,
-            dimensions={k: str(v) for k, v in data.dimensions.items()} if data.dimensions else {},
+            dimensions={k: str(v) for k, v in resolved_dimensions.items()} if resolved_dimensions else {},
+            dimension_expressions=data.dimension_expressions,
             computed_qty=computed_qty,
             status="DRAFT",
             recorded_by=recorded_by,
@@ -132,6 +198,8 @@ class MeasurementService:
             boq_template_id=template.id if template else None,
             boq_template_name=template.name if template else None,
             notes=data.notes,
+            edited_by=recorded_by if is_bypass_edit else None,
+            edited_at=datetime.now(timezone.utc) if is_bypass_edit else None,
         )
         self.repo.add(measurement)
         await self.session.flush()
@@ -213,8 +281,7 @@ class MeasurementService:
         self, measurement_id: uuid.UUID, data: MeasurementUpdate, actor_id: uuid.UUID, actor_role: UserRole
     ) -> Measurement:
         measurement = await self.get(measurement_id)
-        if measurement.recorded_by != actor_id and actor_role != UserRole.ADMIN:
-            raise PermissionDeniedError("Only the recording engineer can edit this measurement.")
+        is_bypass_edit = await self._authorize_measurement_edit(measurement, actor_id, actor_role)
 
         boq_item = await self.boq_repo.get(measurement.boq_item_id)
         if boq_item is None:
@@ -227,6 +294,7 @@ class MeasurementService:
         template_id = data.boq_template_id if data.boq_template_id is not None else measurement.boq_template_id
         template = await self._load_and_validate_template(template_id, construction_type)
 
+        resolved_dimensions = data.dimensions
         if construction_type == "STEEL":
             if not data.steel_lines:
                 raise DomainError("Steel measurements require at least one bar entry.")
@@ -248,8 +316,9 @@ class MeasurementService:
             work_type = await self._get_work_type(measurement.work_type_id)
             if not data.dimensions:
                 raise DomainError("Dimensions are required.")
+            resolved_dimensions = self._resolve_dimensions(data.dimensions, data.dimension_expressions)
             computed_qty = calculate_quantity(
-                work_type.formula, work_type.dimension_fields, data.dimensions
+                work_type.formula, work_type.dimension_fields, resolved_dimensions
             ).quantize(Decimal("0.001"))
 
         snapshot = BoqItemSnapshot(
@@ -262,13 +331,17 @@ class MeasurementService:
         )
 
         before = serialize_model(measurement)
-        measurement.dimensions = {k: str(v) for k, v in data.dimensions.items()} if data.dimensions else {}
+        measurement.dimensions = {k: str(v) for k, v in resolved_dimensions.items()} if resolved_dimensions else {}
+        measurement.dimension_expressions = data.dimension_expressions
         measurement.computed_qty = computed_qty
         measurement.chainage = data.chainage
         measurement.boq_template_id = template.id if template else None
         measurement.boq_template_name = template.name if template else None
         if data.rate is not None:
             measurement.rate = data.rate
+        if is_bypass_edit:
+            measurement.edited_by = actor_id
+            measurement.edited_at = datetime.now(timezone.utc)
 
         if construction_type == "STEEL":
             await self.session.execute(
@@ -317,11 +390,13 @@ class MeasurementService:
         steel_lines, so it works regardless of measurement status and
         doesn't require resending the full measurement payload."""
         measurement = await self.get(measurement_id)
-        if measurement.recorded_by != actor_id and actor_role != UserRole.ADMIN:
-            raise PermissionDeniedError("Only the recording engineer can edit this measurement.")
+        is_bypass_edit = await self._authorize_measurement_edit(measurement, actor_id, actor_role)
 
         before = serialize_model(measurement)
         measurement.notes = notes
+        if is_bypass_edit:
+            measurement.edited_by = actor_id
+            measurement.edited_at = datetime.now(timezone.utc)
         await self.session.flush()
         await self.audit.record(
             entity_type="MEASUREMENT",
@@ -339,8 +414,7 @@ class MeasurementService:
         self, measurement_id: uuid.UUID, actor_id: uuid.UUID, actor_role: UserRole
     ) -> None:
         measurement = await self.get(measurement_id)
-        if measurement.recorded_by != actor_id and actor_role != UserRole.ADMIN:
-            raise PermissionDeniedError("Only the recording engineer can delete this measurement.")
+        await self._authorize_measurement_edit(measurement, actor_id, actor_role)
 
         project_id = measurement.project_id
         boq_item_id = measurement.boq_item_id

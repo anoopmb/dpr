@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -36,6 +37,9 @@ class DprLabourRead(BaseModel):
     overtime_amount: Decimal | None
     contractor_workers_count: int | None
     remarks: str | None
+    edited_by: uuid.UUID | None = None
+    edited_by_name: str | None = None
+    edited_at: datetime | None = None
 
 
 class DprLabourSuggestion(BaseModel):

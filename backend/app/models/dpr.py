@@ -116,6 +116,12 @@ class DprMaterial(TimestampedBase):
         UUID(as_uuid=True), ForeignKey("measurements.id", ondelete="SET NULL"), nullable=True
     )
     manually_edited: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Set only when a PM/Admin adds or edits this row after the DPR has
+    # already been submitted — surfaces as an "edited by" label in the UI.
+    edited_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     dpr_header: Mapped["DprHeader"] = relationship(back_populates="materials")
 
@@ -137,6 +143,10 @@ class DprMachinery(TimestampedBase):
     # accurate even if the master rate or unit changes later.
     hire_unit: Mapped[str] = mapped_column(String(20), nullable=False, server_default="HOUR")
     hire_rate: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    edited_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     dpr_header: Mapped["DprHeader"] = relationship(back_populates="machinery_entries")
 
@@ -187,6 +197,10 @@ class DprLabour(TimestampedBase):
     # Number of the contractor's own labourers deployed (CONTRACTOR/SUBCONTRACTOR only).
     contractor_workers_count: Mapped[int | None] = mapped_column()
     remarks: Mapped[str | None] = mapped_column(String(500))
+    edited_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     dpr_header: Mapped["DprHeader"] = relationship(back_populates="labour_entries")
 

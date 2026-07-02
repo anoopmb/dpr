@@ -14,6 +14,9 @@ export interface DprLabourRead {
   overtime_amount: string | null;
   contractor_workers_count: number | null;
   remarks: string | null;
+  edited_by: string | null;
+  edited_by_name: string | null;
+  edited_at: string | null;
 }
 
 export interface DprLabourSuggestion {

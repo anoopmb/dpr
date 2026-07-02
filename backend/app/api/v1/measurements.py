@@ -23,6 +23,7 @@ _RECORDER_ROLES = (UserRole.SITE_ENGINEER, UserRole.PROJECT_MANAGER, UserRole.QU
 async def _to_read(session: SessionDep, measurement: Measurement) -> MeasurementRead:
     await session.refresh(measurement, attribute_names=["steel_lines"])
     user = await session.get(User, measurement.recorded_by)
+    editor = await session.get(User, measurement.edited_by) if measurement.edited_by else None
     auto_materials_map = await MeasurementService(session).get_auto_materials_map([measurement.id])
     return MeasurementRead(
         id=measurement.id,
@@ -31,6 +32,7 @@ async def _to_read(session: SessionDep, measurement: Measurement) -> Measurement
         work_type_id=measurement.work_type_id,
         measurement_date=measurement.measurement_date,
         dimensions=measurement.dimensions,
+        dimension_expressions=measurement.dimension_expressions,
         computed_qty=measurement.computed_qty,
         status=measurement.status,
         recorded_by=measurement.recorded_by,
@@ -43,13 +45,16 @@ async def _to_read(session: SessionDep, measurement: Measurement) -> Measurement
         boq_template_id=measurement.boq_template_id,
         boq_template_name=measurement.boq_template_name,
         notes=measurement.notes,
+        edited_by=measurement.edited_by,
+        edited_by_name=editor.full_name if editor else None,
+        edited_at=measurement.edited_at,
         steel_lines=[SteelLineRead.model_validate(l) for l in measurement.steel_lines],
         auto_materials=auto_materials_map.get(measurement.id, []),
     )
 
 
 async def _to_read_many(session: SessionDep, measurements: list[Measurement]) -> list[MeasurementRead]:
-    user_ids = {m.recorded_by for m in measurements}
+    user_ids = {m.recorded_by for m in measurements} | {m.edited_by for m in measurements if m.edited_by is not None}
     if not user_ids:
         return []
     result = await session.execute(select(User.id, User.full_name).where(User.id.in_(user_ids)))
@@ -63,6 +68,7 @@ async def _to_read_many(session: SessionDep, measurements: list[Measurement]) ->
             work_type_id=m.work_type_id,
             measurement_date=m.measurement_date,
             dimensions=m.dimensions,
+            dimension_expressions=m.dimension_expressions,
             computed_qty=m.computed_qty,
             status=m.status,
             recorded_by=m.recorded_by,
@@ -75,6 +81,9 @@ async def _to_read_many(session: SessionDep, measurements: list[Measurement]) ->
             boq_template_id=m.boq_template_id,
             boq_template_name=m.boq_template_name,
             notes=m.notes,
+            edited_by=m.edited_by,
+            edited_by_name=name_by_id.get(m.edited_by) if m.edited_by else None,
+            edited_at=m.edited_at,
             steel_lines=[SteelLineRead.model_validate(l) for l in m.steel_lines],
             auto_materials=auto_materials_map.get(m.id, []),
         )
@@ -89,7 +98,9 @@ async def _to_read_many(session: SessionDep, measurements: list[Measurement]) ->
     dependencies=[Depends(require_role(*_RECORDER_ROLES))],
 )
 async def create_measurement(data: MeasurementCreate, session: SessionDep, current_user: CurrentUserDep) -> MeasurementRead:
-    measurement = await MeasurementService(session).create(data, recorded_by=uuid.UUID(current_user.id))
+    measurement = await MeasurementService(session).create(
+        data, recorded_by=uuid.UUID(current_user.id), actor_role=current_user.role
+    )
     return await _to_read(session, measurement)
 
 

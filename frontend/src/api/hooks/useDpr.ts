@@ -25,6 +25,8 @@ export interface DprMaterialRead {
   rate: string | null;
   manually_edited: boolean;
   source_measurement_id: string | null;
+  edited_by: string | null;
+  edited_at: string | null;
 }
 export interface DprMachineryRead {
   id: string;
@@ -32,6 +34,8 @@ export interface DprMachineryRead {
   quantity_used: string;
   hire_unit: string;
   hire_rate: string | null;
+  edited_by: string | null;
+  edited_at: string | null;
 }
 
 // DRAFT/SUBMITTED are fixed bookends; the terminal "fully approved" value is

@@ -10,6 +10,7 @@ from app.schemas.user import (
     AdminResetPasswordRequest,
     ChangePasswordRequest,
     UserCreate,
+    UserDirectoryEntry,
     UserProfileUpdate,
     UserRead,
     UserUpdate,
@@ -35,6 +36,12 @@ async def create_user(data: UserCreate, session: SessionDep, current_user: Curre
 async def list_users(session: SessionDep, limit: int = 200, offset: int = 0) -> list[UserRead]:
     users = await UserService(session).list(limit=limit, offset=offset)
     return [UserRead.model_validate(u) for u in users]
+
+
+@router.get("/directory", response_model=list[UserDirectoryEntry])
+async def list_user_directory(session: SessionDep, _: CurrentUserDep) -> list[UserDirectoryEntry]:
+    users = await UserService(session).list(limit=1000, offset=0)
+    return [UserDirectoryEntry.model_validate(u) for u in users]
 
 
 @router.patch("/me", response_model=UserRead)

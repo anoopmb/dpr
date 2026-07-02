@@ -93,9 +93,10 @@ import {
 import { useAttachPhoto } from '@/api/hooks/usePhotos';
 import { useProjects } from '@/api/hooks/useProjects';
 import { useUploadPhoto } from '@/api/hooks/useUpload';
+import { useUserDirectory } from '@/api/hooks/useUsers';
 import { useThemeMode } from '@/theme/theme-context';
 import { useDateFormat, useNumberFormat } from '@/utils/format';
-import { calculateQuantity } from '@/features/measurements/formulaEngine';
+import { calculateQuantity, evaluateExpression, isArithmeticExpression, ExpressionError } from '@/features/measurements/formulaEngine';
 import {
   getCurrentPosition,
   reverseGeocode,
@@ -523,6 +524,7 @@ function LabourTab({
   const addLabour = useAddDprLabour();
   const deleteLabour = useDeleteDprLabour();
   const { fmtAmt, symbol } = useNumberFormat();
+  const { fmtDateTime } = useDateFormat();
   const { token } = theme.useToken();
 
   const [drafts, setDrafts] = useState<LabourDraftRow[]>([]);
@@ -613,7 +615,7 @@ function LabourTab({
   };
 
   useEffect(() => {
-    if (!isActive) { autoCreatedForActivationRef.current = false; return; }
+    if (!isActive || isSubmitted) { autoCreatedForActivationRef.current = false; return; }
     if (drafts.length === 0) {
       if (!autoCreatedForActivationRef.current) {
         autoCreatedForActivationRef.current = true;
@@ -626,7 +628,7 @@ function LabourTab({
     }
     // Only react to this tab becoming active, not to every drafts change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive]);
+  }, [isActive, isSubmitted]);
 
   const handleQtyChange = async (entry: DprLabourRead, qty: number | null) => {
     if (qty == null) return;
@@ -659,7 +661,14 @@ function LabourTab({
       title: 'Worker', key: 'worker', width: 160,
       render: (_: unknown, row: LabourRow) =>
         row._kind === 'existing' ? (
-          <Typography.Text>{row.entry.worker_name}</Typography.Text>
+          <Space size={4}>
+            <Typography.Text>{row.entry.worker_name}</Typography.Text>
+            {row.entry.edited_by && (
+              <Tooltip title={`Edited by ${row.entry.edited_by_name ?? 'Unknown'}${row.entry.edited_at ? ` on ${fmtDateTime(row.entry.edited_at)}` : ''}`}>
+                <Tag color="gold" style={{ margin: 0, fontSize: 10, padding: '0 4px', lineHeight: '16px' }}>Edited</Tag>
+              </Tooltip>
+            )}
+          </Space>
         ) : (
           <Select
             ref={(el) => { fieldRefs.current[`${row.draft.key}:worker`] = el; }}
@@ -898,7 +907,7 @@ function computeSteelTotalMt(lines: SteelLineDraft[], coeffMap: Record<number, n
     return sum + l.bar_count * l.length_m * (coeffMap[l.diameter_mm] ?? 0);
   }, 0);
 }
-interface MeasDraftRow { key: string; boq_item_id: string | null; boq_template_id: string | null; dimensions: Record<string, number>; steel_lines: SteelLineDraft[]; chainage: string; qty: number | null; rate: number | null; }
+interface MeasDraftRow { key: string; boq_item_id: string | null; boq_template_id: string | null; dimensions: Record<string, number>; dimensionText: Record<string, string>; steel_lines: SteelLineDraft[]; chainage: string; qty: number | null; rate: number | null; }
 interface IssueDraftRow { key: string; description: string; severity: IssueSeverity | null; }
 type LabourRow = { _kind: 'existing'; entry: DprLabourRead } | { _kind: 'draft'; draft: LabourDraftRow };
 interface AutoMaterialGroupSummary {
@@ -936,10 +945,12 @@ function MaterialsTab({
   const { data: uoms } = useUoms();
   const { data: measurements } = useMeasurements(header?.project_id ?? null);
   const { data: boqItems } = useBoqItems(header?.project_id ?? null);
+  const { data: userDirectory } = useUserDirectory();
   const addMaterial = useAddDprMaterial();
   const updateMaterial = useUpdateDprMaterial();
   const deleteMaterial = useDeleteDprMaterial();
   const { fmtAmt, symbol } = useNumberFormat();
+  const { fmtDateTime } = useDateFormat();
   const { token } = theme.useToken();
   const [drafts, setDrafts] = useState<MatDraftRow[]>([]);
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
@@ -971,6 +982,7 @@ function MaterialsTab({
   const boqById = new Map((boqItems ?? []).map((b) => [b.id, b]));
   const measurementById = new Map((measurements ?? []).map((m) => [m.id, m]));
   const uomCodeById = new Map((uoms ?? []).map((u) => [u.id, u.code]));
+  const userById = new Map((userDirectory ?? []).map((u) => [u.id, u.full_name]));
   const entries = header?.materials ?? [];
   const totalCost = entries.reduce((s, e) => s + (e.rate ? parseFloat(e.rate) * parseFloat(e.qty_consumed) : 0), 0);
 
@@ -1075,7 +1087,7 @@ function MaterialsTab({
   };
 
   useEffect(() => {
-    if (!isActive) { autoCreatedForActivationRef.current = false; return; }
+    if (!isActive || isSubmitted) { autoCreatedForActivationRef.current = false; return; }
     if (drafts.length === 0) {
       if (!autoCreatedForActivationRef.current) {
         autoCreatedForActivationRef.current = true;
@@ -1087,7 +1099,7 @@ function MaterialsTab({
       focusField(drafts[0].key, 'material');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive]);
+  }, [isActive, isSubmitted]);
 
   const saveQty = async (entry: DprMaterialRead, raw: string) => {
     const qty = parseFloat(raw);
@@ -1137,7 +1149,16 @@ function MaterialsTab({
             <Tag color="purple" style={{ fontSize: 10, padding: '0 4px', lineHeight: '16px', margin: 0 }}>Auto</Tag>
           </Space>
         );
-        if (row._kind === 'existing') return <Typography.Text>{materialById.get(row.entry.material_id)?.name ?? row.entry.material_id}</Typography.Text>;
+        if (row._kind === 'existing') return (
+          <Space size={4}>
+            <Typography.Text>{materialById.get(row.entry.material_id)?.name ?? row.entry.material_id}</Typography.Text>
+            {row.entry.edited_by && (
+              <Tooltip title={`Edited by ${userById.get(row.entry.edited_by) ?? 'Unknown'}${row.entry.edited_at ? ` on ${fmtDateTime(row.entry.edited_at)}` : ''}`}>
+                <Tag color="gold" style={{ margin: 0, fontSize: 10, padding: '0 4px', lineHeight: '16px' }}>Edited</Tag>
+              </Tooltip>
+            )}
+          </Space>
+        );
         return (
           <Select
             ref={(el) => { fieldRefs.current[`${row.draft.key}:material`] = el; }}
@@ -1297,10 +1318,12 @@ function MachineryTab({
 }) {
   const { data: header } = useDprHeader(headerId);
   const { data: machinery } = useMachinery();
+  const { data: userDirectory } = useUserDirectory();
   const addMachinery = useAddDprMachinery();
   const updateMachinery = useUpdateDprMachinery();
   const deleteMachinery = useDeleteDprMachinery();
   const { fmtAmt, symbol } = useNumberFormat();
+  const { fmtDateTime } = useDateFormat();
   const { token } = theme.useToken();
   const [drafts, setDrafts] = useState<MachDraftRow[]>([]);
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
@@ -1320,6 +1343,7 @@ function MachineryTab({
   };
 
   const machineryById = new Map((machinery ?? []).map((m) => [m.id, m]));
+  const userById = new Map((userDirectory ?? []).map((u) => [u.id, u.full_name]));
   const entries = header?.machinery_entries ?? [];
   const totalCost = entries.reduce((s, e) => s + (e.hire_rate ? parseFloat(e.hire_rate) * parseFloat(e.quantity_used) : 0), 0);
 
@@ -1372,7 +1396,7 @@ function MachineryTab({
   };
 
   useEffect(() => {
-    if (!isActive) { autoCreatedForActivationRef.current = false; return; }
+    if (!isActive || isSubmitted) { autoCreatedForActivationRef.current = false; return; }
     if (drafts.length === 0) {
       if (!autoCreatedForActivationRef.current) {
         autoCreatedForActivationRef.current = true;
@@ -1384,7 +1408,7 @@ function MachineryTab({
       focusField(drafts[0].key, 'machine');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive]);
+  }, [isActive, isSubmitted]);
 
   const saveQty = async (entry: DprMachineryRead, raw: string) => {
     const qty = parseFloat(raw);
@@ -1422,7 +1446,14 @@ function MachineryTab({
       title: 'Machine', key: 'machine', width: 180,
       render: (_: unknown, row: MachRow) =>
         row._kind === 'existing' ? (
-          <Typography.Text>{machineryById.get(row.entry.machinery_id)?.name ?? row.entry.machinery_id}</Typography.Text>
+          <Space size={4}>
+            <Typography.Text>{machineryById.get(row.entry.machinery_id)?.name ?? row.entry.machinery_id}</Typography.Text>
+            {row.entry.edited_by && (
+              <Tooltip title={`Edited by ${userById.get(row.entry.edited_by) ?? 'Unknown'}${row.entry.edited_at ? ` on ${fmtDateTime(row.entry.edited_at)}` : ''}`}>
+                <Tag color="gold" style={{ margin: 0, fontSize: 10, padding: '0 4px', lineHeight: '16px' }}>Edited</Tag>
+              </Tooltip>
+            )}
+          </Space>
         ) : (
           <Select
             ref={(el) => { fieldRefs.current[`${row.draft.key}:machine`] = el; }}
@@ -1644,7 +1675,7 @@ function IssuesTab({
   };
 
   useEffect(() => {
-    if (!isActive) { autoCreatedForActivationRef.current = false; return; }
+    if (!isActive || isSubmitted) { autoCreatedForActivationRef.current = false; return; }
     if (drafts.length === 0) {
       if (!autoCreatedForActivationRef.current) {
         autoCreatedForActivationRef.current = true;
@@ -1656,7 +1687,7 @@ function IssuesTab({
       focusField(drafts[0].key, 'description');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive]);
+  }, [isActive, isSubmitted]);
 
   const rows: IssueRow[] = [
     ...entries.map((e): IssueRow => ({ _kind: 'existing', entry: e })),
@@ -1804,14 +1835,16 @@ type ExpRow =
   | { _kind: 'existing'; entry: ExpenseRead }
   | { _kind: 'draft'; draft: ExpenseDraft };
 
-function ExpensesTab({ projectId, headerId, entryDate, isActive }: { projectId: string; headerId: string; entryDate: string; isActive: boolean }) {
+function ExpensesTab({ projectId, headerId, entryDate, isSubmitted, isActive }: { projectId: string; headerId: string; entryDate: string; isSubmitted: boolean; isActive: boolean }) {
   const { token } = theme.useToken();
   const { data: expenses, isLoading } = useExpensesByHeader(headerId);
   const { data: categories } = useExpenseCategories();
+  const { data: userDirectory } = useUserDirectory();
   const createExpense = useCreateExpense();
   const updateExpense = useUpdateExpense();
   const deleteExpense = useDeleteExpense();
   const { fmtAmt, symbol } = useNumberFormat();
+  const { fmtDateTime } = useDateFormat();
 
   const [drafts, setDrafts] = useState<ExpenseDraft[]>([]);
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
@@ -1835,6 +1868,7 @@ function ExpensesTab({ projectId, headerId, entryDate, isActive }: { projectId: 
 
   const forDate = expenses ?? [];
   const categoryById = new Map((categories ?? []).map((c) => [c.id, c.name]));
+  const userById = new Map((userDirectory ?? []).map((u) => [u.id, u.full_name]));
   const totalAmount = forDate.reduce((s, e) => s + parseFloat(e.amount || '0'), 0);
 
   const patchDraft = (key: string, patch: Partial<ExpenseDraft>) =>
@@ -1898,11 +1932,11 @@ function ExpensesTab({ projectId, headerId, entryDate, isActive }: { projectId: 
   };
 
   useEffect(() => {
-    if (!isActive) { autoCreatedForActivationRef.current = false; return; }
+    if (!isActive || isSubmitted) { autoCreatedForActivationRef.current = false; return; }
     if (drafts.length === 0) {
       if (!autoCreatedForActivationRef.current) {
         autoCreatedForActivationRef.current = true;
-         
+
         addBlankDraftAndFocus();
       }
     } else {
@@ -1910,7 +1944,7 @@ function ExpensesTab({ projectId, headerId, entryDate, isActive }: { projectId: 
       focusField(drafts[0].key, 'category');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive]);
+  }, [isActive, isSubmitted]);
 
   const startEditExpense = (expense: ExpenseRead) => {
     setEditingExpenseId(expense.id);
@@ -1978,7 +2012,16 @@ function ExpensesTab({ projectId, headerId, entryDate, isActive }: { projectId: 
                 options={(categories ?? []).map((c) => ({ value: c.id, label: c.name }))} />
             );
           }
-          return <Typography.Text>{categoryById.get(row.entry.expense_category_id) ?? row.entry.expense_category_id}</Typography.Text>;
+          return (
+            <Space size={4}>
+              <Typography.Text>{categoryById.get(row.entry.expense_category_id) ?? row.entry.expense_category_id}</Typography.Text>
+              {row.entry.edited_by && (
+                <Tooltip title={`Edited by ${userById.get(row.entry.edited_by) ?? 'Unknown'}${row.entry.edited_at ? ` on ${fmtDateTime(row.entry.edited_at)}` : ''}`}>
+                  <Tag color="gold" style={{ margin: 0, fontSize: 10, padding: '0 4px', lineHeight: '16px' }}>Edited</Tag>
+                </Tooltip>
+              )}
+            </Space>
+          );
         }
         return (
           <Select
@@ -2068,6 +2111,7 @@ function ExpensesTab({ projectId, headerId, entryDate, isActive }: { projectId: 
       width: 80,
       render: (_: unknown, row: ExpRow) => {
         if (row._kind === 'existing') {
+          if (isSubmitted) return null;
           if (editingExpenseId === row.entry.id) {
             return (
               <Space size={4}>
@@ -2108,13 +2152,16 @@ function ExpensesTab({ projectId, headerId, entryDate, isActive }: { projectId: 
           <Typography.Text strong style={{ fontSize: 14 }}>Expenses</Typography.Text>
           <Tag style={{ margin: 0, fontSize: 11 }}>{forDate.length} item{forDate.length !== 1 ? 's' : ''}</Tag>
         </span>
-        <Button
-          size="small" icon={<PlusOutlined />}
-          onClick={() => addBlankDraftAndFocus()}
-        >
-          Add Expense
-        </Button>
+        {!isSubmitted && (
+          <Button
+            size="small" icon={<PlusOutlined />}
+            onClick={() => addBlankDraftAndFocus()}
+          >
+            Add Expense
+          </Button>
+        )}
       </div>
+      {isSubmitted && <Alert type="info" showIcon style={{ margin: 12 }} message="DPR is submitted — expense entries are locked." />}
       <Table<ExpRow>
         rowKey={(row) => row._kind === 'existing' ? row.entry.id : row.draft.key}
         size="small"
@@ -2165,7 +2212,7 @@ function MeasurementsTab({
   const deleteMeasurement = useDeleteMeasurement();
   const uploadPhoto = useUploadPhoto();
   const attachPhoto = useAttachPhoto();
-  const { fmtDate } = useDateFormat();
+  const { fmtDate, fmtDateTime } = useDateFormat();
   const { fmtAmt, fmtQty, symbol } = useNumberFormat();
   const { token } = theme.useToken();
 
@@ -2190,7 +2237,7 @@ function MeasurementsTab({
   const [steelModalDraftKey, setSteelModalDraftKey] = useState<string | null>(null);
 
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
-  const [editRow, setEditRow] = useState<{ chainage: string; rate: number | null; dimensions: Record<string, number>; steel_lines: SteelLineDraft[]; boq_template_id: string | null; boq_item_id: string | null; work_type_id: string | null; }>({ chainage: '', rate: null, dimensions: {}, steel_lines: [], boq_template_id: null, boq_item_id: null, work_type_id: null });
+  const [editRow, setEditRow] = useState<{ chainage: string; rate: number | null; dimensions: Record<string, number>; dimensionText: Record<string, string>; steel_lines: SteelLineDraft[]; boq_template_id: string | null; boq_item_id: string | null; work_type_id: string | null; }>({ chainage: '', rate: null, dimensions: {}, dimensionText: {}, steel_lines: [], boq_template_id: null, boq_item_id: null, work_type_id: null });
   const [editSteelModalOpen, setEditSteelModalOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [viewSteelEntryId, setViewSteelEntryId] = useState<string | null>(null);
@@ -2242,7 +2289,7 @@ function MeasurementsTab({
 
   const addBlankDraft = () => {
     const key = nextMeasKey();
-    setDrafts((p) => [...p, { key, boq_item_id: null, boq_template_id: null, dimensions: {}, steel_lines: [], chainage: '', qty: null, rate: null }]);
+    setDrafts((p) => [...p, { key, boq_item_id: null, boq_template_id: null, dimensions: {}, dimensionText: {}, steel_lines: [], chainage: '', qty: null, rate: null }]);
     return key;
   };
 
@@ -2253,7 +2300,7 @@ function MeasurementsTab({
   };
 
   useEffect(() => {
-    if (!isActive) { autoCreatedForActivationRef.current = false; return; }
+    if (!isActive || isSubmitted) { autoCreatedForActivationRef.current = false; return; }
     if (drafts.length === 0) {
       if (!autoCreatedForActivationRef.current) {
         autoCreatedForActivationRef.current = true;
@@ -2265,7 +2312,7 @@ function MeasurementsTab({
       focusField(drafts[0].key, 'boq');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive]);
+  }, [isActive, isSubmitted]);
 
   // Patch a single dimension field AND recalculate qty from the formula
   const patchDimension = (draftKey: string, field: string, value: number | null) => {
@@ -2276,6 +2323,32 @@ function MeasurementsTab({
       const wt = (workTypes ?? []).find((w) => w.id === boqItem?.work_type_id);
       const newQty = wt ? calculateQuantity(wt.formula, wt.dimension_fields, newDims) : d.qty;
       return { ...d, dimensions: newDims, qty: newQty };
+    }));
+  };
+
+  // l/b/d fields accept either a plain number or a basic arithmetic
+  // expression (e.g. "(1+2.5)/2") — raw text is kept for display/re-editing,
+  // the parsed/evaluated number drives the live qty preview. An invalid
+  // expression is left as typed (text updates) without touching the
+  // computed dims/qty, so the user sees their in-progress typing without a
+  // stale or wrong quantity being silently accepted.
+  const patchDimensionText = (draftKey: string, field: string, text: string) => {
+    setDrafts((prev) => prev.map((d) => {
+      if (d.key !== draftKey) return d;
+      const newDimensionText = { ...d.dimensionText, [field]: text };
+      let parsed: number | null;
+      try {
+        parsed = isArithmeticExpression(text) ? evaluateExpression(text) : (text.trim() === '' ? 0 : parseFloat(text));
+      } catch (err) {
+        if (err instanceof ExpressionError) return { ...d, dimensionText: newDimensionText };
+        throw err;
+      }
+      if (parsed == null || Number.isNaN(parsed)) return { ...d, dimensionText: newDimensionText };
+      const newDims = { ...d.dimensions, [field]: parsed };
+      const boqItem = boqById.get(d.boq_item_id ?? '');
+      const wt = (workTypes ?? []).find((w) => w.id === boqItem?.work_type_id);
+      const newQty = wt ? calculateQuantity(wt.formula, wt.dimension_fields, newDims) : d.qty;
+      return { ...d, dimensions: newDims, dimensionText: newDimensionText, qty: newQty };
     }));
   };
 
@@ -2356,11 +2429,18 @@ function MeasurementsTab({
           })),
         });
       } else {
+        const activeFields = workType!.dimension_fields;
+        const dimensionExpressions = Object.fromEntries(
+          activeFields
+            .filter((f) => f !== 'nos' && isArithmeticExpression(draft.dimensionText[f] ?? ''))
+            .map((f) => [f, draft.dimensionText[f]]),
+        );
         created = await createMeasurement.mutateAsync({
           project_id: projectId,
           boq_item_id: draft.boq_item_id,
           measurement_date: entryDate,
-          dimensions: Object.fromEntries(workType!.dimension_fields.map((f) => [f, String(draft.dimensions[f] ?? 0)])),
+          dimensions: Object.fromEntries(activeFields.map((f) => [f, String(draft.dimensions[f] ?? 0)])),
+          dimension_expressions: Object.keys(dimensionExpressions).length > 0 ? dimensionExpressions : null,
           chainage: draft.chainage.trim() || null,
           rate: draft.rate != null ? String(draft.rate) : null,
           boq_template_id: draft.boq_template_id ?? null,
@@ -2398,6 +2478,11 @@ function MeasurementsTab({
       chainage: entry.chainage ?? '',
       rate: entry.rate != null ? parseFloat(String(entry.rate)) : null,
       dimensions: Object.fromEntries(Object.entries(entry.dimensions).map(([k, v]) => [k, parseFloat(String(v))])),
+      // Re-show the original expression text if this field was entered as
+      // one ("save and show same"), otherwise the plain computed number.
+      dimensionText: Object.fromEntries(
+        Object.entries(entry.dimensions).map(([k, v]) => [k, entry.dimension_expressions?.[k] ?? String(v)]),
+      ),
       steel_lines: entry.steel_lines.map((l) => ({
         key: nextSteelDraftKey(),
         description: l.description ?? '',
@@ -2433,10 +2518,17 @@ function MeasurementsTab({
           },
         });
       } else {
+        const activeFields = editWorkType?.dimension_fields ?? [];
+        const dimensionExpressions = Object.fromEntries(
+          activeFields
+            .filter((f) => f !== 'nos' && isArithmeticExpression(editRow.dimensionText[f] ?? ''))
+            .map((f) => [f, editRow.dimensionText[f]]),
+        );
         await updateMeasurement.mutateAsync({
           id: entry.id,
           data: {
-            dimensions: Object.fromEntries((editWorkType?.dimension_fields ?? []).map((f) => [f, String(editRow.dimensions[f] ?? 0)])),
+            dimensions: Object.fromEntries(activeFields.map((f) => [f, String(editRow.dimensions[f] ?? 0)])),
+            dimension_expressions: Object.keys(dimensionExpressions).length > 0 ? dimensionExpressions : null,
             chainage: editRow.chainage.trim() || null,
             rate: editRow.rate != null ? String(editRow.rate) : null,
             boq_template_id: editRow.boq_template_id ?? null,
@@ -2457,6 +2549,23 @@ function MeasurementsTab({
   };
   const removeEditSteelLine = (lineKey: string) => {
     setEditRow((prev) => ({ ...prev, steel_lines: prev.steel_lines.filter((l) => l.key !== lineKey) }));
+  };
+
+  // Edit-row counterpart of patchDimensionText — same expression-or-number
+  // handling, applied to editRow state instead of a draft.
+  const patchEditDimensionText = (field: string, text: string) => {
+    setEditRow((prev) => {
+      const newDimensionText = { ...prev.dimensionText, [field]: text };
+      let parsed: number | null;
+      try {
+        parsed = isArithmeticExpression(text) ? evaluateExpression(text) : (text.trim() === '' ? 0 : parseFloat(text));
+      } catch (err) {
+        if (err instanceof ExpressionError) return { ...prev, dimensionText: newDimensionText };
+        throw err;
+      }
+      if (parsed == null || Number.isNaN(parsed)) return { ...prev, dimensionText: newDimensionText };
+      return { ...prev, dimensions: { ...prev.dimensions, [field]: parsed }, dimensionText: newDimensionText };
+    });
   };
 
   const handleDelete = async (record: MeasurementRead) => {
@@ -2486,7 +2595,14 @@ function MeasurementsTab({
       ellipsis: true,
       render: (_: unknown, row: MeasRow) =>
         row._kind === 'existing' ? (
-          (() => { const item = boqById.get(row.entry.boq_item_id); return item ? `${item.item_no} — ${item.description}` : row.entry.boq_item_id; })()
+          <Space size={4}>
+            <span>{(() => { const item = boqById.get(row.entry.boq_item_id); return item ? `${item.item_no} — ${item.description}` : row.entry.boq_item_id; })()}</span>
+            {row.entry.edited_by && (
+              <Tooltip title={`Edited by ${row.entry.edited_by_name ?? 'Unknown'}${row.entry.edited_at ? ` on ${fmtDateTime(row.entry.edited_at)}` : ''}`}>
+                <Tag color="gold" style={{ margin: 0, fontSize: 10, padding: '0 4px', lineHeight: '16px' }}>Edited</Tag>
+              </Tooltip>
+            )}
+          </Space>
         ) : (
           <Select
             ref={(el) => { fieldRefs.current[`${row.draft.key}:boq`] = el; }}
@@ -2575,6 +2691,19 @@ function MeasurementsTab({
               return <Typography.Text type="secondary" style={{ fontSize: 11 }}>—</Typography.Text>;
             }
             const active2 = (editWorkType?.dimension_fields ?? []).includes(field);
+            if (field !== 'nos') {
+              // l/b/d accept a plain number or a "(1+2.5)/2"-style expression.
+              return (
+                <div style={{ opacity: active2 ? 1 : 0.28 }}>
+                  <Input size="small" style={inp}
+                    disabled={!active2}
+                    placeholder={active2 ? '0' : '—'}
+                    value={active2 ? (editRow.dimensionText[field] ?? '') : ''}
+                    onChange={(e) => { if (active2) patchEditDimensionText(field, e.target.value); }}
+                  />
+                </div>
+              );
+            }
             return (
               <div style={{ opacity: active2 ? 1 : 0.28 }}>
                 <InputNumber size="small" style={inp} min={0}
@@ -2594,9 +2723,15 @@ function MeasurementsTab({
               : <Typography.Text type="secondary" style={{ fontSize: 11 }}>—</Typography.Text>;
           }
           const val = row.entry.dimensions[field];
-          return val
-            ? <Typography.Text style={{ fontSize: 12 }}>{parseFloat(val).toFixed(2)}</Typography.Text>
-            : <Typography.Text type="secondary" style={{ fontSize: 11 }}>—</Typography.Text>;
+          if (!val) return <Typography.Text type="secondary" style={{ fontSize: 11 }}>—</Typography.Text>;
+          // Show the original expression text ("save and show same") rather
+          // than just the computed number, for l/b/d fields that used one.
+          const displayExpr = row.entry.dimension_expressions?.[field];
+          return (
+            <Typography.Text style={{ fontSize: 12 }} title={displayExpr ? `= ${parseFloat(val).toFixed(3)}` : undefined}>
+              {displayExpr ?? parseFloat(val).toFixed(2)}
+            </Typography.Text>
+          );
         }
         const boqItem = row.draft.boq_item_id ? boqById.get(row.draft.boq_item_id) : undefined;
         const wt = (workTypes ?? []).find((w) => w.id === boqItem?.work_type_id);
@@ -2620,6 +2755,19 @@ function MeasurementsTab({
           return <Typography.Text type="secondary" style={{ fontSize: 11 }}>—</Typography.Text>;
         }
         const active = (wt?.dimension_fields ?? []).includes(field);
+        if (field !== 'nos') {
+          return (
+            <div style={{ opacity: active ? 1 : 0.28 }}>
+              <Input
+                size="small" style={inp}
+                disabled={!active || !row.draft.boq_item_id}
+                placeholder={active ? '0' : '—'}
+                value={active ? (row.draft.dimensionText[field] ?? '') : ''}
+                onChange={(e) => { if (active) patchDimensionText(row.draft.key, field, e.target.value); }}
+              />
+            </div>
+          );
+        }
         return (
           <div style={{ opacity: active ? 1 : 0.28 }}>
             <InputNumber
@@ -4027,6 +4175,13 @@ export function DprTodayPage() {
   }
 
   const isSubmitted = header?.status !== 'DRAFT';
+  // A Project Manager or Admin may still edit entries after submission (for
+  // review-time corrections) — everyone else is locked out the moment the
+  // DPR leaves DRAFT. This mirrors the backend's assert_dpr_editable rule
+  // exactly. Production and Issues have no update/delete API at all, so
+  // they keep the plain isSubmitted gate below, unaffected by this.
+  const canBypassLock = authUser?.role === 'PROJECT_MANAGER' || authUser?.role === 'ADMIN';
+  const isLocked = isSubmitted && !canBypassLock;
 
   const tabItems = [
     {
@@ -4037,35 +4192,35 @@ export function DprTodayPage() {
     {
       key: 'attendance',
       label: 'Attendance',
-      children: selectedProjectId ? <AttendanceTab projectId={selectedProjectId} entryDate={entryDateStr} isSubmitted={isSubmitted} isActive={activeTabKey === 'attendance'} /> : null,
+      children: selectedProjectId ? <AttendanceTab projectId={selectedProjectId} entryDate={entryDateStr} isSubmitted={isLocked} isActive={activeTabKey === 'attendance'} /> : null,
     },
     {
       key: 'labour',
       label: 'Labour',
       children: currentDprHeaderId && selectedProjectId
-        ? <LabourTab headerId={currentDprHeaderId} projectId={selectedProjectId} isSubmitted={isSubmitted} isActive={activeTabKey === 'labour'} />
+        ? <LabourTab headerId={currentDprHeaderId} projectId={selectedProjectId} isSubmitted={isLocked} isActive={activeTabKey === 'labour'} />
         : null,
     },
     {
       key: 'materials',
       label: 'Materials',
-      children: currentDprHeaderId ? <MaterialsTab headerId={currentDprHeaderId} isSubmitted={isSubmitted} isActive={activeTabKey === 'materials'} /> : null,
+      children: currentDprHeaderId ? <MaterialsTab headerId={currentDprHeaderId} isSubmitted={isLocked} isActive={activeTabKey === 'materials'} /> : null,
     },
     {
       key: 'machinery',
       label: 'Machinery',
-      children: currentDprHeaderId ? <MachineryTab headerId={currentDprHeaderId} isSubmitted={isSubmitted} isActive={activeTabKey === 'machinery'} /> : null,
+      children: currentDprHeaderId ? <MachineryTab headerId={currentDprHeaderId} isSubmitted={isLocked} isActive={activeTabKey === 'machinery'} /> : null,
     },
     {
       key: 'measurements',
       label: 'Measurements',
-      children: selectedProjectId ? <MeasurementsTab projectId={selectedProjectId} entryDate={entryDateStr} isSubmitted={isSubmitted} isActive={activeTabKey === 'measurements'} /> : null,
+      children: selectedProjectId ? <MeasurementsTab projectId={selectedProjectId} entryDate={entryDateStr} isSubmitted={isLocked} isActive={activeTabKey === 'measurements'} /> : null,
     },
     {
       key: 'expenses',
       label: 'Expenses',
       children: selectedProjectId && currentDprHeaderId
-        ? <ExpensesTab projectId={selectedProjectId} headerId={currentDprHeaderId} entryDate={entryDateStr} isActive={activeTabKey === 'expenses'} />
+        ? <ExpensesTab projectId={selectedProjectId} headerId={currentDprHeaderId} entryDate={entryDateStr} isSubmitted={isLocked} isActive={activeTabKey === 'expenses'} />
         : null,
     },
     {

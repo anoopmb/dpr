@@ -1,10 +1,14 @@
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
+from app.domain.dpr.locking import assert_dpr_editable
 from app.models.audit import AuditAction
+from app.models.dpr import DprHeader
 from app.models.expense import Expense
+from app.models.user import UserRole
 from app.repositories.expense_repo import ExpenseRepository
 from app.schemas.expense import ExpenseCreate, ExpenseUpdate
 from app.services.audit_service import AuditService, serialize_model
@@ -16,8 +20,22 @@ class ExpenseService:
         self.repo = ExpenseRepository(session)
         self.audit = AuditService(session)
 
-    async def create(self, data: ExpenseCreate, paid_by: uuid.UUID) -> Expense:
-        expense = Expense(**data.model_dump(), paid_by=paid_by)
+    async def _check_header_lock(self, dpr_header_id: uuid.UUID | None, actor_role: UserRole) -> bool:
+        # An expense not linked to any DPR (dpr_header_id is nullable) has
+        # nothing to lock against.
+        if dpr_header_id is None:
+            return False
+        header = await self.session.get(DprHeader, dpr_header_id)
+        return assert_dpr_editable(header.status if header else None, actor_role)
+
+    async def create(self, data: ExpenseCreate, paid_by: uuid.UUID, actor_role: UserRole) -> Expense:
+        is_bypass_edit = await self._check_header_lock(data.dpr_header_id, actor_role)
+        expense = Expense(
+            **data.model_dump(),
+            paid_by=paid_by,
+            edited_by=paid_by if is_bypass_edit else None,
+            edited_at=datetime.now(timezone.utc) if is_bypass_edit else None,
+        )
         self.repo.add(expense)
         await self.session.flush()
         await self.audit.record(
@@ -31,11 +49,17 @@ class ExpenseService:
         await self.session.refresh(expense)
         return expense
 
-    async def update(self, expense_id: uuid.UUID, data: ExpenseUpdate, actor_id: uuid.UUID) -> Expense:
+    async def update(
+        self, expense_id: uuid.UUID, data: ExpenseUpdate, actor_id: uuid.UUID, actor_role: UserRole
+    ) -> Expense:
         expense = await self.get(expense_id)
+        is_bypass_edit = await self._check_header_lock(expense.dpr_header_id, actor_role)
         before = serialize_model(expense)
         for field, value in data.model_dump(exclude_none=True).items():
             setattr(expense, field, value)
+        if is_bypass_edit:
+            expense.edited_by = actor_id
+            expense.edited_at = datetime.now(timezone.utc)
         await self.session.flush()
         await self.audit.record(
             entity_type="EXPENSE",
@@ -49,8 +73,9 @@ class ExpenseService:
         await self.session.refresh(expense)
         return expense
 
-    async def delete(self, expense_id: uuid.UUID, actor_id: uuid.UUID) -> None:
+    async def delete(self, expense_id: uuid.UUID, actor_id: uuid.UUID, actor_role: UserRole) -> None:
         expense = await self.get(expense_id)
+        await self._check_header_lock(expense.dpr_header_id, actor_role)
         before = serialize_model(expense)
         entity_id = expense.id
         await self.session.delete(expense)

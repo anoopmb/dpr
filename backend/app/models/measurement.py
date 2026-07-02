@@ -47,6 +47,13 @@ class Measurement(TimestampedBase):
     )
     measurement_date: Mapped[date] = mapped_column(Date, nullable=False)
     dimensions: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    # Raw arithmetic expression text for whichever L/B/D fields the site
+    # engineer entered as an expression (e.g. "(1+2.5)/2") instead of a
+    # plain number — keyed the same as `dimensions`, only present for fields
+    # that used one. `dimensions` always holds the server-recomputed decimal
+    # result; this column is purely for redisplaying/re-editing the original
+    # input, never consumed by the formula engine.
+    dimension_expressions: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     computed_qty: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
     # Plain string, not constrained to MeasurementStatus — holds either a
     # fixed bookend (DRAFT/SUBMITTED/REJECTED/LOCKED) or an admin-configured
@@ -69,6 +76,12 @@ class Measurement(TimestampedBase):
     )
     boq_template_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    # Set only when a PM/Admin adds or edits this row after its DPR has
+    # already been submitted — surfaces as an "edited by" label in the UI.
+    edited_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     boq_template: Mapped["BoqConstructionTemplate | None"] = relationship(
         "BoqConstructionTemplate", lazy="joined", foreign_keys=[boq_template_id]

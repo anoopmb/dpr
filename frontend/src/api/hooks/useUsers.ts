@@ -39,6 +39,21 @@ export function useUsers() {
   });
 }
 
+export interface UserDirectoryEntry {
+  id: string;
+  full_name: string;
+}
+
+// Available to any authenticated role (unlike useUsers, which is Admin-only
+// server-side) — for resolving actor IDs like edited_by into names.
+export function useUserDirectory() {
+  return useQuery({
+    queryKey: ['user-directory'],
+    queryFn: async () => (await apiClient.get<UserDirectoryEntry[]>('/users/directory')).data,
+    staleTime: 60_000,
+  });
+}
+
 export function useCreateUser() {
   const queryClient = useQueryClient();
   return useMutation({

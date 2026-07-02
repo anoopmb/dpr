@@ -27,7 +27,9 @@ _SUPERVISOR_ROLES = (UserRole.SITE_ENGINEER, UserRole.PROJECT_MANAGER, UserRole.
     dependencies=[Depends(require_role(*_SUPERVISOR_ROLES))],
 )
 async def create_worker(data: WorkerCreate, session: SessionDep, current_user: CurrentUserDep) -> WorkerRead:
-    worker = await WorkerService(session).create(data, marked_by=uuid.UUID(current_user.id))
+    worker = await WorkerService(session).create(
+        data, marked_by=uuid.UUID(current_user.id), actor_role=current_user.role
+    )
     return WorkerRead.model_validate(worker)
 
 
@@ -56,7 +58,9 @@ async def list_workers_for_project(project_id: uuid.UUID, session: SessionDep, _
     dependencies=[Depends(require_role(*_SUPERVISOR_ROLES))],
 )
 async def check_in(data: AttendanceCheckInCreate, session: SessionDep, current_user: CurrentUserDep) -> AttendanceRecordRead:
-    record = await AttendanceService(session).check_in(data, marked_by=uuid.UUID(current_user.id))
+    record = await AttendanceService(session).check_in(
+        data, marked_by=uuid.UUID(current_user.id), actor_role=current_user.role
+    )
     return AttendanceRecordRead.model_validate(record)
 
 
@@ -69,7 +73,9 @@ async def check_in(data: AttendanceCheckInCreate, session: SessionDep, current_u
 async def mark_present(
     data: MarkPresentRequest, session: SessionDep, current_user: CurrentUserDep
 ) -> list[AttendanceRecordRead]:
-    records = await AttendanceService(session).mark_present(data, marked_by=uuid.UUID(current_user.id))
+    records = await AttendanceService(session).mark_present(
+        data, marked_by=uuid.UUID(current_user.id), actor_role=current_user.role
+    )
     return [AttendanceRecordRead.model_validate(r) for r in records]
 
 
@@ -89,4 +95,4 @@ async def list_attendance_for_project(
 async def delete_attendance_record(
     record_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep
 ) -> None:
-    await AttendanceService(session).delete(record_id, actor_id=uuid.UUID(current_user.id))
+    await AttendanceService(session).delete(record_id, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role)

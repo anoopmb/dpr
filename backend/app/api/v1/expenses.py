@@ -19,7 +19,9 @@ _RECORDER_ROLES = (UserRole.SITE_ENGINEER, UserRole.PROJECT_MANAGER, UserRole.ST
     dependencies=[Depends(require_role(*_RECORDER_ROLES))],
 )
 async def create_expense(data: ExpenseCreate, session: SessionDep, current_user: CurrentUserDep) -> ExpenseRead:
-    expense = await ExpenseService(session).create(data, paid_by=uuid.UUID(current_user.id))
+    expense = await ExpenseService(session).create(
+        data, paid_by=uuid.UUID(current_user.id), actor_role=current_user.role
+    )
     return ExpenseRead.model_validate(expense)
 
 
@@ -31,7 +33,9 @@ async def create_expense(data: ExpenseCreate, session: SessionDep, current_user:
 async def update_expense(
     expense_id: uuid.UUID, data: ExpenseUpdate, session: SessionDep, current_user: CurrentUserDep
 ) -> ExpenseRead:
-    expense = await ExpenseService(session).update(expense_id, data, actor_id=uuid.UUID(current_user.id))
+    expense = await ExpenseService(session).update(
+        expense_id, data, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role
+    )
     return ExpenseRead.model_validate(expense)
 
 
@@ -41,7 +45,7 @@ async def update_expense(
     dependencies=[Depends(require_role(*_RECORDER_ROLES))],
 )
 async def delete_expense(expense_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep) -> None:
-    await ExpenseService(session).delete(expense_id, actor_id=uuid.UUID(current_user.id))
+    await ExpenseService(session).delete(expense_id, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role)
 
 
 @router.get("/by-project/{project_id}", response_model=list[ExpenseRead])

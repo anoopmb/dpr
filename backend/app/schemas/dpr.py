@@ -105,6 +105,8 @@ class DprMaterialRead(BaseModel):
     rate: Decimal | None
     manually_edited: bool
     source_measurement_id: uuid.UUID | None
+    edited_by: uuid.UUID | None = None
+    edited_at: datetime | None = None
 
 
 class DprMaterialUpdate(BaseModel):
@@ -131,6 +133,8 @@ class DprMachineryRead(BaseModel):
     quantity_used: Decimal
     hire_unit: str
     hire_rate: Decimal | None
+    edited_by: uuid.UUID | None = None
+    edited_at: datetime | None = None
 
 
 class DprHeaderRead(BaseModel):

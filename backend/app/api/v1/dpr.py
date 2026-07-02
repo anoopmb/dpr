@@ -89,7 +89,9 @@ async def get_dpr(header_id: uuid.UUID, session: SessionDep, _: CurrentUserDep) 
 async def add_work_item(
     header_id: uuid.UUID, data: DprWorkItemCreate, session: SessionDep, current_user: CurrentUserDep
 ) -> DprHeaderRead:
-    header = await DprService(session).add_work_item(header_id, data, actor_id=uuid.UUID(current_user.id))
+    header = await DprService(session).add_work_item(
+        header_id, data, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role
+    )
     return DprHeaderRead.model_validate(header)
 
 
@@ -97,7 +99,9 @@ async def add_work_item(
 async def add_issue(
     header_id: uuid.UUID, data: DprIssueCreate, session: SessionDep, current_user: CurrentUserDep
 ) -> DprHeaderRead:
-    header = await DprService(session).add_issue(header_id, data, actor_id=uuid.UUID(current_user.id))
+    header = await DprService(session).add_issue(
+        header_id, data, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role
+    )
     return DprHeaderRead.model_validate(header)
 
 
@@ -105,7 +109,9 @@ async def add_issue(
 async def add_material(
     header_id: uuid.UUID, data: DprMaterialCreate, session: SessionDep, current_user: CurrentUserDep
 ) -> DprHeaderRead:
-    header = await DprService(session).add_material(header_id, data, actor_id=uuid.UUID(current_user.id))
+    header = await DprService(session).add_material(
+        header_id, data, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role
+    )
     return DprHeaderRead.model_validate(header)
 
 
@@ -117,7 +123,9 @@ async def add_material(
 async def update_material(
     item_id: uuid.UUID, data: DprMaterialUpdate, session: SessionDep, current_user: CurrentUserDep
 ) -> DprHeaderRead:
-    header = await DprService(session).update_material(item_id, data, actor_id=uuid.UUID(current_user.id))
+    header = await DprService(session).update_material(
+        item_id, data, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role
+    )
     return DprHeaderRead.model_validate(header)
 
 
@@ -129,14 +137,16 @@ async def update_material(
 async def delete_material(
     item_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep
 ) -> None:
-    await DprService(session).delete_material(item_id, actor_id=uuid.UUID(current_user.id))
+    await DprService(session).delete_material(item_id, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role)
 
 
 @router.post("/{header_id}/machinery", response_model=DprHeaderRead, dependencies=[Depends(require_role(*_FIELD_ROLES))])
 async def add_machinery(
     header_id: uuid.UUID, data: DprMachineryCreate, session: SessionDep, current_user: CurrentUserDep
 ) -> DprHeaderRead:
-    header = await DprService(session).add_machinery(header_id, data, actor_id=uuid.UUID(current_user.id))
+    header = await DprService(session).add_machinery(
+        header_id, data, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role
+    )
     return DprHeaderRead.model_validate(header)
 
 
@@ -148,7 +158,9 @@ async def add_machinery(
 async def update_machinery(
     item_id: uuid.UUID, data: DprMachineryUpdate, session: SessionDep, current_user: CurrentUserDep
 ) -> DprHeaderRead:
-    header = await DprService(session).update_machinery(item_id, data, actor_id=uuid.UUID(current_user.id))
+    header = await DprService(session).update_machinery(
+        item_id, data, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role
+    )
     return DprHeaderRead.model_validate(header)
 
 
@@ -160,7 +172,7 @@ async def update_machinery(
 async def delete_machinery(
     item_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep
 ) -> None:
-    await DprService(session).delete_machinery(item_id, actor_id=uuid.UUID(current_user.id))
+    await DprService(session).delete_machinery(item_id, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role)
 
 
 @router.post("/{header_id}/submit", response_model=DprHeaderRead, dependencies=[Depends(require_role(*_FIELD_ROLES))])
@@ -230,6 +242,11 @@ async def get_labour_suggestions(
 async def list_labour(header_id: uuid.UUID, session: SessionDep, _: CurrentUserDep) -> list[DprLabourRead]:
     from app.models.worker import Worker as WorkerModel
     entries = await DprService(session).list_labour(header_id)
+    editor_ids = {e.edited_by for e in entries if e.edited_by is not None}
+    editor_name_by_id: dict[uuid.UUID, str] = {}
+    if editor_ids:
+        editor_result = await session.execute(select(User.id, User.full_name).where(User.id.in_(editor_ids)))
+        editor_name_by_id = dict(editor_result.all())
     result = []
     for entry in entries:
         worker = await session.get(WorkerModel, entry.worker_id)
@@ -247,6 +264,9 @@ async def list_labour(header_id: uuid.UUID, session: SessionDep, _: CurrentUserD
                 overtime_amount=entry.overtime_amount,
                 contractor_workers_count=entry.contractor_workers_count,
                 remarks=entry.remarks,
+                edited_by=entry.edited_by,
+                edited_by_name=editor_name_by_id.get(entry.edited_by) if entry.edited_by else None,
+                edited_at=entry.edited_at,
             )
         )
     return result
@@ -262,8 +282,11 @@ async def add_labour(
     header_id: uuid.UUID, data: DprLabourCreate, session: SessionDep, current_user: CurrentUserDep
 ) -> DprLabourRead:
     from app.models.worker import Worker as WorkerModel
-    entry = await DprService(session).add_labour(header_id, data, actor_id=uuid.UUID(current_user.id))
+    entry = await DprService(session).add_labour(
+        header_id, data, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role
+    )
     worker = await session.get(WorkerModel, entry.worker_id)
+    editor = await session.get(User, entry.edited_by) if entry.edited_by else None
     return DprLabourRead(
         id=entry.id,
         dpr_header_id=entry.dpr_header_id,
@@ -277,6 +300,9 @@ async def add_labour(
         overtime_amount=entry.overtime_amount,
         contractor_workers_count=entry.contractor_workers_count,
         remarks=entry.remarks,
+        edited_by=entry.edited_by,
+        edited_by_name=editor.full_name if editor else None,
+        edited_at=entry.edited_at,
     )
 
 
@@ -289,8 +315,11 @@ async def update_labour(
     item_id: uuid.UUID, data: DprLabourUpdate, session: SessionDep, current_user: CurrentUserDep
 ) -> DprLabourRead:
     from app.models.worker import Worker as WorkerModel
-    entry = await DprService(session).update_labour(item_id, data, actor_id=uuid.UUID(current_user.id))
+    entry = await DprService(session).update_labour(
+        item_id, data, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role
+    )
     worker = await session.get(WorkerModel, entry.worker_id)
+    editor = await session.get(User, entry.edited_by) if entry.edited_by else None
     return DprLabourRead(
         id=entry.id,
         dpr_header_id=entry.dpr_header_id,
@@ -304,6 +333,9 @@ async def update_labour(
         overtime_amount=entry.overtime_amount,
         contractor_workers_count=entry.contractor_workers_count,
         remarks=entry.remarks,
+        edited_by=entry.edited_by,
+        edited_by_name=editor.full_name if editor else None,
+        edited_at=entry.edited_at,
     )
 
 
@@ -313,7 +345,7 @@ async def update_labour(
     dependencies=[Depends(require_role(*_FIELD_ROLES))],
 )
 async def delete_labour(item_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep) -> None:
-    await DprService(session).delete_labour(item_id, actor_id=uuid.UUID(current_user.id))
+    await DprService(session).delete_labour(item_id, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role)
 
 
 @router.get("/{header_id}/measurements", response_model=list[MeasurementRead])
@@ -331,7 +363,7 @@ async def list_measurements_for_dpr(
     measurements = list(result.scalars().all())
     if not measurements:
         return []
-    user_ids = {m.recorded_by for m in measurements}
+    user_ids = {m.recorded_by for m in measurements} | {m.edited_by for m in measurements if m.edited_by is not None}
     name_result = await session.execute(select(User.id, User.full_name).where(User.id.in_(user_ids)))
     name_by_id = dict(name_result.all())
     auto_materials_map = await MeasurementService(session).get_auto_materials_map([m.id for m in measurements])
@@ -343,6 +375,7 @@ async def list_measurements_for_dpr(
             work_type_id=m.work_type_id,
             measurement_date=m.measurement_date,
             dimensions=m.dimensions,
+            dimension_expressions=m.dimension_expressions,
             computed_qty=m.computed_qty,
             status=m.status,
             recorded_by=m.recorded_by,
@@ -355,6 +388,9 @@ async def list_measurements_for_dpr(
             boq_template_id=m.boq_template_id,
             boq_template_name=m.boq_template_name,
             notes=m.notes,
+            edited_by=m.edited_by,
+            edited_by_name=name_by_id.get(m.edited_by) if m.edited_by else None,
+            edited_at=m.edited_at,
             auto_materials=auto_materials_map.get(m.id, []),
         )
         for m in measurements

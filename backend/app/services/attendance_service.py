@@ -5,20 +5,37 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import DomainError, NotFoundError
+from app.core.exceptions import DomainError, NotFoundError, PermissionDeniedError
 from app.core.storage import delete_fileobj
 from app.core.timezone import get_org_today
 from app.domain.attendance.validators import GeoPoint, is_within_geofence
+from app.domain.dpr.locking import LOCK_BYPASS_ROLES
 from app.models.attendance import AttendanceRecord
 from app.models.audit import AuditAction
 from app.models.dpr import DprHeader, DprLabour, DprStatus
 from app.models.master_data import WorkerCategoryMaster
 from app.models.project import Project
+from app.models.user import UserRole
 from app.models.worker import Worker
 from app.repositories.attendance_repo import AttendanceRepository
 from app.repositories.worker_repo import WorkerRepository
 from app.schemas.attendance import AttendanceCheckInCreate, MarkPresentRequest, WorkerCreate, WorkerUpdate
 from app.services.audit_service import AuditService, serialize_model
+
+
+async def _assert_attendance_editable(session: AsyncSession, project_id: uuid.UUID, attendance_date: date, actor_role: UserRole) -> None:
+    header_status = (
+        await session.execute(
+            select(DprHeader.status).where(
+                DprHeader.project_id == project_id,
+                DprHeader.report_date == attendance_date,
+            )
+        )
+    ).scalar_one_or_none()
+    if header_status is not None and header_status != DprStatus.DRAFT and actor_role not in LOCK_BYPASS_ROLES:
+        raise PermissionDeniedError(
+            "This DPR has been submitted — only a Project Manager or Admin can change attendance now."
+        )
 
 
 async def _sync_labour_on_checkin(
@@ -168,7 +185,7 @@ class WorkerService:
         self.attendance_repo = AttendanceRepository(session)
         self.audit = AuditService(session)
 
-    async def create(self, data: WorkerCreate, marked_by: uuid.UUID) -> Worker:
+    async def create(self, data: WorkerCreate, marked_by: uuid.UUID, actor_role: UserRole) -> Worker:
         worker = Worker(**data.model_dump(exclude={"mark_present_today"}))
         self.repo.add(worker)
         await self.session.flush()
@@ -188,6 +205,8 @@ class WorkerService:
                 raise VerificationRequiredError(
                     "This project requires photo/GPS verification — check the worker in instead of auto-marking."
                 )
+            today = await get_org_today(self.session)
+            await _assert_attendance_editable(self.session, data.project_id, today, actor_role)
             record = await _record_attendance(
                 self.attendance_repo,
                 project=project,
@@ -241,7 +260,7 @@ class AttendanceService:
         self.worker_repo = WorkerRepository(session)
         self.audit = AuditService(session)
 
-    async def check_in(self, data: AttendanceCheckInCreate, marked_by: uuid.UUID) -> AttendanceRecord:
+    async def check_in(self, data: AttendanceCheckInCreate, marked_by: uuid.UUID, actor_role: UserRole) -> AttendanceRecord:
         worker = await self.worker_repo.get(data.worker_id)
         if worker is None or worker.project_id != data.project_id:
             raise NotFoundError("Worker not found for this project.")
@@ -249,6 +268,8 @@ class AttendanceService:
         project = await self.session.get(Project, data.project_id)
         if project is None:
             raise NotFoundError(f"Project {data.project_id} not found.")
+
+        await _assert_attendance_editable(self.session, data.project_id, await get_org_today(self.session), actor_role)
 
         if project.attendance_photo_required and not data.photo_url:
             raise VerificationRequiredError("This project requires a photo to mark attendance.")
@@ -283,7 +304,9 @@ class AttendanceService:
         await self.session.refresh(record)
         return record
 
-    async def mark_present(self, data: MarkPresentRequest, marked_by: uuid.UUID) -> list[AttendanceRecord]:
+    async def mark_present(
+        self, data: MarkPresentRequest, marked_by: uuid.UUID, actor_role: UserRole
+    ) -> list[AttendanceRecord]:
         project = await self.session.get(Project, data.project_id)
         if project is None:
             raise NotFoundError(f"Project {data.project_id} not found.")
@@ -291,6 +314,7 @@ class AttendanceService:
             raise VerificationRequiredError(
                 "This project requires photo/GPS verification — use check-in instead of bulk marking."
             )
+        await _assert_attendance_editable(self.session, data.project_id, await get_org_today(self.session), actor_role)
 
         records: list[AttendanceRecord] = []
         for worker_id in data.worker_ids:
@@ -338,10 +362,11 @@ class AttendanceService:
     ) -> list[AttendanceRecord]:
         return await self.repo.list_for_project(project_id, attendance_date)
 
-    async def delete(self, record_id: uuid.UUID, actor_id: uuid.UUID) -> None:
+    async def delete(self, record_id: uuid.UUID, actor_id: uuid.UUID, actor_role: UserRole) -> None:
         record = await self.session.get(AttendanceRecord, record_id)
         if record is None:
             raise NotFoundError("Attendance record not found.")
+        await _assert_attendance_editable(self.session, record.project_id, record.attendance_date, actor_role)
         before = serialize_model(record)
         photo_url = record.photo_url
         project_id = record.project_id

@@ -5,6 +5,16 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from app.models.user import UserRole
 
 
+class UserDirectoryEntry(BaseModel):
+    """Minimal id->name lookup, available to any authenticated user (unlike
+    the full UserRead list, which is Admin-only) — for resolving actor IDs
+    like edited_by into display names in list views."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    full_name: str
+
+
 class UserCreate(BaseModel):
     login_id: str = Field(min_length=1, max_length=50)
     full_name: str = Field(min_length=1, max_length=255)

@@ -18,7 +18,7 @@ import {
 } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { CheckCircleFilled, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
-import { calculateQuantity } from '@/features/measurements/formulaEngine';
+import { calculateQuantity, evaluateExpression, isArithmeticExpression, ExpressionError } from '@/features/measurements/formulaEngine';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
 import { useBoqItems } from '@/api/hooks/useBoq';
@@ -116,6 +116,7 @@ export function MeasurementEntryPage() {
 
   const [boqItemId, setBoqItemId] = useState<string | null>(null);
   const [dimensions, setDimensions] = useState<Record<string, number>>({});
+  const [dimensionText, setDimensionText] = useState<Record<string, string>>({});
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [steelRows, setSteelRows] = useState<SteelRow[]>([{ key: nextSteelKey(), description: '', diameter_mm: 0, bar_count: null, length_m: null }]);
   const [chainage, setChainage] = useState<string>('');
@@ -184,12 +185,31 @@ export function MeasurementEntryPage() {
     // the whole product once the other dimensions are filled.
     setBoqItemId(value);
     setDimensions(wt?.dimension_fields.includes('nos') ? { nos: 1 } : {});
+    setDimensionText(wt?.dimension_fields.includes('nos') ? { nos: '1' } : {});
     setSelectedTemplateId(null);
     setSteelRows([{ key: nextSteelKey(), description: '', diameter_mm: 0, bar_count: null, length_m: null }]);
   };
 
   const patchSteelRow = (key: string, patch: Partial<SteelRow>) => {
     setSteelRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  };
+
+  // l/b/d accept a plain number or an arithmetic expression like "(1+2.5)/2".
+  // Raw text is kept for display/re-editing; the parsed number drives the
+  // live qty preview. An invalid/in-progress expression just updates the
+  // text without touching the computed dims, so typing "(1+" doesn't wipe
+  // out the preview.
+  const patchDimensionField = (field: string, text: string) => {
+    setDimensionText((prev) => ({ ...prev, [field]: text }));
+    let parsed: number | null;
+    try {
+      parsed = isArithmeticExpression(text) ? evaluateExpression(text) : (text.trim() === '' ? 0 : parseFloat(text));
+    } catch (err) {
+      if (err instanceof ExpressionError) return;
+      throw err;
+    }
+    if (parsed == null || Number.isNaN(parsed)) return;
+    setDimensions((prev) => ({ ...prev, [field]: parsed }));
   };
 
   const steelTableColumns: TableColumnsType<SteelRow> = [
@@ -315,11 +335,18 @@ export function MeasurementEntryPage() {
             }))
         : [];
 
+      const dimensionExpressions = isSteel ? {} : Object.fromEntries(
+        dimensionFields
+          .filter((f) => f !== 'nos' && isArithmeticExpression(dimensionText[f] ?? ''))
+          .map((f) => [f, dimensionText[f]]),
+      );
+
       const measurement = await createMeasurement.mutateAsync({
         project_id: selectedProjectId,
         boq_item_id: boqItemId,
         measurement_date: selectedEntryDate,
         dimensions: isSteel ? {} : Object.fromEntries(dimensionFields.map((f) => [f, String(dimensions[f] ?? 0)])),
+        dimension_expressions: Object.keys(dimensionExpressions).length > 0 ? dimensionExpressions : null,
         chainage: chainage.trim() || null,
         boq_template_id: selectedTemplateId,
         steel_lines: isSteel ? steelLines : undefined,
@@ -349,6 +376,7 @@ export function MeasurementEntryPage() {
       ]);
       setBoqItemId(null);
       setDimensions({});
+      setDimensionText({});
       setSelectedTemplateId(null);
       setSteelRows([{ key: nextSteelKey(), description: '', diameter_mm: 0, bar_count: null, length_m: null }]);
       setChainage('');
@@ -522,13 +550,23 @@ export function MeasurementEntryPage() {
               <>
                 {dimensionFields.map((field) => (
                   <Form.Item key={field} label={FIELD_LABELS[field] ?? field}>
-                    <InputNumber
-                      size="large"
-                      min={0}
-                      style={{ width: '100%' }}
-                      value={dimensions[field]}
-                      onChange={(value) => setDimensions((prev) => ({ ...prev, [field]: value ?? 0 }))}
-                    />
+                    {field === 'nos' ? (
+                      <InputNumber
+                        size="large"
+                        min={0}
+                        style={{ width: '100%' }}
+                        value={dimensions[field]}
+                        onChange={(value) => setDimensions((prev) => ({ ...prev, [field]: value ?? 0 }))}
+                      />
+                    ) : (
+                      <Input
+                        size="large"
+                        style={{ width: '100%' }}
+                        placeholder="0 or e.g. (1+2.5)/2"
+                        value={dimensionText[field] ?? ''}
+                        onChange={(e) => patchDimensionField(field, e.target.value)}
+                      />
+                    )}
                   </Form.Item>
                 ))}
                 {dimensionFields.length > 0 && (
@@ -547,13 +585,23 @@ export function MeasurementEntryPage() {
               <>
                 {dimensionFields.map((field) => (
                   <Form.Item key={field} label={FIELD_LABELS[field] ?? field}>
-                    <InputNumber
-                      size="large"
-                      min={0}
-                      style={{ width: '100%' }}
-                      value={dimensions[field]}
-                      onChange={(value) => setDimensions((prev) => ({ ...prev, [field]: value ?? 0 }))}
-                    />
+                    {field === 'nos' ? (
+                      <InputNumber
+                        size="large"
+                        min={0}
+                        style={{ width: '100%' }}
+                        value={dimensions[field]}
+                        onChange={(value) => setDimensions((prev) => ({ ...prev, [field]: value ?? 0 }))}
+                      />
+                    ) : (
+                      <Input
+                        size="large"
+                        style={{ width: '100%' }}
+                        placeholder="0 or e.g. (1+2.5)/2"
+                        value={dimensionText[field] ?? ''}
+                        onChange={(e) => patchDimensionField(field, e.target.value)}
+                      />
+                    )}
                   </Form.Item>
                 ))}
                 {dimensionFields.length > 0 && (
@@ -572,13 +620,23 @@ export function MeasurementEntryPage() {
               <>
                 {dimensionFields.map((field) => (
                   <Form.Item key={field} label={FIELD_LABELS[field] ?? field}>
-                    <InputNumber
-                      size="large"
-                      min={0}
-                      style={{ width: '100%' }}
-                      value={dimensions[field]}
-                      onChange={(value) => setDimensions((prev) => ({ ...prev, [field]: value ?? 0 }))}
-                    />
+                    {field === 'nos' ? (
+                      <InputNumber
+                        size="large"
+                        min={0}
+                        style={{ width: '100%' }}
+                        value={dimensions[field]}
+                        onChange={(value) => setDimensions((prev) => ({ ...prev, [field]: value ?? 0 }))}
+                      />
+                    ) : (
+                      <Input
+                        size="large"
+                        style={{ width: '100%' }}
+                        placeholder="0 or e.g. (1+2.5)/2"
+                        value={dimensionText[field] ?? ''}
+                        onChange={(e) => patchDimensionField(field, e.target.value)}
+                      />
+                    )}
                   </Form.Item>
                 ))}
                 {dimensionFields.length > 0 && (

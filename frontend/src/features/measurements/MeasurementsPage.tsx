@@ -28,7 +28,7 @@ import {
 import { useAuthStore } from '@/store/auth-store';
 import { useBoqItems } from '@/api/hooks/useBoq';
 import { useWorkTypes } from '@/api/hooks/useMasters';
-import { calculateQuantity } from '@/features/measurements/formulaEngine';
+import { calculateQuantity, evaluateExpression, isArithmeticExpression, ExpressionError } from '@/features/measurements/formulaEngine';
 import { useThemeMode } from '@/theme/theme-context';
 import { useDateFormat, useNumberFormat } from '@/utils/format';
 
@@ -94,7 +94,7 @@ function MeasurementDetailPanel({
         </Descriptions.Item>
         {Object.entries(measurement.dimensions).map(([k, v]) => (
           <Descriptions.Item key={k} label={FIELD_LABELS[k] ?? k}>
-            {v}
+            {measurement.dimension_expressions?.[k] ?? v}
           </Descriptions.Item>
         ))}
         <Descriptions.Item label="Notes" span={3}>
@@ -123,6 +123,7 @@ export function MeasurementsPage() {
 
   const [editingMeasurement, setEditingMeasurement] = useState<MeasurementRead | null>(null);
   const [editDimensions, setEditDimensions] = useState<Record<string, number>>({});
+  const [editDimensionText, setEditDimensionText] = useState<Record<string, string>>({});
   const [editChainage, setEditChainage] = useState('');
   const [editRate, setEditRate] = useState<number | null>(null);
 
@@ -156,9 +157,28 @@ export function MeasurementsPage() {
         Object.entries(record.dimensions).map(([k, v]) => [k, parseFloat(v) || 0]),
       ),
     );
+    setEditDimensionText(
+      Object.fromEntries(
+        Object.entries(record.dimensions).map(([k, v]) => [k, record.dimension_expressions?.[k] ?? v]),
+      ),
+    );
     setEditChainage(record.chainage ?? '');
     setEditRate(record.rate != null ? parseFloat(record.rate) : null);
     setEditingMeasurement(record);
+  };
+
+  // l/b/d accept a plain number or an arithmetic expression like "(1+2.5)/2".
+  const patchEditDimensionText = (field: string, text: string) => {
+    setEditDimensionText((prev) => ({ ...prev, [field]: text }));
+    let parsed: number | null;
+    try {
+      parsed = isArithmeticExpression(text) ? evaluateExpression(text) : (text.trim() === '' ? 0 : parseFloat(text));
+    } catch (err) {
+      if (err instanceof ExpressionError) return;
+      throw err;
+    }
+    if (parsed == null || Number.isNaN(parsed)) return;
+    setEditDimensions((prev) => ({ ...prev, [field]: parsed }));
   };
 
   const editWorkType = useMemo(
@@ -193,12 +213,18 @@ export function MeasurementsPage() {
   const handleEditSave = async () => {
     if (!editingMeasurement || !editWorkType) return;
     try {
+      const dimensionExpressions = Object.fromEntries(
+        editWorkType.dimension_fields
+          .filter((f) => f !== 'nos' && isArithmeticExpression(editDimensionText[f] ?? ''))
+          .map((f) => [f, editDimensionText[f]]),
+      );
       await updateMeasurement.mutateAsync({
         id: editingMeasurement.id,
         data: {
           dimensions: Object.fromEntries(
             editWorkType.dimension_fields.map((f) => [f, String(editDimensions[f] ?? 0)]),
           ),
+          dimension_expressions: Object.keys(dimensionExpressions).length > 0 ? dimensionExpressions : null,
           chainage: editChainage.trim() || null,
           rate: editRate != null ? String(editRate) : null,
         },
@@ -388,12 +414,21 @@ export function MeasurementsPage() {
             </Form.Item>
             {editWorkType.dimension_fields.map((field) => (
               <Form.Item key={field} label={FIELD_LABELS[field] ?? field}>
-                <InputNumber
-                  style={{ width: '100%' }}
-                  min={0}
-                  value={editDimensions[field] ?? 0}
-                  onChange={(v) => setEditDimensions((prev) => ({ ...prev, [field]: v ?? 0 }))}
-                />
+                {field === 'nos' ? (
+                  <InputNumber
+                    style={{ width: '100%' }}
+                    min={0}
+                    value={editDimensions[field] ?? 0}
+                    onChange={(v) => setEditDimensions((prev) => ({ ...prev, [field]: v ?? 0 }))}
+                  />
+                ) : (
+                  <Input
+                    style={{ width: '100%' }}
+                    placeholder="0 or e.g. (1+2.5)/2"
+                    value={editDimensionText[field] ?? ''}
+                    onChange={(e) => patchEditDimensionText(field, e.target.value)}
+                  />
+                )}
               </Form.Item>
             ))}
             <Statistic title="Computed Quantity" value={fmtQty(editComputedQty)} />

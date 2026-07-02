@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import DomainError, NotFoundError, PermissionDeniedError
 from app.core.storage import delete_fileobj
 from app.core.timezone import get_org_today
+from app.domain.dpr.locking import assert_dpr_editable
 from app.domain.dpr.validators import validate_report_date
 from app.models.attendance import AttendanceRecord
 from app.models.audit import AuditAction
@@ -157,23 +158,21 @@ class DprService:
             raise NotFoundError(f"DPR {header_id} not found.")
         return header
 
-    async def _get_editable_header(self, header_id: uuid.UUID) -> DprHeader:
+    async def _get_editable_header(self, header_id: uuid.UUID, actor_role: UserRole) -> tuple[DprHeader, bool]:
         header = await self.get(header_id)
-        if header.status != DprStatus.DRAFT:
-            raise PermissionDeniedError(
-                f"This DPR is {header.status} and can no longer be edited. "
-                "Only DRAFT DPRs are editable."
-            )
-        return header
+        is_bypass_edit = assert_dpr_editable(header.status, actor_role)
+        return header, is_bypass_edit
 
-    async def _get_editable_work_header(self, header_id: uuid.UUID) -> DprHeader:
-        header = await self._get_editable_header(header_id)
+    async def _get_editable_work_header(self, header_id: uuid.UUID, actor_role: UserRole) -> tuple[DprHeader, bool]:
+        header, is_bypass_edit = await self._get_editable_header(header_id, actor_role)
         if header.no_work:
             raise DomainError("Cannot add work, material, or machinery entries on a no-work day.")
-        return header
+        return header, is_bypass_edit
 
-    async def add_work_item(self, header_id: uuid.UUID, data: DprWorkItemCreate, actor_id: uuid.UUID) -> DprHeader:
-        await self._get_editable_work_header(header_id)
+    async def add_work_item(
+        self, header_id: uuid.UUID, data: DprWorkItemCreate, actor_id: uuid.UUID, actor_role: UserRole
+    ) -> DprHeader:
+        await self._get_editable_work_header(header_id, actor_role)
         item = DprWorkItem(dpr_header_id=header_id, **data.model_dump())
         self.session.add(item)
         await self.session.flush()
@@ -187,8 +186,10 @@ class DprService:
         await self.session.commit()
         return await self.get(header_id)
 
-    async def add_issue(self, header_id: uuid.UUID, data: DprIssueCreate, actor_id: uuid.UUID) -> DprHeader:
-        await self._get_editable_header(header_id)
+    async def add_issue(
+        self, header_id: uuid.UUID, data: DprIssueCreate, actor_id: uuid.UUID, actor_role: UserRole
+    ) -> DprHeader:
+        await self._get_editable_header(header_id, actor_role)
         issue = DprIssue(dpr_header_id=header_id, **data.model_dump())
         self.session.add(issue)
         await self.session.flush()
@@ -202,13 +203,18 @@ class DprService:
         await self.session.commit()
         return await self.get(header_id)
 
-    async def add_material(self, header_id: uuid.UUID, data: DprMaterialCreate, actor_id: uuid.UUID) -> DprHeader:
-        await self._get_editable_work_header(header_id)
+    async def add_material(
+        self, header_id: uuid.UUID, data: DprMaterialCreate, actor_id: uuid.UUID, actor_role: UserRole
+    ) -> DprHeader:
+        _, is_bypass_edit = await self._get_editable_work_header(header_id, actor_role)
         payload = data.model_dump()
         if payload["rate"] is None:
             mat = await self.session.get(MaterialMaster, data.material_id)
             if mat is not None:
                 payload["rate"] = mat.cost_rate
+        if is_bypass_edit:
+            payload["edited_by"] = actor_id
+            payload["edited_at"] = datetime.now(timezone.utc)
         material = DprMaterial(dpr_header_id=header_id, **payload)
         self.session.add(material)
         await self.session.flush()
@@ -222,8 +228,10 @@ class DprService:
         await self.session.commit()
         return await self.get(header_id)
 
-    async def add_machinery(self, header_id: uuid.UUID, data: DprMachineryCreate, actor_id: uuid.UUID) -> DprHeader:
-        await self._get_editable_work_header(header_id)
+    async def add_machinery(
+        self, header_id: uuid.UUID, data: DprMachineryCreate, actor_id: uuid.UUID, actor_role: UserRole
+    ) -> DprHeader:
+        _, is_bypass_edit = await self._get_editable_work_header(header_id, actor_role)
         machinery = await self.session.get(MachineryMaster, data.machinery_id)
         if machinery is None:
             raise NotFoundError(f"Machinery {data.machinery_id} not found.")
@@ -236,6 +244,8 @@ class DprService:
             quantity_used=data.quantity_used,
             hire_unit=machinery.hire_unit,
             hire_rate=hire_rate,
+            edited_by=actor_id if is_bypass_edit else None,
+            edited_at=datetime.now(timezone.utc) if is_bypass_edit else None,
         )
         self.session.add(entry)
         await self.session.flush()
@@ -250,19 +260,21 @@ class DprService:
         return await self.get(header_id)
 
     async def update_material(
-        self, item_id: uuid.UUID, data: DprMaterialUpdate, actor_id: uuid.UUID
+        self, item_id: uuid.UUID, data: DprMaterialUpdate, actor_id: uuid.UUID, actor_role: UserRole
     ) -> DprHeader:
         material = await self.session.get(DprMaterial, item_id)
         if material is None:
             raise NotFoundError(f"DPR material entry {item_id} not found.")
         header = await self.session.get(DprHeader, material.dpr_header_id)
-        if header is None or header.status != DprStatus.DRAFT:
-            raise PermissionDeniedError("Can only edit material entries on a DRAFT DPR.")
+        is_bypass_edit = assert_dpr_editable(header.status if header else None, actor_role)
         before = serialize_model(material)
         material.qty_consumed = data.qty_consumed
         material.uom_id = data.uom_id
         material.rate = data.rate
         material.manually_edited = True
+        if is_bypass_edit:
+            material.edited_by = actor_id
+            material.edited_at = datetime.now(timezone.utc)
         await self.session.flush()
         await self.audit.record(
             entity_type="DPR_MATERIAL",
@@ -275,13 +287,12 @@ class DprService:
         await self.session.commit()
         return await self.get(material.dpr_header_id)
 
-    async def delete_material(self, item_id: uuid.UUID, actor_id: uuid.UUID) -> None:
+    async def delete_material(self, item_id: uuid.UUID, actor_id: uuid.UUID, actor_role: UserRole) -> None:
         material = await self.session.get(DprMaterial, item_id)
         if material is None:
             raise NotFoundError(f"DPR material entry {item_id} not found.")
         header = await self.session.get(DprHeader, material.dpr_header_id)
-        if header is None or header.status != DprStatus.DRAFT:
-            raise PermissionDeniedError("Can only delete material entries on a DRAFT DPR.")
+        assert_dpr_editable(header.status if header else None, actor_role)
         before = serialize_model(material)
         entity_id = material.id
         await self.session.delete(material)
@@ -295,17 +306,19 @@ class DprService:
         await self.session.commit()
 
     async def update_machinery(
-        self, item_id: uuid.UUID, data: DprMachineryUpdate, actor_id: uuid.UUID
+        self, item_id: uuid.UUID, data: DprMachineryUpdate, actor_id: uuid.UUID, actor_role: UserRole
     ) -> DprHeader:
         entry = await self.session.get(DprMachinery, item_id)
         if entry is None:
             raise NotFoundError(f"DPR machinery entry {item_id} not found.")
         header = await self.session.get(DprHeader, entry.dpr_header_id)
-        if header is None or header.status != DprStatus.DRAFT:
-            raise PermissionDeniedError("Can only edit machinery entries on a DRAFT DPR.")
+        is_bypass_edit = assert_dpr_editable(header.status if header else None, actor_role)
         before = serialize_model(entry)
         entry.quantity_used = data.quantity_used
         entry.hire_rate = None if entry.hire_unit == "OWNED" else data.hire_rate
+        if is_bypass_edit:
+            entry.edited_by = actor_id
+            entry.edited_at = datetime.now(timezone.utc)
         await self.session.flush()
         await self.audit.record(
             entity_type="DPR_MACHINERY",
@@ -318,13 +331,12 @@ class DprService:
         await self.session.commit()
         return await self.get(entry.dpr_header_id)
 
-    async def delete_machinery(self, item_id: uuid.UUID, actor_id: uuid.UUID) -> None:
+    async def delete_machinery(self, item_id: uuid.UUID, actor_id: uuid.UUID, actor_role: UserRole) -> None:
         entry = await self.session.get(DprMachinery, item_id)
         if entry is None:
             raise NotFoundError(f"DPR machinery entry {item_id} not found.")
         header = await self.session.get(DprHeader, entry.dpr_header_id)
-        if header is None or header.status != DprStatus.DRAFT:
-            raise PermissionDeniedError("Can only delete machinery entries on a DRAFT DPR.")
+        assert_dpr_editable(header.status if header else None, actor_role)
         before = serialize_model(entry)
         entity_id = entry.id
         await self.session.delete(entry)
@@ -338,7 +350,12 @@ class DprService:
         await self.session.commit()
 
     async def submit(self, header_id: uuid.UUID, actor_id: uuid.UUID) -> DprHeader:
-        header = await self._get_editable_header(header_id)
+        # Submitting is a DRAFT->SUBMITTED state transition, not an "edit" —
+        # the PM/Admin bypass (which lets already-submitted DPRs still be
+        # edited) doesn't apply here; only a DRAFT DPR can be submitted.
+        header = await self.get(header_id)
+        if header.status != DprStatus.DRAFT:
+            raise PermissionDeniedError(f"This DPR is {header.status} and cannot be submitted again.")
         before = serialize_model(header)
         header.status = DprStatus.SUBMITTED
         header.submitted_at = datetime.now(timezone.utc)
@@ -617,8 +634,10 @@ class DprService:
         if added:
             await self.session.commit()
 
-    async def add_labour(self, header_id: uuid.UUID, data: DprLabourCreate, actor_id: uuid.UUID) -> DprLabour:
-        await self._get_editable_header(header_id)
+    async def add_labour(
+        self, header_id: uuid.UUID, data: DprLabourCreate, actor_id: uuid.UUID, actor_role: UserRole
+    ) -> DprLabour:
+        _, is_bypass_edit = await self._get_editable_header(header_id, actor_role)
         worker = await self.session.get(Worker, data.worker_id)
         if worker is None:
             raise NotFoundError(f"Worker {data.worker_id} not found.")
@@ -632,6 +651,8 @@ class DprService:
             overtime_amount=data.overtime_amount,
             contractor_workers_count=data.contractor_workers_count,
             remarks=data.remarks,
+            edited_by=actor_id if is_bypass_edit else None,
+            edited_at=datetime.now(timezone.utc) if is_bypass_edit else None,
         )
         self.session.add(entry)
         await self.session.flush()
@@ -645,13 +666,14 @@ class DprService:
         await self.session.commit()
         return entry
 
-    async def update_labour(self, item_id: uuid.UUID, data: DprLabourUpdate, actor_id: uuid.UUID) -> DprLabour:
+    async def update_labour(
+        self, item_id: uuid.UUID, data: DprLabourUpdate, actor_id: uuid.UUID, actor_role: UserRole
+    ) -> DprLabour:
         entry = await self.session.get(DprLabour, item_id)
         if entry is None:
             raise NotFoundError(f"DPR labour entry {item_id} not found.")
         header = await self.session.get(DprHeader, entry.dpr_header_id)
-        if header is None or header.status != DprStatus.DRAFT:
-            raise PermissionDeniedError("Can only edit labour entries on a DRAFT DPR.")
+        is_bypass_edit = assert_dpr_editable(header.status if header else None, actor_role)
         before = serialize_model(entry)
         if data.quantity is not None:
             entry.quantity = data.quantity
@@ -664,6 +686,9 @@ class DprService:
         if data.remarks is not None:
             entry.remarks = data.remarks
         entry.amount = (entry.quantity * entry.rate).quantize(Decimal("0.01"))
+        if is_bypass_edit:
+            entry.edited_by = actor_id
+            entry.edited_at = datetime.now(timezone.utc)
         await self.session.flush()
         await self.audit.record(
             entity_type="DPR_LABOUR",
@@ -676,13 +701,12 @@ class DprService:
         await self.session.commit()
         return entry
 
-    async def delete_labour(self, item_id: uuid.UUID, actor_id: uuid.UUID) -> None:
+    async def delete_labour(self, item_id: uuid.UUID, actor_id: uuid.UUID, actor_role: UserRole) -> None:
         entry = await self.session.get(DprLabour, item_id)
         if entry is None:
             raise NotFoundError(f"DPR labour entry {item_id} not found.")
         header = await self.session.get(DprHeader, entry.dpr_header_id)
-        if header is None or header.status != DprStatus.DRAFT:
-            raise PermissionDeniedError("Can only delete labour entries on a DRAFT DPR.")
+        assert_dpr_editable(header.status if header else None, actor_role)
         before = serialize_model(entry)
         entity_id = entry.id
         await self.session.delete(entry)

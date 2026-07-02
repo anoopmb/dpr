@@ -37,6 +37,7 @@ export interface MeasurementRead {
   work_type_id: string;
   measurement_date: string;
   dimensions: Record<string, string>;
+  dimension_expressions: Record<string, string> | null;
   computed_qty: string;
   status: MeasurementStatus;
   recorded_by: string;
@@ -49,6 +50,9 @@ export interface MeasurementRead {
   boq_template_id: string | null;
   boq_template_name: string | null;
   notes: string | null;
+  edited_by: string | null;
+  edited_by_name: string | null;
+  edited_at: string | null;
   steel_lines: SteelLineRead[];
   auto_materials: AutoMaterialRead[];
 }
@@ -58,6 +62,7 @@ export interface MeasurementCreateInput {
   boq_item_id: string;
   measurement_date: string;
   dimensions?: Record<string, string>;
+  dimension_expressions?: Record<string, string> | null;
   chainage?: string | null;
   rate?: string | null;
   boq_template_id?: string | null;
@@ -96,6 +101,7 @@ export function useUpdateMeasurement() {
       id: string;
       data: {
         dimensions?: Record<string, string>;
+        dimension_expressions?: Record<string, string> | null;
         chainage?: string | null;
         rate?: string | null;
         boq_template_id?: string | null;
