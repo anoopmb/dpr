@@ -901,7 +901,21 @@ function computeSteelTotalMt(lines: SteelLineDraft[], coeffMap: Record<number, n
 interface MeasDraftRow { key: string; boq_item_id: string | null; boq_template_id: string | null; dimensions: Record<string, number>; steel_lines: SteelLineDraft[]; chainage: string; qty: number | null; rate: number | null; }
 interface IssueDraftRow { key: string; description: string; severity: IssueSeverity | null; }
 type LabourRow = { _kind: 'existing'; entry: DprLabourRead } | { _kind: 'draft'; draft: LabourDraftRow };
-type MatRow = { _kind: 'existing'; entry: DprMaterialRead } | { _kind: 'draft'; draft: MatDraftRow };
+interface AutoMaterialGroupSummary {
+  key: string;
+  materialId: string;
+  uomId: string;
+  name: string;
+  uomCode: string;
+  totalQty: number;
+  totalAmount: number;
+  hasRate: boolean;
+}
+type MatRow =
+  | { _kind: 'existing'; entry: DprMaterialRead }
+  | { _kind: 'draft'; draft: MatDraftRow }
+  | { _kind: 'group-header'; key: string; label: string }
+  | { _kind: 'auto-summary'; key: string; summary: AutoMaterialGroupSummary };
 type MachRow = { _kind: 'existing'; entry: DprMachineryRead } | { _kind: 'draft'; draft: MachDraftRow };
 type MeasRow = { _kind: 'existing'; entry: MeasurementRead } | { _kind: 'draft'; draft: MeasDraftRow };
 type IssueRow = { _kind: 'existing'; entry: DprIssueRead } | { _kind: 'draft'; draft: IssueDraftRow };
@@ -920,6 +934,8 @@ function MaterialsTab({
   const { data: header } = useDprHeader(headerId);
   const { data: materials } = useMaterials();
   const { data: uoms } = useUoms();
+  const { data: measurements } = useMeasurements(header?.project_id ?? null);
+  const { data: boqItems } = useBoqItems(header?.project_id ?? null);
   const addMaterial = useAddDprMaterial();
   const updateMaterial = useUpdateDprMaterial();
   const deleteMaterial = useDeleteDprMaterial();
@@ -952,8 +968,66 @@ function MaterialsTab({
   };
 
   const materialById = new Map((materials ?? []).map((m) => [m.id, m]));
+  const boqById = new Map((boqItems ?? []).map((b) => [b.id, b]));
+  const measurementById = new Map((measurements ?? []).map((m) => [m.id, m]));
+  const uomCodeById = new Map((uoms ?? []).map((u) => [u.id, u.code]));
   const entries = header?.materials ?? [];
   const totalCost = entries.reduce((s, e) => s + (e.rate ? parseFloat(e.rate) * parseFloat(e.qty_consumed) : 0), 0);
+
+  const isAutoEntry = (e: DprMaterialRead) => !e.manually_edited && !!e.source_measurement_id;
+  const manualEntries = entries.filter((e) => !isAutoEntry(e));
+  const autoEntries = entries.filter(isAutoEntry);
+
+  // Auto-populated materials are grouped by (BOQ item, template used) — the
+  // source measurement carries both — then summed per material within each
+  // group, so the same material added across several measurements of the
+  // same BOQ+template shows as one row instead of repeating.
+  const autoGroups = new Map<string, { boqLabel: string; templateLabel: string; materials: Map<string, AutoMaterialGroupSummary> }>();
+  for (const e of autoEntries) {
+    const measurement = e.source_measurement_id ? measurementById.get(e.source_measurement_id) : undefined;
+    const boqItem = measurement ? boqById.get(measurement.boq_item_id) : undefined;
+    const groupKey = measurement ? `${measurement.boq_item_id}:${measurement.boq_template_id ?? 'none'}` : 'unknown';
+    let group = autoGroups.get(groupKey);
+    if (!group) {
+      group = {
+        boqLabel: boqItem ? `${boqItem.item_no} — ${boqItem.description}` : 'Unknown BOQ item',
+        templateLabel: measurement?.boq_template_name ?? '',
+        materials: new Map(),
+      };
+      autoGroups.set(groupKey, group);
+    }
+    const matKey = `${e.material_id}:${e.uom_id}`;
+    const qty = parseFloat(e.qty_consumed) || 0;
+    const rate = e.rate != null ? parseFloat(e.rate) : null;
+    const existingSummary = group.materials.get(matKey);
+    if (existingSummary) {
+      existingSummary.totalQty += qty;
+      existingSummary.totalAmount += rate != null ? qty * rate : 0;
+      existingSummary.hasRate = existingSummary.hasRate || rate != null;
+    } else {
+      group.materials.set(matKey, {
+        key: `${groupKey}:${matKey}`,
+        materialId: e.material_id,
+        uomId: e.uom_id,
+        name: materialById.get(e.material_id)?.name ?? e.material_id,
+        uomCode: uomCodeById.get(e.uom_id) ?? '',
+        totalQty: qty,
+        totalAmount: rate != null ? qty * rate : 0,
+        hasRate: rate != null,
+      });
+    }
+  }
+
+  const autoGroupRows: MatRow[] = [];
+  const sortedGroups = [...autoGroups.entries()].sort((a, b) => a[1].boqLabel.localeCompare(b[1].boqLabel));
+  for (const [groupKey, group] of sortedGroups) {
+    const label = group.templateLabel ? `${group.boqLabel} · Template: ${group.templateLabel}` : group.boqLabel;
+    autoGroupRows.push({ _kind: 'group-header', key: `grp-${groupKey}`, label });
+    const summaries = [...group.materials.values()].sort((a, b) => a.name.localeCompare(b.name));
+    for (const s of summaries) {
+      autoGroupRows.push({ _kind: 'auto-summary', key: s.key, summary: s });
+    }
+  }
 
   const patchDraft = (key: string, patch: Partial<MatDraftRow>) =>
     setDrafts((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
@@ -1035,7 +1109,8 @@ function MaterialsTab({
   };
 
   const rows: MatRow[] = [
-    ...entries.map((e): MatRow => ({ _kind: 'existing', entry: e })),
+    ...manualEntries.map((e): MatRow => ({ _kind: 'existing', entry: e })),
+    ...autoGroupRows,
     ...drafts.map((d): MatRow => ({ _kind: 'draft', draft: d })),
   ];
 
@@ -1044,19 +1119,26 @@ function MaterialsTab({
   const columns: TableColumnsType<MatRow> = [
     {
       title: '#', key: 'idx', width: 40,
-      render: (_: unknown, _r: MatRow, i: number) => <Typography.Text type="secondary" style={{ fontSize: 12 }}>{i + 1}</Typography.Text>,
+      onCell: (row) => row._kind === 'group-header' ? { colSpan: 7 } : {},
+      render: (_: unknown, row: MatRow, i: number) => {
+        if (row._kind === 'group-header') return <Typography.Text strong style={{ fontSize: 12 }}>{row.label}</Typography.Text>;
+        if (row._kind === 'auto-summary') return null;
+        return <Typography.Text type="secondary" style={{ fontSize: 12 }}>{i + 1}</Typography.Text>;
+      },
     },
     {
       title: 'Material', key: 'material', width: 180,
-      render: (_: unknown, row: MatRow) =>
-        row._kind === 'existing' ? (
+      onCell: (row) => row._kind === 'group-header' ? { colSpan: 0 } : {},
+      render: (_: unknown, row: MatRow) => {
+        if (row._kind === 'group-header') return null;
+        if (row._kind === 'auto-summary') return (
           <Space size={4}>
-            <Typography.Text>{materialById.get(row.entry.material_id)?.name ?? row.entry.material_id}</Typography.Text>
-            {!row.entry.manually_edited && row.entry.source_measurement_id && (
-              <Tag color="purple" style={{ fontSize: 10, padding: '0 4px', lineHeight: '16px', margin: 0 }}>Auto</Tag>
-            )}
+            <Typography.Text>{row.summary.name}</Typography.Text>
+            <Tag color="purple" style={{ fontSize: 10, padding: '0 4px', lineHeight: '16px', margin: 0 }}>Auto</Tag>
           </Space>
-        ) : (
+        );
+        if (row._kind === 'existing') return <Typography.Text>{materialById.get(row.entry.material_id)?.name ?? row.entry.material_id}</Typography.Text>;
+        return (
           <Select
             ref={(el) => { fieldRefs.current[`${row.draft.key}:material`] = el; }}
             size="small" showSearch optionFilterProp="label" style={inp} placeholder="Select material…" value={row.draft.material_id}
@@ -1064,14 +1146,17 @@ function MaterialsTab({
             onDropdownVisibleChange={(open) => { dropdownOpenRef.current[`${row.draft.key}:material`] = open; }}
             onKeyDown={(e) => handleDraftKeyDown(e, row.draft, 'material')}
             options={(materials ?? []).map((m) => ({ value: m.id, label: m.name }))} />
-        ),
+        );
+      },
     },
     {
       title: 'Qty', key: 'qty', width: 100,
+      onCell: (row) => row._kind === 'group-header' ? { colSpan: 0 } : {},
       render: (_: unknown, row: MatRow) => {
+        if (row._kind === 'group-header') return null;
+        if (row._kind === 'auto-summary') return <Typography.Text style={{ fontSize: 12 }}>{row.summary.totalQty.toFixed(3)}</Typography.Text>;
         if (row._kind === 'existing') {
-          const isAuto = !row.entry.manually_edited && !!row.entry.source_measurement_id;
-          if (isAuto || isSubmitted) return <Typography.Text style={{ fontSize: 12 }}>{parseFloat(row.entry.qty_consumed)}</Typography.Text>;
+          if (isSubmitted) return <Typography.Text style={{ fontSize: 12 }}>{parseFloat(row.entry.qty_consumed)}</Typography.Text>;
           return <InputNumber
             ref={(el) => { existingQtyRefs.current[row.entry.id] = el; }}
             key={`${row.entry.id}-q-${row.entry.qty_consumed}`} size="small" min={0} style={inp}
@@ -1085,9 +1170,12 @@ function MaterialsTab({
     },
     {
       title: 'Unit', key: 'uom', width: 90,
+      onCell: (row) => row._kind === 'group-header' ? { colSpan: 0 } : {},
       render: (_: unknown, row: MatRow) => {
         // Unit is always owned by the material master's default UOM — never
         // user-selectable, for manual or auto entries alike.
+        if (row._kind === 'group-header') return null;
+        if (row._kind === 'auto-summary') return <Typography.Text style={{ fontSize: 12 }}>{row.summary.uomCode}</Typography.Text>;
         if (row._kind === 'existing') {
           const uomCode = (uoms ?? []).find((u) => u.id === row.entry.uom_id)?.code ?? row.entry.uom_id;
           return <Typography.Text style={{ fontSize: 12 }}>{uomCode}</Typography.Text>;
@@ -1101,10 +1189,12 @@ function MaterialsTab({
     },
     {
       title: `Rate (${symbol})`, key: 'rate', width: 110, align: 'right' as const,
+      onCell: (row) => row._kind === 'group-header' ? { colSpan: 0 } : {},
       render: (_: unknown, row: MatRow) => {
+        if (row._kind === 'group-header') return null;
+        if (row._kind === 'auto-summary') return <Typography.Text type="secondary" style={{ fontSize: 12 }}>—</Typography.Text>;
         if (row._kind === 'existing') {
-          const isAuto = !row.entry.manually_edited && !!row.entry.source_measurement_id;
-          if (isAuto || isSubmitted) {
+          if (isSubmitted) {
             const rateVal = row.entry.rate != null ? parseFloat(row.entry.rate) : null;
             return <Typography.Text style={{ fontSize: 12 }}>{rateVal != null ? rateVal : '—'}</Typography.Text>;
           }
@@ -1120,7 +1210,10 @@ function MaterialsTab({
     },
     {
       title: `Amount (${symbol})`, key: 'amount', width: 110, align: 'right' as const,
+      onCell: (row) => row._kind === 'group-header' ? { colSpan: 0 } : {},
       render: (_: unknown, row: MatRow) => {
+        if (row._kind === 'group-header') return null;
+        if (row._kind === 'auto-summary') return <Typography.Text strong>{row.summary.hasRate ? fmtAmt(row.summary.totalAmount) : '—'}</Typography.Text>;
         if (row._kind === 'existing') {
           const amt = row.entry.rate != null ? parseFloat(row.entry.rate) * parseFloat(row.entry.qty_consumed) : null;
           return <Typography.Text strong>{amt != null ? fmtAmt(amt) : '—'}</Typography.Text>;
@@ -1131,10 +1224,11 @@ function MaterialsTab({
     },
     {
       title: '', key: 'actions', width: 80,
+      onCell: (row) => row._kind === 'group-header' ? { colSpan: 0 } : {},
       render: (_: unknown, row: MatRow) => {
+        if (row._kind === 'group-header' || row._kind === 'auto-summary') return null;
         if (row._kind === 'existing') {
-          const isAuto = !row.entry.manually_edited && !!row.entry.source_measurement_id;
-          if (isAuto || isSubmitted) return null;
+          if (isSubmitted) return null;
           return (
             <Space size={4}>
               <Button size="small" type="text" icon={<EditOutlined />}
@@ -1172,7 +1266,7 @@ function MaterialsTab({
       </div>
       {isSubmitted && <Alert type="info" showIcon style={{ margin: 12 }} message="DPR is submitted — material entries are locked." />}
       <Table<MatRow>
-        rowKey={(row) => row._kind === 'existing' ? row.entry.id : row.draft.key}
+        rowKey={(row) => row._kind === 'existing' ? row.entry.id : row._kind === 'draft' ? row.draft.key : row.key}
         size="small" dataSource={rows} columns={columns} pagination={false} scroll={{ x: true }}
         components={MATERIALS_TABLE_COMPONENTS}
         locale={{ emptyText: isSubmitted ? 'No material entries' : 'No entries yet — click "Add Material" above' }}
