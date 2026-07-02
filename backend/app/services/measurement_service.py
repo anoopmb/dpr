@@ -10,13 +10,13 @@ from app.domain.measurement.validators import BoqItemSnapshot, validate_measurem
 from app.models.audit import AuditAction
 from app.models.boq_construction_template import BoqConstructionTemplate
 from app.models.dpr import DprHeader, DprMaterial
-from app.models.master_data import WorkTypeMaster
+from app.models.master_data import MaterialMaster, UomMaster, WorkTypeMaster
 from app.models.measurement import Measurement
 from app.models.measurement_steel_line import MeasurementSteelLine
 from app.models.user import UserRole
 from app.repositories.boq_repo import BoqRepository
 from app.repositories.measurement_repo import MeasurementRepository
-from app.schemas.measurement import MeasurementCreate, MeasurementUpdate
+from app.schemas.measurement import AutoMaterialRead, MeasurementCreate, MeasurementUpdate
 from app.services.audit_service import AuditService, serialize_model
 from app.services.dpr_service import DprProductionService
 from app.services.material_template_service import (
@@ -173,6 +173,35 @@ class MeasurementService:
 
     async def list_for_project(self, project_id: uuid.UUID) -> list[Measurement]:
         return await self.repo.list_for_project(project_id)
+
+    async def get_auto_materials_map(
+        self, measurement_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, list[AutoMaterialRead]]:
+        """Materials auto-populated on dpr_materials from a construction
+        template (source_measurement_id set) — batched per measurement id
+        so callers rendering a list don't N+1 this."""
+        if not measurement_ids:
+            return {}
+        result = await self.session.execute(
+            sa_select(DprMaterial, MaterialMaster, UomMaster)
+            .join(MaterialMaster, DprMaterial.material_id == MaterialMaster.id)
+            .join(UomMaster, DprMaterial.uom_id == UomMaster.id)
+            .where(DprMaterial.source_measurement_id.in_(measurement_ids))
+        )
+        out: dict[uuid.UUID, list[AutoMaterialRead]] = {}
+        for dpr_material, material, uom in result.all():
+            out.setdefault(dpr_material.source_measurement_id, []).append(
+                AutoMaterialRead(
+                    material_id=material.id,
+                    material_code=material.code,
+                    material_name=material.name,
+                    computed_qty=dpr_material.qty_consumed,
+                    uom_code=uom.code,
+                    rate=dpr_material.rate,
+                    manually_edited=dpr_material.manually_edited,
+                )
+            )
+        return out
 
     async def get(self, measurement_id: uuid.UUID) -> Measurement:
         measurement = await self.repo.get(measurement_id)

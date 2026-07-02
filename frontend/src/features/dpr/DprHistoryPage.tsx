@@ -26,11 +26,14 @@ import {
   useRejectDpr,
   type DprHeaderApprovalRead,
   type DprHeaderRead,
+  type DprMachineryRead,
   type DprMaterialRead,
   type DprStatus,
 } from '@/api/hooks/useDpr';
+import { useDprLabour, type DprLabourRead } from '@/api/hooks/useDprLabour';
+import { useExpensesByHeader, type ExpenseRead } from '@/api/hooks/useExpenses';
 import { useAuthStore } from '@/store/auth-store';
-import { useMaterials, useMachinery, useUoms } from '@/api/hooks/useMasters';
+import { useMaterials, useMachinery, useUoms, useExpenseCategories, MACHINERY_HIRE_UNIT_LABELS } from '@/api/hooks/useMasters';
 import { useBoqItems } from '@/api/hooks/useBoq';
 import { useEffectiveWorkflow, type WorkflowDefinitionRead } from '@/api/hooks/useWorkflowConfig';
 import { useThemeMode } from '@/theme/theme-context';
@@ -132,6 +135,99 @@ function groupMaterials(
   return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
+interface GroupedMachinery {
+  key: string;
+  name: string;
+  hireUnitLabel: string;
+  totalQty: number;
+  totalAmount: number;
+  hasRate: boolean;
+}
+
+// Same machine used across multiple entries in a day sums to one row,
+// same treatment as groupMaterials.
+function groupMachinery(
+  entries: DprMachineryRead[],
+  machineryById: Map<string, { name: string }>,
+): GroupedMachinery[] {
+  const groups = new Map<string, GroupedMachinery>();
+  for (const m of entries) {
+    const key = `${m.machinery_id}:${m.hire_unit}`;
+    const qty = parseFloat(m.quantity_used) || 0;
+    const rate = m.hire_rate != null ? parseFloat(m.hire_rate) : null;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.totalQty += qty;
+      existing.totalAmount += rate != null ? qty * rate : 0;
+      existing.hasRate = existing.hasRate || rate != null;
+    } else {
+      groups.set(key, {
+        key,
+        name: machineryById.get(m.machinery_id)?.name ?? m.machinery_id,
+        hireUnitLabel: MACHINERY_HIRE_UNIT_LABELS[m.hire_unit as keyof typeof MACHINERY_HIRE_UNIT_LABELS] ?? m.hire_unit,
+        totalQty: qty,
+        totalAmount: rate != null ? qty * rate : 0,
+        hasRate: rate != null,
+      });
+    }
+  }
+  return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+interface GroupedLabour {
+  key: string;
+  name: string;
+  workerType: string;
+  totalQty: number;
+  totalAmount: number;
+}
+
+// Same worker logged more than once in a day (e.g. regular + overtime rows)
+// sums to one row.
+function groupLabour(entries: DprLabourRead[]): GroupedLabour[] {
+  const groups = new Map<string, GroupedLabour>();
+  for (const e of entries) {
+    const qty = parseFloat(e.quantity) || 0;
+    const amount = (parseFloat(e.amount) || 0) + (e.overtime_amount ? parseFloat(e.overtime_amount) : 0);
+    const existing = groups.get(e.worker_id);
+    if (existing) {
+      existing.totalQty += qty;
+      existing.totalAmount += amount;
+    } else {
+      groups.set(e.worker_id, { key: e.worker_id, name: e.worker_name, workerType: e.worker_type, totalQty: qty, totalAmount: amount });
+    }
+  }
+  return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+interface GroupedExpense {
+  key: string;
+  category: string;
+  totalAmount: number;
+}
+
+// Multiple expense entries under the same category in a day sum to one row.
+function groupExpenses(
+  entries: ExpenseRead[],
+  categoryById: Map<string, { name: string }>,
+): GroupedExpense[] {
+  const groups = new Map<string, GroupedExpense>();
+  for (const e of entries) {
+    const amount = parseFloat(e.amount) || 0;
+    const existing = groups.get(e.expense_category_id);
+    if (existing) {
+      existing.totalAmount += amount;
+    } else {
+      groups.set(e.expense_category_id, {
+        key: e.expense_category_id,
+        category: categoryById.get(e.expense_category_id)?.name ?? e.expense_category_id,
+        totalAmount: amount,
+      });
+    }
+  }
+  return [...groups.values()].sort((a, b) => a.category.localeCompare(b.category));
+}
+
 function MeasurementExpandDetail({ measurement }: { measurement: MeasurementRead }) {
   const { fmtAmt } = useNumberFormat();
   const materialCols: TableColumnsType<AutoMaterialRead> = [
@@ -194,10 +290,18 @@ function DprDetailPanel({
   const { data: approvals, isLoading: approvalsLoading } = useDprApprovals(header.id);
   const { data: measurements, isLoading: measurementsLoading } = useDprMeasurements(header.id);
   const { data: measurementWorkflow } = useEffectiveWorkflow('MEASUREMENT', header.project_id);
+  const { data: labourEntries, isLoading: labourLoading } = useDprLabour(header.id);
+  const { data: expenses, isLoading: expensesLoading } = useExpensesByHeader(header.id);
+  const { data: expenseCategories } = useExpenseCategories();
   const { fmtDateTime, fmtDate } = useDateFormat();
   const { fmtAmt } = useNumberFormat();
 
+  const expenseCategoryById = new Map((expenseCategories ?? []).map((c) => [c.id, { name: c.name }]));
+
   const groupedMaterials = groupMaterials(header.materials, materialById, uomById);
+  const groupedMachinery = groupMachinery(header.machinery_entries, machineryById);
+  const groupedLabour = groupLabour(labourEntries ?? []);
+  const groupedExpenses = groupExpenses(expenses ?? [], expenseCategoryById);
 
   const groupedMaterialCols: TableColumnsType<GroupedMaterial> = [
     { title: 'Material', dataIndex: 'name', key: 'name' },
@@ -208,6 +312,43 @@ function DprDetailPanel({
     {
       title: 'Amount', key: 'amount', width: 120, align: 'right' as const,
       render: (_, r) => r.hasRate ? fmtAmt(r.totalAmount) : <Typography.Text type="secondary">—</Typography.Text>,
+    },
+  ];
+
+  const groupedMachineryCols: TableColumnsType<GroupedMachinery> = [
+    { title: 'Machine', dataIndex: 'name', key: 'name' },
+    { title: 'Billing Unit', dataIndex: 'hireUnitLabel', key: 'unit', width: 110 },
+    { title: 'Total Qty', dataIndex: 'totalQty', key: 'qty', width: 100, align: 'right' as const, render: (v: number) => v.toFixed(2) },
+    {
+      title: 'Amount', key: 'amount', width: 120, align: 'right' as const,
+      render: (_, r) => r.hasRate ? fmtAmt(r.totalAmount) : <Typography.Text type="secondary">—</Typography.Text>,
+    },
+  ];
+
+  const groupedLabourCols: TableColumnsType<GroupedLabour> = [
+    { title: 'Worker', dataIndex: 'name', key: 'name' },
+    {
+      title: 'Type', dataIndex: 'workerType', key: 'type', width: 100,
+      render: (v: string) => <Tag color={v === 'NORMAL' ? 'blue' : v === 'CONTRACTOR' ? 'orange' : 'purple'} style={{ margin: 0 }}>{v}</Tag>,
+    },
+    { title: 'Total Qty', dataIndex: 'totalQty', key: 'qty', width: 90, align: 'right' as const },
+    { title: 'Amount', dataIndex: 'totalAmount', key: 'amount', width: 110, align: 'right' as const, render: fmtAmt },
+  ];
+
+  const groupedExpenseCols: TableColumnsType<GroupedExpense> = [
+    { title: 'Category', dataIndex: 'category', key: 'category' },
+    { title: 'Amount', dataIndex: 'totalAmount', key: 'amount', width: 130, align: 'right' as const, render: fmtAmt },
+  ];
+
+  const issueCols: TableColumnsType<DprHeaderRead['issues'][number]> = [
+    { title: 'Description', dataIndex: 'description', key: 'description' },
+    {
+      title: 'Severity', dataIndex: 'severity', key: 'severity', width: 110,
+      render: (v: string) => <Tag color={v === 'CRITICAL' ? 'red' : v === 'HIGH' ? 'orange' : v === 'MEDIUM' ? 'gold' : 'default'} style={{ margin: 0 }}>{v}</Tag>,
+    },
+    {
+      title: 'Status', dataIndex: 'status', key: 'status', width: 110,
+      render: (v: string) => <Tag color={v === 'RESOLVED' ? 'green' : 'blue'} style={{ margin: 0 }}>{v}</Tag>,
     },
   ];
 
@@ -258,19 +399,56 @@ function DprDetailPanel({
         </>
       )}
 
-      {header.machinery_entries.length > 0 && (
+      {groupedMachinery.length > 0 && (
         <>
           <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>
             Machinery Used
           </Typography.Text>
-          <ul style={{ margin: '0 0 12px 16px', padding: 0 }}>
-            {header.machinery_entries.map((m) => (
-              <li key={m.id}>
-                {machineryById.get(m.machinery_id)?.name ?? m.machinery_id} — {m.quantity_used} {m.hire_unit}
-                {m.hire_rate ? ` @ ${fmtAmt(m.hire_rate)}/${m.hire_unit}` : ''}
-              </li>
-            ))}
-          </ul>
+          <Table<GroupedMachinery>
+            size="small"
+            dataSource={groupedMachinery}
+            columns={groupedMachineryCols}
+            rowKey="key"
+            pagination={false}
+            bordered
+            style={{ marginBottom: 16 }}
+          />
+        </>
+      )}
+
+      {(labourLoading || groupedLabour.length > 0) && (
+        <>
+          <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>
+            Labour
+          </Typography.Text>
+          <Table<GroupedLabour>
+            size="small"
+            dataSource={groupedLabour}
+            columns={groupedLabourCols}
+            rowKey="key"
+            loading={labourLoading}
+            pagination={false}
+            bordered
+            style={{ marginBottom: 16 }}
+          />
+        </>
+      )}
+
+      {(expensesLoading || groupedExpenses.length > 0) && (
+        <>
+          <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>
+            Expenses
+          </Typography.Text>
+          <Table<GroupedExpense>
+            size="small"
+            dataSource={groupedExpenses}
+            columns={groupedExpenseCols}
+            rowKey="key"
+            loading={expensesLoading}
+            pagination={false}
+            bordered
+            style={{ marginBottom: 16 }}
+          />
         </>
       )}
 
@@ -279,16 +457,15 @@ function DprDetailPanel({
           <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>
             Issues
           </Typography.Text>
-          <ul style={{ margin: '0 0 12px 16px', padding: 0 }}>
-            {header.issues.map((issue) => (
-              <li key={issue.id}>
-                <Tag color={issue.severity === 'CRITICAL' ? 'red' : issue.severity === 'HIGH' ? 'orange' : 'default'}>
-                  {issue.severity}
-                </Tag>
-                {issue.description}
-              </li>
-            ))}
-          </ul>
+          <Table<DprHeaderRead['issues'][number]>
+            size="small"
+            dataSource={header.issues}
+            columns={issueCols}
+            rowKey="id"
+            pagination={false}
+            bordered
+            style={{ marginBottom: 16 }}
+          />
         </>
       )}
 

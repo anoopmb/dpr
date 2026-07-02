@@ -28,6 +28,7 @@ from app.schemas.dpr_labour import DprLabourCreate, DprLabourRead, DprLabourSugg
 from app.schemas.dpr_report import DprMonthlyReportRead
 from app.schemas.measurement import MeasurementRead
 from app.services.dpr_service import DprProductionService, DprService
+from app.services.measurement_service import MeasurementService
 
 router = APIRouter(prefix="/dpr", tags=["dpr"])
 
@@ -333,6 +334,7 @@ async def list_measurements_for_dpr(
     user_ids = {m.recorded_by for m in measurements}
     name_result = await session.execute(select(User.id, User.full_name).where(User.id.in_(user_ids)))
     name_by_id = dict(name_result.all())
+    auto_materials_map = await MeasurementService(session).get_auto_materials_map([m.id for m in measurements])
     return [
         MeasurementRead(
             id=m.id,
@@ -350,6 +352,10 @@ async def list_measurements_for_dpr(
             billed=m.billed,
             chainage=m.chainage,
             rate=m.rate,
+            boq_template_id=m.boq_template_id,
+            boq_template_name=m.boq_template_name,
+            notes=m.notes,
+            auto_materials=auto_materials_map.get(m.id, []),
         )
         for m in measurements
     ]

@@ -23,6 +23,7 @@ _RECORDER_ROLES = (UserRole.SITE_ENGINEER, UserRole.PROJECT_MANAGER, UserRole.QU
 async def _to_read(session: SessionDep, measurement: Measurement) -> MeasurementRead:
     await session.refresh(measurement, attribute_names=["steel_lines"])
     user = await session.get(User, measurement.recorded_by)
+    auto_materials_map = await MeasurementService(session).get_auto_materials_map([measurement.id])
     return MeasurementRead(
         id=measurement.id,
         project_id=measurement.project_id,
@@ -43,6 +44,7 @@ async def _to_read(session: SessionDep, measurement: Measurement) -> Measurement
         boq_template_name=measurement.boq_template_name,
         notes=measurement.notes,
         steel_lines=[SteelLineRead.model_validate(l) for l in measurement.steel_lines],
+        auto_materials=auto_materials_map.get(measurement.id, []),
     )
 
 
@@ -52,6 +54,7 @@ async def _to_read_many(session: SessionDep, measurements: list[Measurement]) ->
         return []
     result = await session.execute(select(User.id, User.full_name).where(User.id.in_(user_ids)))
     name_by_id = dict(result.all())
+    auto_materials_map = await MeasurementService(session).get_auto_materials_map([m.id for m in measurements])
     return [
         MeasurementRead(
             id=m.id,
@@ -73,6 +76,7 @@ async def _to_read_many(session: SessionDep, measurements: list[Measurement]) ->
             boq_template_name=m.boq_template_name,
             notes=m.notes,
             steel_lines=[SteelLineRead.model_validate(l) for l in m.steel_lines],
+            auto_materials=auto_materials_map.get(m.id, []),
         )
         for m in measurements
     ]
