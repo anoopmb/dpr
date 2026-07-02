@@ -26,15 +26,16 @@ import {
   useRejectDpr,
   type DprHeaderApprovalRead,
   type DprHeaderRead,
+  type DprMaterialRead,
   type DprStatus,
 } from '@/api/hooks/useDpr';
 import { useAuthStore } from '@/store/auth-store';
-import { useMaterials, useMachinery } from '@/api/hooks/useMasters';
+import { useMaterials, useMachinery, useUoms } from '@/api/hooks/useMasters';
 import { useBoqItems } from '@/api/hooks/useBoq';
 import { useEffectiveWorkflow, type WorkflowDefinitionRead } from '@/api/hooks/useWorkflowConfig';
 import { useThemeMode } from '@/theme/theme-context';
 import { useDateFormat, useNumberFormat } from '@/utils/format';
-import type { MeasurementRead, MeasurementStatus } from '@/api/hooks/useMeasurements';
+import type { AutoMaterialRead, MeasurementRead, MeasurementStatus } from '@/api/hooks/useMeasurements';
 
 // DRAFT/SUBMITTED/REJECTED/LOCKED/APPROVED are fixed bookends with fixed
 // colors; everything else is an admin-configured approval level — colored
@@ -90,22 +91,125 @@ const APPROVAL_COLS: TableColumnsType<DprHeaderApprovalRead> = [
   },
 ];
 
+interface GroupedMaterial {
+  key: string;
+  name: string;
+  uomCode: string;
+  totalQty: number;
+  totalAmount: number;
+  hasRate: boolean;
+}
+
+// Same material/UOM logged across several line items (e.g. one manual entry
+// plus several auto-populated from measurements) — sum to one row rather
+// than repeating the material name per source line.
+function groupMaterials(
+  materials: DprMaterialRead[],
+  materialById: Map<string, { name: string }>,
+  uomById: Map<string, { code: string }>,
+): GroupedMaterial[] {
+  const groups = new Map<string, GroupedMaterial>();
+  for (const m of materials) {
+    const key = `${m.material_id}:${m.uom_id}`;
+    const qty = parseFloat(m.qty_consumed) || 0;
+    const rate = m.rate != null ? parseFloat(m.rate) : null;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.totalQty += qty;
+      existing.totalAmount += rate != null ? qty * rate : 0;
+      existing.hasRate = existing.hasRate || rate != null;
+    } else {
+      groups.set(key, {
+        key,
+        name: materialById.get(m.material_id)?.name ?? m.material_id,
+        uomCode: uomById.get(m.uom_id)?.code ?? '',
+        totalQty: qty,
+        totalAmount: rate != null ? qty * rate : 0,
+        hasRate: rate != null,
+      });
+    }
+  }
+  return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function MeasurementExpandDetail({ measurement }: { measurement: MeasurementRead }) {
+  const { fmtAmt } = useNumberFormat();
+  const materialCols: TableColumnsType<AutoMaterialRead> = [
+    { title: 'Material', key: 'name', render: (_, r) => `${r.material_code} — ${r.material_name}` },
+    {
+      title: 'Qty', key: 'qty', width: 100, align: 'right' as const,
+      render: (_, r) => `${parseFloat(String(r.computed_qty)).toFixed(3)} ${r.uom_code}`,
+    },
+    {
+      title: 'Amount', key: 'amount', width: 110, align: 'right' as const,
+      render: (_, r) => r.rate != null ? fmtAmt(parseFloat(String(r.computed_qty)) * parseFloat(String(r.rate))) : '—',
+    },
+    { title: '', key: 'auto', width: 70, render: (_, r) => !r.manually_edited ? <Tag color="purple" style={{ margin: 0, fontSize: 10 }}>Auto</Tag> : null },
+  ];
+
+  return (
+    <div style={{ padding: '4px 12px 8px' }}>
+      {measurement.boq_template_name && (
+        <div style={{ marginBottom: 8 }}>
+          <Typography.Text strong>Template: </Typography.Text>
+          <Typography.Text>{measurement.boq_template_name}</Typography.Text>
+        </div>
+      )}
+      {measurement.notes && (
+        <div style={{ marginBottom: 8 }}>
+          <Typography.Text strong>Notes: </Typography.Text>
+          <Typography.Text>{measurement.notes}</Typography.Text>
+        </div>
+      )}
+      {measurement.auto_materials.length > 0 && (
+        <>
+          <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>Materials</Typography.Text>
+          <Table<AutoMaterialRead>
+            size="small"
+            dataSource={measurement.auto_materials}
+            columns={materialCols}
+            rowKey="material_id"
+            pagination={false}
+            bordered
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
 function DprDetailPanel({
   header,
   materialById,
   machineryById,
   boqById,
+  uomById,
 }: {
   header: DprHeaderRead;
   materialById: Map<string, { name: string }>;
   machineryById: Map<string, { name: string }>;
   boqById: Map<string, { item_no: string; description: string }>;
+  uomById: Map<string, { code: string }>;
 }) {
   const { data: approvals, isLoading: approvalsLoading } = useDprApprovals(header.id);
   const { data: measurements, isLoading: measurementsLoading } = useDprMeasurements(header.id);
   const { data: measurementWorkflow } = useEffectiveWorkflow('MEASUREMENT', header.project_id);
   const { fmtDateTime, fmtDate } = useDateFormat();
   const { fmtAmt } = useNumberFormat();
+
+  const groupedMaterials = groupMaterials(header.materials, materialById, uomById);
+
+  const groupedMaterialCols: TableColumnsType<GroupedMaterial> = [
+    { title: 'Material', dataIndex: 'name', key: 'name' },
+    {
+      title: 'Total Qty', key: 'qty', width: 130, align: 'right' as const,
+      render: (_, r) => `${r.totalQty.toFixed(3)} ${r.uomCode}`,
+    },
+    {
+      title: 'Amount', key: 'amount', width: 120, align: 'right' as const,
+      render: (_, r) => r.hasRate ? fmtAmt(r.totalAmount) : <Typography.Text type="secondary">—</Typography.Text>,
+    },
+  ];
 
   const approvalCols: TableColumnsType<DprHeaderApprovalRead> = [
     ...APPROVAL_COLS,
@@ -137,19 +241,20 @@ function DprDetailPanel({
 
   return (
     <div style={{ padding: '8px 16px 16px' }}>
-      {header.materials.length > 0 && (
+      {groupedMaterials.length > 0 && (
         <>
           <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>
             Materials Used
           </Typography.Text>
-          <ul style={{ margin: '0 0 12px 16px', padding: 0 }}>
-            {header.materials.map((m) => (
-              <li key={m.id}>
-                {materialById.get(m.material_id)?.name ?? m.material_id} — {m.qty_consumed}
-                {m.rate ? ` @ ${fmtAmt(m.rate)}` : ''}
-              </li>
-            ))}
-          </ul>
+          <Table<GroupedMaterial>
+            size="small"
+            dataSource={groupedMaterials}
+            columns={groupedMaterialCols}
+            rowKey="key"
+            pagination={false}
+            bordered
+            style={{ marginBottom: 16 }}
+          />
         </>
       )}
 
@@ -205,6 +310,10 @@ function DprDetailPanel({
           bordered
           scroll={{ x: 700 }}
           style={{ marginBottom: 16 }}
+          expandable={{
+            rowExpandable: (m) => !!m.boq_template_name || !!m.notes || m.auto_materials.length > 0,
+            expandedRowRender: (m) => <MeasurementExpandDetail measurement={m} />,
+          }}
         />
       )}
 
@@ -230,6 +339,7 @@ export function DprHistoryPage() {
   const { data: headers, isLoading } = useDprList(selectedProjectId);
   const { data: materials } = useMaterials();
   const { data: machineryList } = useMachinery();
+  const { data: uoms } = useUoms();
   const { data: boqItems } = useBoqItems(selectedProjectId);
   const user = useAuthStore((s) => s.user);
   const { fmtDate } = useDateFormat();
@@ -271,6 +381,7 @@ export function DprHistoryPage() {
 
   const materialById = new Map((materials ?? []).map((m) => [m.id, { name: m.name }]));
   const machineryById = new Map((machineryList ?? []).map((m) => [m.id, { name: m.name }]));
+  const uomById = new Map((uoms ?? []).map((u) => [u.id, { code: u.code }]));
   const boqById = new Map((boqItems ?? []).map((b) => [b.id, { item_no: b.item_no, description: b.description }]));
 
   const sorted = [...(headers ?? [])].sort((a, b) => (a.report_date < b.report_date ? 1 : -1));
@@ -432,6 +543,7 @@ export function DprHistoryPage() {
                 materialById={materialById}
                 machineryById={machineryById}
                 boqById={boqById}
+                uomById={uomById}
               />
             ),
           }}
