@@ -15,12 +15,14 @@ import {
   message,
 } from 'antd';
 import type { TableColumnsType } from 'antd';
+import { FileTextOutlined } from '@ant-design/icons';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
 import {
   useDeleteMeasurement,
   useMeasurements,
   useUpdateMeasurement,
+  useUpdateMeasurementNotes,
   type MeasurementRead,
 } from '@/api/hooks/useMeasurements';
 import { useAuthStore } from '@/store/auth-store';
@@ -37,7 +39,7 @@ const FIELD_LABELS: Record<string, string> = {
   d: 'D (m)',
 };
 
-const NCOLS = 7;
+const NCOLS = 8;
 
 type MeasurementRow =
   | { _type: 'date-header'; date: string; count: number; key: string }
@@ -95,6 +97,9 @@ function MeasurementDetailPanel({
             {v}
           </Descriptions.Item>
         ))}
+        <Descriptions.Item label="Notes" span={3}>
+          {measurement.notes || <Typography.Text type="secondary">—</Typography.Text>}
+        </Descriptions.Item>
       </Descriptions>
     </div>
   );
@@ -114,11 +119,36 @@ export function MeasurementsPage() {
 
   const updateMeasurement = useUpdateMeasurement();
   const deleteMeasurement = useDeleteMeasurement();
+  const updateMeasurementNotes = useUpdateMeasurementNotes();
 
   const [editingMeasurement, setEditingMeasurement] = useState<MeasurementRead | null>(null);
   const [editDimensions, setEditDimensions] = useState<Record<string, number>>({});
   const [editChainage, setEditChainage] = useState('');
   const [editRate, setEditRate] = useState<number | null>(null);
+
+  const [notesModalEntry, setNotesModalEntry] = useState<MeasurementRead | null>(null);
+  const [notesDraft, setNotesDraft] = useState('');
+  const [notesSaving, setNotesSaving] = useState(false);
+  const canEditNotes = (record: MeasurementRead) => record.recorded_by === user?.id || user?.role === 'ADMIN';
+
+  const openNotesModal = (record: MeasurementRead) => {
+    setNotesModalEntry(record);
+    setNotesDraft(record.notes ?? '');
+  };
+
+  const saveNotes = async () => {
+    if (!notesModalEntry) return;
+    setNotesSaving(true);
+    try {
+      await updateMeasurementNotes.mutateAsync({ id: notesModalEntry.id, notes: notesDraft.trim() || null });
+      message.success('Notes saved');
+      setNotesModalEntry(null);
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not save notes'));
+    } finally {
+      setNotesSaving(false);
+    }
+  };
 
   const openEditModal = (record: MeasurementRead) => {
     setEditDimensions(
@@ -248,6 +278,24 @@ export function MeasurementsPage() {
       render: (_, row) => (row._type === 'item' ? row.measurement.recorded_by_name : null),
     },
     {
+      title: 'Notes',
+      key: 'notes',
+      width: 60,
+      align: 'center' as const,
+      onCell: (row) => (row._type === 'date-header' ? { colSpan: 0 } : {}),
+      render: (_, row) => {
+        if (row._type !== 'item') return null;
+        return (
+          <Button
+            size="small" type="text"
+            icon={<FileTextOutlined style={row.measurement.notes ? { color: '#1677ff' } : undefined} />}
+            title={row.measurement.notes ? 'View/edit notes' : 'Add notes'}
+            onClick={() => openNotesModal(row.measurement)}
+          />
+        );
+      },
+    },
+    {
       title: 'Actions',
       key: 'actions',
       width: 160,
@@ -350,6 +398,32 @@ export function MeasurementsPage() {
             ))}
             <Statistic title="Computed Quantity" value={fmtQty(editComputedQty)} />
           </Form>
+        )}
+      </Modal>
+
+      <Modal
+        title="Measurement Notes"
+        open={!!notesModalEntry}
+        onCancel={() => setNotesModalEntry(null)}
+        onOk={saveNotes}
+        okText="Save"
+        confirmLoading={notesSaving}
+        okButtonProps={{ disabled: !!notesModalEntry && !canEditNotes(notesModalEntry) }}
+        destroyOnHidden
+      >
+        <Input.TextArea
+          rows={4}
+          maxLength={1000}
+          showCount
+          placeholder="Add a note for this measurement…"
+          value={notesDraft}
+          onChange={(e) => setNotesDraft(e.target.value)}
+          disabled={!!notesModalEntry && !canEditNotes(notesModalEntry)}
+        />
+        {notesModalEntry && !canEditNotes(notesModalEntry) && (
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            Only the recording engineer or an admin can edit notes.
+          </Typography.Text>
         )}
       </Modal>
     </div>

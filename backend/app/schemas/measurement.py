@@ -43,6 +43,7 @@ class MeasurementCreate(BaseModel):
     rate: Decimal | None = Field(default=None, ge=0)
     boq_template_id: uuid.UUID | None = None
     steel_lines: list[SteelLineCreate] = Field(default_factory=list)
+    notes: str | None = Field(default=None, max_length=1000)
 
 
 class MeasurementUpdate(BaseModel):
@@ -51,6 +52,13 @@ class MeasurementUpdate(BaseModel):
     rate: Decimal | None = Field(default=None, ge=0)
     boq_template_id: uuid.UUID | None = None
     steel_lines: list[SteelLineCreate] = Field(default_factory=list)
+
+
+class MeasurementNotesUpdate(BaseModel):
+    """Lightweight, standalone update — deliberately separate from
+    MeasurementUpdate, which does a full replace of dimensions/steel_lines
+    and would reject the request entirely if those were omitted."""
+    notes: str | None = Field(default=None, max_length=1000)
 
 
 class MeasurementRead(BaseModel):
@@ -73,5 +81,6 @@ class MeasurementRead(BaseModel):
     rate: Decimal | None
     boq_template_id: uuid.UUID | None = None
     boq_template_name: str | None = None
+    notes: str | None = None
     steel_lines: list[SteelLineRead] = []
     auto_materials: list[AutoMaterialRead] = []

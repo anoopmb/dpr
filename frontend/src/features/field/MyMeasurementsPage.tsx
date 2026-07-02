@@ -20,7 +20,7 @@ import {
   theme,
 } from 'antd';
 import type { TableColumnsType } from 'antd';
-import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined, FileTextOutlined, PlusOutlined } from '@ant-design/icons';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { PhotoCapture } from '@/components/common/PhotoCapture';
 import { RequireAttendance } from '@/components/field/RequireAttendance';
@@ -31,6 +31,7 @@ import {
   useDeleteMeasurement,
   useMeasurements,
   useUpdateMeasurement,
+  useUpdateMeasurementNotes,
   type MeasurementRead,
 } from '@/api/hooks/useMeasurements';
 import { useBoqItems, useConstructionTemplates } from '@/api/hooks/useBoq';
@@ -67,9 +68,34 @@ export function MyMeasurementsPage() {
   const createMeasurement = useCreateMeasurement();
   const updateMeasurement = useUpdateMeasurement();
   const deleteMeasurement = useDeleteMeasurement();
+  const updateMeasurementNotes = useUpdateMeasurementNotes();
   const uploadPhoto = useUploadPhoto();
   const attachPhoto = useAttachPhoto();
   const { data: allTemplates } = useConstructionTemplates();
+
+  const [notesModalEntry, setNotesModalEntry] = useState<MeasurementRead | null>(null);
+  const [notesDraft, setNotesDraft] = useState('');
+  const [notesSaving, setNotesSaving] = useState(false);
+  const canEditNotes = (record: MeasurementRead) => record.recorded_by === user?.id || user?.role === 'ADMIN';
+
+  const openNotesModal = (record: MeasurementRead) => {
+    setNotesModalEntry(record);
+    setNotesDraft(record.notes ?? '');
+  };
+
+  const saveNotes = async () => {
+    if (!notesModalEntry) return;
+    setNotesSaving(true);
+    try {
+      await updateMeasurementNotes.mutateAsync({ id: notesModalEntry.id, notes: notesDraft.trim() || null });
+      message.success('Notes saved');
+      setNotesModalEntry(null);
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not save notes'));
+    } finally {
+      setNotesSaving(false);
+    }
+  };
 
   // add form state
   const [showAddForm, setShowAddForm] = useState(false);
@@ -229,9 +255,15 @@ export function MyMeasurementsPage() {
     {
       title: 'Actions',
       key: 'actions',
-      width: 120,
+      width: 150,
       render: (_: unknown, record: MeasurementRead) => (
         <Space size={4}>
+          <Button
+            size="small" type="text"
+            icon={<FileTextOutlined style={record.notes ? { color: token.colorPrimary } : undefined} />}
+            title={record.notes ? 'View/edit notes' : 'Add notes'}
+            onClick={() => openNotesModal(record)}
+          />
           <Button size="small" icon={<EditOutlined />} onClick={() => handleEditOpen(record)} />
           <Popconfirm
             title="Delete this measurement?"
@@ -457,6 +489,32 @@ export function MyMeasurementsPage() {
             ))}
             <Statistic title="Computed Quantity" value={fmtQty(editComputedQty)} />
           </Form>
+        )}
+      </Modal>
+
+      <Modal
+        title="Measurement Notes"
+        open={!!notesModalEntry}
+        onCancel={() => setNotesModalEntry(null)}
+        onOk={saveNotes}
+        okText="Save"
+        confirmLoading={notesSaving}
+        okButtonProps={{ disabled: !!notesModalEntry && !canEditNotes(notesModalEntry) }}
+        destroyOnHidden
+      >
+        <Input.TextArea
+          rows={4}
+          maxLength={1000}
+          showCount
+          placeholder="Add a note for this measurement…"
+          value={notesDraft}
+          onChange={(e) => setNotesDraft(e.target.value)}
+          disabled={!!notesModalEntry && !canEditNotes(notesModalEntry)}
+        />
+        {notesModalEntry && !canEditNotes(notesModalEntry) && (
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            Only the recording engineer or an admin can edit notes.
+          </Typography.Text>
         )}
       </Modal>
     </div>

@@ -25,19 +25,29 @@ def calculate_quantity(
     if missing:
         raise ValueError(f"Missing dimensions: {missing}")
 
-    values = [dimensions[field] for field in dimension_fields]
+    # 'nos' is always a leading multiplicand regardless of formula — lets any
+    # work type express "N identical units of this shape" without each
+    # formula needing its own nos-handling. PRODUCT already multiplied nos
+    # in along with everything else, so pulling it out here doesn't change
+    # PRODUCT's result (multiplication is commutative).
+    nos = dimensions['nos'] if 'nos' in dimension_fields else Decimal(1)
+    values = [dimensions[field] for field in dimension_fields if field != 'nos']
 
     if formula == WorkTypeFormula.PRODUCT:
         result = Decimal(1)
         for value in values:
             result *= value
-        return result
+        return result * nos
 
     if formula == WorkTypeFormula.AREA_LH:
         length, height = values[0], values[1]
-        return length * height
+        return length * height * nos
 
     if formula == WorkTypeFormula.LENGTH_ONLY:
-        return values[0]
+        # e.g. GEN_COUNT, whose only field is 'nos' itself — the count IS
+        # the quantity, there's nothing else to multiply it against.
+        if not values:
+            return nos
+        return values[0] * nos
 
     raise ValueError(f"Unsupported formula: {formula}")

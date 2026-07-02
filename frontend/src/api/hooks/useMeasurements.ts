@@ -48,6 +48,7 @@ export interface MeasurementRead {
   rate: string | null;
   boq_template_id: string | null;
   boq_template_name: string | null;
+  notes: string | null;
   steel_lines: SteelLineRead[];
   auto_materials: AutoMaterialRead[];
 }
@@ -106,6 +107,17 @@ export function useUpdateMeasurement() {
       queryClient.invalidateQueries({ queryKey: ['dpr-production'] });
       queryClient.invalidateQueries({ queryKey: ['dpr'] });
       queryClient.invalidateQueries({ queryKey: ['dpr-header'] });
+    },
+  });
+}
+
+export function useUpdateMeasurementNotes() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, notes }: { id: string; notes: string | null }) =>
+      (await apiClient.patch<MeasurementRead>(`/measurements/${id}/notes`, { notes })).data,
+    onSuccess: (measurement) => {
+      queryClient.invalidateQueries({ queryKey: ['measurements', measurement.project_id] });
     },
   });
 }

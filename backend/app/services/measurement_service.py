@@ -131,6 +131,7 @@ class MeasurementService:
             rate=data.rate if data.rate is not None else effective_rate,
             boq_template_id=template.id if template else None,
             boq_template_name=template.name if template else None,
+            notes=data.notes,
         )
         self.repo.add(measurement)
         await self.session.flush()
@@ -278,6 +279,31 @@ class MeasurementService:
         await self.production_service.sync_from_measurements(
             measurement.project_id, measurement.boq_item_id, measurement.measurement_date, actor_id
         )
+        return measurement
+
+    async def update_notes(
+        self, measurement_id: uuid.UUID, notes: str | None, actor_id: uuid.UUID, actor_role: UserRole
+    ) -> Measurement:
+        """Standalone notes edit — does not touch dimensions/computed_qty/
+        steel_lines, so it works regardless of measurement status and
+        doesn't require resending the full measurement payload."""
+        measurement = await self.get(measurement_id)
+        if measurement.recorded_by != actor_id and actor_role != UserRole.ADMIN:
+            raise PermissionDeniedError("Only the recording engineer can edit this measurement.")
+
+        before = serialize_model(measurement)
+        measurement.notes = notes
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="MEASUREMENT",
+            entity_id=measurement.id,
+            action=AuditAction.UPDATE,
+            actor_id=actor_id,
+            before=before,
+            after=serialize_model(measurement),
+        )
+        await self.session.commit()
+        await self.session.refresh(measurement)
         return measurement
 
     async def delete(

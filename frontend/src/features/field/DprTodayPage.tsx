@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { AimOutlined, CameraOutlined, CheckCircleOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, EditOutlined, EyeOutlined, PlusOutlined, WarningOutlined } from '@ant-design/icons';
+import { AimOutlined, CameraOutlined, CheckCircleOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, EditOutlined, EyeOutlined, FileTextOutlined, PlusOutlined, WarningOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
@@ -23,6 +23,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
   message,
   theme,
@@ -85,6 +86,7 @@ import {
   useCreateMeasurement,
   useMeasurements,
   useUpdateMeasurement,
+  useUpdateMeasurementNotes,
   useDeleteMeasurement,
   type MeasurementRead,
 } from '@/api/hooks/useMeasurements';
@@ -136,7 +138,7 @@ const MATERIALS_TABLE_COMPONENTS = makeFixedTableComponents(710);
 const MACHINERY_TABLE_COMPONENTS = makeFixedTableComponents(728);
 const ISSUES_TABLE_COMPONENTS = makeFixedTableComponents(648);
 const EXPENSES_TABLE_COMPONENTS = makeFixedTableComponents(750);
-const MEASUREMENTS_TABLE_COMPONENTS = makeFixedTableComponents(906);
+const MEASUREMENTS_TABLE_COMPONENTS = makeFixedTableComponents(946);
 const PRODUCTION_TABLE_COMPONENTS = makeFixedTableComponents(1000);
 
 type ProductionRow =
@@ -2065,6 +2067,7 @@ function MeasurementsTab({
   const { data: allTemplates } = useConstructionTemplates();
   const createMeasurement = useCreateMeasurement();
   const updateMeasurement = useUpdateMeasurement();
+  const updateMeasurementNotes = useUpdateMeasurementNotes();
   const deleteMeasurement = useDeleteMeasurement();
   const uploadPhoto = useUploadPhoto();
   const attachPhoto = useAttachPhoto();
@@ -2097,6 +2100,29 @@ function MeasurementsTab({
   const [editSteelModalOpen, setEditSteelModalOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [viewSteelEntryId, setViewSteelEntryId] = useState<string | null>(null);
+
+  const [notesModalEntry, setNotesModalEntry] = useState<MeasurementRead | null>(null);
+  const [notesDraft, setNotesDraft] = useState('');
+  const [notesSaving, setNotesSaving] = useState(false);
+
+  const openNotesModal = (entry: MeasurementRead) => {
+    setNotesModalEntry(entry);
+    setNotesDraft(entry.notes ?? '');
+  };
+
+  const saveNotes = async () => {
+    if (!notesModalEntry) return;
+    setNotesSaving(true);
+    try {
+      await updateMeasurementNotes.mutateAsync({ id: notesModalEntry.id, notes: notesDraft.trim() || null });
+      message.success('Notes saved');
+      setNotesModalEntry(null);
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not save notes'));
+    } finally {
+      setNotesSaving(false);
+    }
+  };
 
   const boqById = useMemo(() => new Map((boqItems ?? []).map((b) => [b.id, b])), [boqItems]);
 
@@ -2431,7 +2457,7 @@ function MeasurementsTab({
         );
       },
     },
-    // All 5 dimension columns; inactive ones dimmed with placeholder
+    // All 4 dimension columns; inactive ones dimmed with placeholder
     ...ALL_DIM_FIELDS.map((field) => ({
       title: DIM_ABBREV[field],
       key: field,
@@ -2602,7 +2628,7 @@ function MeasurementsTab({
     {
       title: '',
       key: 'actions',
-      width: 110,
+      width: 150,
       render: (_: unknown, row: MeasRow) => {
         if (row._kind === 'existing') {
           if (editingRowId === row.entry.id) {
@@ -2620,6 +2646,12 @@ function MeasurementsTab({
               {isSteelEntry && (
                 <Button size="small" onClick={() => setViewSteelEntryId(row.entry.id)}>Bars</Button>
               )}
+              <Button
+                size="small" type="text"
+                icon={<FileTextOutlined style={row.entry.notes ? { color: token.colorPrimary } : undefined} />}
+                title={row.entry.notes ? 'View/edit notes' : 'Add notes'}
+                onClick={() => openNotesModal(row.entry)}
+              />
               {row.entry.recorded_by === user?.id && (
                 <>
                   <Button size="small" icon={<EditOutlined />} onClick={() => startEditRow(row.entry)} />
@@ -2696,11 +2728,11 @@ function MeasurementsTab({
           summary={totalQty > 0 ? () => (
             <Table.Summary>
               <Table.Summary.Row style={{ fontWeight: 700 }}>
-                <Table.Summary.Cell index={0} colSpan={8}>Total</Table.Summary.Cell>
-                <Table.Summary.Cell index={8} align="right">{fmtQty(totalQty)}</Table.Summary.Cell>
-                <Table.Summary.Cell index={9} />
-                <Table.Summary.Cell index={10} align="right">{fmtAmt(totalAmount)}</Table.Summary.Cell>
-                <Table.Summary.Cell index={11} />
+                <Table.Summary.Cell index={0} colSpan={7}>Total</Table.Summary.Cell>
+                <Table.Summary.Cell index={7} align="right">{fmtQty(totalQty)}</Table.Summary.Cell>
+                <Table.Summary.Cell index={8} />
+                <Table.Summary.Cell index={9} align="right">{fmtAmt(totalAmount)}</Table.Summary.Cell>
+                <Table.Summary.Cell index={10} />
               </Table.Summary.Row>
             </Table.Summary>
           ) : undefined}
@@ -2954,6 +2986,34 @@ function MeasurementsTab({
           </Modal>
         );
       })()}
+
+      <Modal
+        title="Measurement Notes"
+        open={!!notesModalEntry}
+        onCancel={() => setNotesModalEntry(null)}
+        onOk={saveNotes}
+        okText="Save"
+        confirmLoading={notesSaving}
+        okButtonProps={{
+          disabled: !!notesModalEntry && notesModalEntry.recorded_by !== user?.id && user?.role !== 'ADMIN',
+        }}
+        destroyOnHidden
+      >
+        <Input.TextArea
+          rows={4}
+          maxLength={1000}
+          showCount
+          placeholder="Add a note for this measurement…"
+          value={notesDraft}
+          onChange={(e) => setNotesDraft(e.target.value)}
+          disabled={!!notesModalEntry && notesModalEntry.recorded_by !== user?.id && user?.role !== 'ADMIN'}
+        />
+        {notesModalEntry && notesModalEntry.recorded_by !== user?.id && user?.role !== 'ADMIN' && (
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            Only the recording engineer or an admin can edit notes.
+          </Typography.Text>
+        )}
+      </Modal>
     </div>
   );
 }
@@ -3574,6 +3634,12 @@ function DprPreviewModal({
                 render: (v: string) => (
                   <Tag color={v === 'APPROVED' ? 'green' : v === 'SUBMITTED' ? 'blue' : 'default'} style={{ margin: 0 }}>{v}</Tag>
                 ),
+              },
+              {
+                title: 'Notes', dataIndex: 'notes', width: 60, align: 'center' as const,
+                render: (v: string | null) => v
+                  ? <Tooltip title={v}><FileTextOutlined /></Tooltip>
+                  : <Typography.Text type="secondary">—</Typography.Text>,
               },
             ]}
           />

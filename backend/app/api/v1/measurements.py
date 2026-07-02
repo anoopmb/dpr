@@ -8,6 +8,7 @@ from app.models.measurement import Measurement
 from app.models.user import User, UserRole
 from app.schemas.measurement import (
     MeasurementCreate,
+    MeasurementNotesUpdate,
     MeasurementRead,
     MeasurementUpdate,
     SteelLineRead,
@@ -40,6 +41,7 @@ async def _to_read(session: SessionDep, measurement: Measurement) -> Measurement
         rate=measurement.rate,
         boq_template_id=measurement.boq_template_id,
         boq_template_name=measurement.boq_template_name,
+        notes=measurement.notes,
         steel_lines=[SteelLineRead.model_validate(l) for l in measurement.steel_lines],
     )
 
@@ -69,6 +71,7 @@ async def _to_read_many(session: SessionDep, measurements: list[Measurement]) ->
             rate=m.rate,
             boq_template_id=m.boq_template_id,
             boq_template_name=m.boq_template_name,
+            notes=m.notes,
             steel_lines=[SteelLineRead.model_validate(l) for l in m.steel_lines],
         )
         for m in measurements
@@ -110,6 +113,20 @@ async def update_measurement(
 ) -> MeasurementRead:
     measurement = await MeasurementService(session).update(
         measurement_id, data, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role
+    )
+    return await _to_read(session, measurement)
+
+
+@router.patch(
+    "/{measurement_id}/notes",
+    response_model=MeasurementRead,
+    dependencies=[Depends(require_role(*_RECORDER_ROLES))],
+)
+async def update_measurement_notes(
+    measurement_id: uuid.UUID, data: MeasurementNotesUpdate, session: SessionDep, current_user: CurrentUserDep
+) -> MeasurementRead:
+    measurement = await MeasurementService(session).update_notes(
+        measurement_id, data.notes, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role
     )
     return await _to_read(session, measurement)
 

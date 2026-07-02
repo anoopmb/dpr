@@ -68,6 +68,7 @@ class Measurement(TimestampedBase):
         nullable=True,
     )
     boq_template_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
     boq_template: Mapped["BoqConstructionTemplate | None"] = relationship(
         "BoqConstructionTemplate", lazy="joined", foreign_keys=[boq_template_id]

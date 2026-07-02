@@ -114,8 +114,8 @@ async def main() -> None:
             ("RCC", "RCC Concrete", ["length", "breadth", "depth"], WorkTypeFormula.PRODUCT, "M3"),
             ("ROAD", "Road Work", ["length", "width", "thickness"], WorkTypeFormula.PRODUCT, "M3"),
             ("BRICKWORK", "Brickwork", ["length", "breadth", "thickness"], WorkTypeFormula.PRODUCT, "M3"),
-            ("PLASTERING", "Plastering", ["length", "depth"], WorkTypeFormula.AREA_LH, "M2"),
-            ("PIPE_LAYING", "Pipe Laying", ["length", "diameter"], WorkTypeFormula.LENGTH_ONLY, "RM"),
+            ("PLASTERING", "Plastering", ["count", "length", "depth"], WorkTypeFormula.AREA_LH, "M2"),
+            ("PIPE_LAYING", "Pipe Laying", ["count", "length", "diameter"], WorkTypeFormula.LENGTH_ONLY, "RM"),
         ]
         for code, name, dims, formula, uom_code in work_types:
             work_type_repo.add(
