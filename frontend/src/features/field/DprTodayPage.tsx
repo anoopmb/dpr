@@ -116,6 +116,29 @@ const DIM_ABBREV: Record<string, string> = {
   nos: 'No', l: 'L', b: 'B', d: 'D', h: 'H',
 };
 
+// Table `components.table` overrides MUST be referentially stable across
+// renders — antd/@rc-component/table keys its internal `TableComponent` off
+// this object's identity (see Table.js: `getComponent(['table'], 'table')`,
+// memoized on `[components]`). An inline `components={{ table: fn }}` object
+// gets a new identity every render, which makes the library unmount and
+// remount the entire <table> DOM subtree on every keystroke — dropping
+// focus, discarding in-flight input, and adding visible typing lag. Module
+// scope keeps identity fixed for the component's lifetime.
+function makeFixedTableComponents(minWidth: number) {
+  return {
+    table: ({ style, ...rest }: React.HTMLAttributes<HTMLTableElement>) => (
+      <table {...rest} style={{ ...style, tableLayout: 'fixed' as const, width: '100%', minWidth }} />
+    ),
+  };
+}
+const LABOUR_TABLE_COMPONENTS = makeFixedTableComponents(968);
+const MATERIALS_TABLE_COMPONENTS = makeFixedTableComponents(698);
+const MACHINERY_TABLE_COMPONENTS = makeFixedTableComponents(728);
+const ISSUES_TABLE_COMPONENTS = makeFixedTableComponents(648);
+const EXPENSES_TABLE_COMPONENTS = makeFixedTableComponents(750);
+const MEASUREMENTS_TABLE_COMPONENTS = makeFixedTableComponents(956);
+const PRODUCTION_TABLE_COMPONENTS = makeFixedTableComponents(1000);
+
 type ProductionRow =
   | { _type: 'header'; section: BoqSectionRead; key: string }
   | { _type: 'item'; item: BoqItemRead; key: string };
@@ -138,10 +161,12 @@ function AttendanceTab({
   projectId,
   entryDate,
   isSubmitted,
+  isActive,
 }: {
   projectId: string;
   entryDate: string;
   isSubmitted: boolean;
+  isActive: boolean;
 }) {
   const { data: projects } = useProjects();
   const project = (projects ?? []).find((p) => p.id === projectId);
@@ -158,11 +183,21 @@ function AttendanceTab({
   const uploadPhoto = useUploadPhoto();
 
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const workerSelectRef = useRef<{ focus?: () => void } | null>(null);
   const [selectedWorkerIds, setSelectedWorkerIds] = useState<string[]>([]);
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
   const [location, setLocation] = useState<CapturedLocation | null>(null);
   const [locating, setLocating] = useState(true);
+
+  useEffect(() => {
+    if (!isActive || isSubmitted) return;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        workerSelectRef.current?.focus?.();
+      });
+    });
+  }, [isActive, isSubmitted]);
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -329,6 +364,7 @@ function AttendanceTab({
 
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <Select
+                ref={(el) => { workerSelectRef.current = el; }}
                 mode="multiple"
                 style={{ flex: 1, minWidth: 0 }}
                 placeholder="Select workers…"
@@ -472,10 +508,12 @@ function LabourTab({
   headerId,
   projectId,
   isSubmitted,
+  isActive,
 }: {
   headerId: string;
   projectId: string;
   isSubmitted: boolean;
+  isActive: boolean;
 }) {
   const { data: entries, isLoading } = useDprLabour(headerId);
   const { data: workers } = useWorkers(projectId);
@@ -487,6 +525,16 @@ function LabourTab({
 
   const [drafts, setDrafts] = useState<LabourDraftRow[]>([]);
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
+  const fieldRefs = useRef<Record<string, { focus?: () => void } | null>>({});
+  const dropdownOpenRef = useRef<Record<string, boolean>>({});
+
+  const focusField = (key: string, field: string) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        fieldRefs.current[`${key}:${field}`]?.focus?.();
+      });
+    });
+  };
 
   const existingWorkerIds = new Set((entries ?? []).map((e) => e.worker_id));
   const workerById = new Map((workers ?? []).map((w) => [w.id, w]));
@@ -500,10 +548,22 @@ function LabourTab({
     setDrafts((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
   const removeDraft = (key: string) => setDrafts((prev) => prev.filter((d) => d.key !== key));
 
-  const saveDraft = async (draft: LabourDraftRow) => {
+  const addBlankDraft = () => {
+    const key = nextLabourKey();
+    setDrafts((p) => [...p, { key, worker_id: null, quantity: null, rate: null, overtime_amount: null }]);
+    return key;
+  };
+
+  const addBlankDraftAndFocus = () => {
+    const key = addBlankDraft();
+    focusField(key, 'worker');
+    return key;
+  };
+
+  const saveDraft = async (draft: LabourDraftRow): Promise<boolean> => {
     if (!draft.worker_id || draft.quantity == null || draft.rate == null) {
       message.warning('Worker, quantity and rate are required');
-      return;
+      return false;
     }
     setSavingKeys((p) => new Set(p).add(draft.key));
     try {
@@ -517,12 +577,46 @@ function LabourTab({
         },
       });
       removeDraft(draft.key);
+      return true;
     } catch (err) {
       message.error(getApiErrorMessage(err, 'Could not add labour entry'));
+      return false;
     } finally {
       setSavingKeys((p) => { const s = new Set(p); s.delete(draft.key); return s; });
     }
   };
+
+  const saveDraftAndAdvance = async (draft: LabourDraftRow) => {
+    const ok = await saveDraft(draft);
+    if (ok) {
+      addBlankDraftAndFocus();
+    }
+  };
+
+  const LABOUR_FIELD_ORDER = ['worker', 'qty', 'rate', 'overtime_amount'];
+  const handleDraftKeyDown = (e: React.KeyboardEvent, draft: LabourDraftRow, field: string) => {
+    if (e.key !== 'Enter') return;
+    if (dropdownOpenRef.current[`${draft.key}:${field}`]) return; // let Select confirm its highlighted option first
+    e.preventDefault();
+    const idx = LABOUR_FIELD_ORDER.indexOf(field);
+    if (idx < LABOUR_FIELD_ORDER.length - 1) {
+      fieldRefs.current[`${draft.key}:${LABOUR_FIELD_ORDER[idx + 1]}`]?.focus?.();
+    } else {
+      saveDraftAndAdvance(draft);
+    }
+  };
+
+  useEffect(() => {
+    if (!isActive) return;
+    if (drafts.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- ready-to-type on tab activation is the point; doesn't loop, addBlankDraft doesn't depend on isActive
+      addBlankDraftAndFocus();
+    } else {
+      focusField(drafts[0].key, 'worker');
+    }
+    // Only react to this tab becoming active, not to every drafts change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive]);
 
   const handleQtyChange = async (entry: DprLabourRead, qty: number | null) => {
     if (qty == null) return;
@@ -552,12 +646,13 @@ function LabourTab({
 
   const columns: TableColumnsType<LabourRow> = [
     {
-      title: 'Worker', key: 'worker',
+      title: 'Worker', key: 'worker', width: 160,
       render: (_: unknown, row: LabourRow) =>
         row._kind === 'existing' ? (
           <Typography.Text>{row.entry.worker_name}</Typography.Text>
         ) : (
           <Select
+            ref={(el) => { fieldRefs.current[`${row.draft.key}:worker`] = el; }}
             size="small" showSearch optionFilterProp="label" style={inp}
             placeholder="Select worker…"
             value={row.draft.worker_id ?? undefined}
@@ -569,6 +664,8 @@ function LabourTab({
                 rate: w?.default_rate != null ? parseFloat(w.default_rate) : row.draft.rate,
               });
             }}
+            onDropdownVisibleChange={(open) => { dropdownOpenRef.current[`${row.draft.key}:worker`] = open; }}
+            onKeyDown={(e) => handleDraftKeyDown(e, row.draft, 'worker')}
             options={availableWorkers.map((w) => ({ value: w.id, label: w.full_name }))}
           />
         ),
@@ -606,9 +703,11 @@ function LabourTab({
           )
         ) : (
           <InputNumber
+            ref={(el) => { fieldRefs.current[`${row.draft.key}:qty`] = el; }}
             size="small" min={0} step={1} style={inp} placeholder="1"
             value={row.draft.quantity ?? undefined}
             onChange={(v) => patchDraft(row.draft.key, { quantity: v })}
+            onKeyDown={(e) => handleDraftKeyDown(e, row.draft, 'qty')}
           />
         ),
     },
@@ -627,9 +726,11 @@ function LabourTab({
           )
         ) : (
           <InputNumber
+            ref={(el) => { fieldRefs.current[`${row.draft.key}:rate`] = el; }}
             size="small" min={0} precision={2} style={inp} placeholder="Rate"
             value={row.draft.rate ?? undefined}
             onChange={(v) => patchDraft(row.draft.key, { rate: v })}
+            onKeyDown={(e) => handleDraftKeyDown(e, row.draft, 'rate')}
           />
         ),
     },
@@ -666,9 +767,11 @@ function LabourTab({
           )
         ) : (
           <InputNumber
+            ref={(el) => { fieldRefs.current[`${row.draft.key}:overtime_amount`] = el; }}
             size="small" min={0} precision={2} style={inp} placeholder="0.00"
             value={row.draft.overtime_amount ?? undefined}
             onChange={(v) => patchDraft(row.draft.key, { overtime_amount: v })}
+            onKeyDown={(e) => handleDraftKeyDown(e, row.draft, 'overtime_amount')}
           />
         ),
     },
@@ -728,7 +831,7 @@ function LabourTab({
         {!isSubmitted && (
           <Button
             size="small" icon={<PlusOutlined />}
-            onClick={() => setDrafts((p) => [...p, { key: nextLabourKey(), worker_id: null, quantity: null, rate: null, overtime_amount: null }])}>
+            onClick={() => addBlankDraftAndFocus()}>
             Add Labour
           </Button>
         )}
@@ -741,7 +844,8 @@ function LabourTab({
         dataSource={rows}
         columns={columns}
         pagination={false}
-        scroll={{ x: 700 }}
+        scroll={{ x: true }}
+        components={LABOUR_TABLE_COMPONENTS}
         locale={{ emptyText: 'No entries yet — check in workers from the Attendance tab or click "Add Labour" above' }}
         summary={totalAmount > 0 ? () => (
           <Table.Summary>
@@ -797,9 +901,11 @@ type IssueRow = { _kind: 'existing'; entry: DprIssueRead } | { _kind: 'draft'; d
 function MaterialsTab({
   headerId,
   isSubmitted,
+  isActive,
 }: {
   headerId: string;
   isSubmitted: boolean;
+  isActive: boolean;
 }) {
   const { data: header } = useDprHeader(headerId);
   const { data: materials } = useMaterials();
@@ -811,6 +917,16 @@ function MaterialsTab({
   const { token } = theme.useToken();
   const [drafts, setDrafts] = useState<MatDraftRow[]>([]);
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
+  const fieldRefs = useRef<Record<string, { focus?: () => void } | null>>({});
+  const dropdownOpenRef = useRef<Record<string, boolean>>({});
+
+  const focusField = (key: string, field: string) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        fieldRefs.current[`${key}:${field}`]?.focus?.();
+      });
+    });
+  };
 
   const materialById = new Map((materials ?? []).map((m) => [m.id, m]));
   const entries = header?.materials ?? [];
@@ -820,15 +936,57 @@ function MaterialsTab({
     setDrafts((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
   const removeDraft = (key: string) => setDrafts((prev) => prev.filter((d) => d.key !== key));
 
-  const saveDraft = async (draft: MatDraftRow) => {
-    if (!draft.material_id || draft.qty == null || !draft.uom_id) { message.warning('Material, quantity and unit are required'); return; }
+  const addBlankDraft = () => {
+    const key = nextMatKey();
+    setDrafts((p) => [...p, { key, material_id: null, qty: null, uom_id: null, rate: null }]);
+    return key;
+  };
+
+  const addBlankDraftAndFocus = () => {
+    const key = addBlankDraft();
+    focusField(key, 'material');
+    return key;
+  };
+
+  const saveDraft = async (draft: MatDraftRow): Promise<boolean> => {
+    if (!draft.material_id || draft.qty == null || !draft.uom_id) { message.warning('Material, quantity and unit are required'); return false; }
     setSavingKeys((p) => new Set(p).add(draft.key));
     try {
       await addMaterial.mutateAsync({ headerId, data: { material_id: draft.material_id, qty_consumed: String(draft.qty), uom_id: draft.uom_id, rate: draft.rate != null ? String(draft.rate) : undefined } });
       removeDraft(draft.key);
-    } catch (err) { message.error(getApiErrorMessage(err, 'Could not add entry')); }
+      return true;
+    } catch (err) { message.error(getApiErrorMessage(err, 'Could not add entry')); return false; }
     finally { setSavingKeys((p) => { const s = new Set(p); s.delete(draft.key); return s; }); }
   };
+
+  const saveDraftAndAdvance = async (draft: MatDraftRow) => {
+    const ok = await saveDraft(draft);
+    if (ok) { addBlankDraftAndFocus(); }
+  };
+
+  const MATERIAL_FIELD_ORDER = ['material', 'qty', 'uom', 'rate'];
+  const handleDraftKeyDown = (e: React.KeyboardEvent, draft: MatDraftRow, field: string) => {
+    if (e.key !== 'Enter') return;
+    if (dropdownOpenRef.current[`${draft.key}:${field}`]) return; // let Select confirm its highlighted option first
+    e.preventDefault();
+    const idx = MATERIAL_FIELD_ORDER.indexOf(field);
+    if (idx < MATERIAL_FIELD_ORDER.length - 1) {
+      fieldRefs.current[`${draft.key}:${MATERIAL_FIELD_ORDER[idx + 1]}`]?.focus?.();
+    } else {
+      saveDraftAndAdvance(draft);
+    }
+  };
+
+  useEffect(() => {
+    if (!isActive) return;
+    if (drafts.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- ready-to-type on tab activation is the point; doesn't loop, addBlankDraft doesn't depend on isActive
+      addBlankDraftAndFocus();
+    } else {
+      focusField(drafts[0].key, 'material');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive]);
 
   const saveQty = async (entry: DprMaterialRead, raw: string) => {
     const qty = parseFloat(raw);
@@ -868,7 +1026,7 @@ function MaterialsTab({
       render: (_: unknown, _r: MatRow, i: number) => <Typography.Text type="secondary" style={{ fontSize: 12 }}>{i + 1}</Typography.Text>,
     },
     {
-      title: 'Material', key: 'material',
+      title: 'Material', key: 'material', width: 180,
       render: (_: unknown, row: MatRow) =>
         row._kind === 'existing' ? (
           <Space size={4}>
@@ -878,8 +1036,12 @@ function MaterialsTab({
             )}
           </Space>
         ) : (
-          <Select size="small" showSearch optionFilterProp="label" style={inp} placeholder="Select material…" value={row.draft.material_id}
+          <Select
+            ref={(el) => { fieldRefs.current[`${row.draft.key}:material`] = el; }}
+            size="small" showSearch optionFilterProp="label" style={inp} placeholder="Select material…" value={row.draft.material_id}
             onChange={(v) => { const m = materialById.get(v); patchDraft(row.draft.key, { material_id: v, uom_id: m?.default_uom_id ?? null, rate: m?.cost_rate != null ? parseFloat(m.cost_rate) : null }); }}
+            onDropdownVisibleChange={(open) => { dropdownOpenRef.current[`${row.draft.key}:material`] = open; }}
+            onKeyDown={(e) => handleDraftKeyDown(e, row.draft, 'material')}
             options={(materials ?? []).map((m) => ({ value: m.id, label: m.name }))} />
         ),
     },
@@ -892,7 +1054,10 @@ function MaterialsTab({
           return <InputNumber key={`${row.entry.id}-q-${row.entry.qty_consumed}`} size="small" min={0} style={inp}
             defaultValue={parseFloat(row.entry.qty_consumed)} onBlur={(e) => saveQty(row.entry, e.target.value)} />;
         }
-        return <InputNumber size="small" min={0} style={inp} placeholder="0" value={row.draft.qty} onChange={(v) => patchDraft(row.draft.key, { qty: v })} />;
+        return <InputNumber
+          ref={(el) => { fieldRefs.current[`${row.draft.key}:qty`] = el; }}
+          size="small" min={0} style={inp} placeholder="0" value={row.draft.qty} onChange={(v) => patchDraft(row.draft.key, { qty: v })}
+          onKeyDown={(e) => handleDraftKeyDown(e, row.draft, 'qty')} />;
       },
     },
     {
@@ -906,8 +1071,12 @@ function MaterialsTab({
             defaultValue={row.entry.uom_id} onChange={(v) => saveUom(row.entry, v)}
             options={(uoms ?? []).map((u) => ({ value: u.id, label: u.code }))} />;
         }
-        return <Select size="small" showSearch optionFilterProp="label" style={inp} placeholder="Unit" value={row.draft.uom_id}
-          onChange={(v) => patchDraft(row.draft.key, { uom_id: v })} options={(uoms ?? []).map((u) => ({ value: u.id, label: u.code }))} />;
+        return <Select
+          ref={(el) => { fieldRefs.current[`${row.draft.key}:uom`] = el; }}
+          size="small" showSearch optionFilterProp="label" style={inp} placeholder="Unit" value={row.draft.uom_id}
+          onChange={(v) => patchDraft(row.draft.key, { uom_id: v })} options={(uoms ?? []).map((u) => ({ value: u.id, label: u.code }))}
+          onDropdownVisibleChange={(open) => { dropdownOpenRef.current[`${row.draft.key}:uom`] = open; }}
+          onKeyDown={(e) => handleDraftKeyDown(e, row.draft, 'uom')} />;
       },
     },
     {
@@ -923,7 +1092,10 @@ function MaterialsTab({
             defaultValue={row.entry.rate != null ? parseFloat(row.entry.rate) : undefined} placeholder="—"
             onBlur={(e) => saveRate(row.entry, e.target.value)} />;
         }
-        return <InputNumber size="small" min={0} precision={2} style={inp} placeholder="Rate (auto)" value={row.draft.rate} onChange={(v) => patchDraft(row.draft.key, { rate: v })} />;
+        return <InputNumber
+          ref={(el) => { fieldRefs.current[`${row.draft.key}:rate`] = el; }}
+          size="small" min={0} precision={2} style={inp} placeholder="Rate (auto)" value={row.draft.rate} onChange={(v) => patchDraft(row.draft.key, { rate: v })}
+          onKeyDown={(e) => handleDraftKeyDown(e, row.draft, 'rate')} />;
       },
     },
     {
@@ -968,7 +1140,7 @@ function MaterialsTab({
         </span>
         {!isSubmitted && (
           <Button size="small" icon={<PlusOutlined />}
-            onClick={() => setDrafts((p) => [...p, { key: nextMatKey(), material_id: null, qty: null, uom_id: null, rate: null }])}>
+            onClick={() => addBlankDraftAndFocus()}>
             Add Material
           </Button>
         )}
@@ -976,7 +1148,8 @@ function MaterialsTab({
       {isSubmitted && <Alert type="info" showIcon style={{ margin: 12 }} message="DPR is submitted — material entries are locked." />}
       <Table<MatRow>
         rowKey={(row) => row._kind === 'existing' ? row.entry.id : row.draft.key}
-        size="small" dataSource={rows} columns={columns} pagination={false} scroll={{ x: 650 }}
+        size="small" dataSource={rows} columns={columns} pagination={false} scroll={{ x: true }}
+        components={MATERIALS_TABLE_COMPONENTS}
         locale={{ emptyText: isSubmitted ? 'No material entries' : 'No entries yet — click "Add Material" above' }}
         summary={totalCost > 0 ? () => (
           <Table.Summary>
@@ -997,9 +1170,11 @@ function MaterialsTab({
 function MachineryTab({
   headerId,
   isSubmitted,
+  isActive,
 }: {
   headerId: string;
   isSubmitted: boolean;
+  isActive: boolean;
 }) {
   const { data: header } = useDprHeader(headerId);
   const { data: machinery } = useMachinery();
@@ -1010,6 +1185,16 @@ function MachineryTab({
   const { token } = theme.useToken();
   const [drafts, setDrafts] = useState<MachDraftRow[]>([]);
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
+  const fieldRefs = useRef<Record<string, { focus?: () => void } | null>>({});
+  const dropdownOpenRef = useRef<Record<string, boolean>>({});
+
+  const focusField = (key: string, field: string) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        fieldRefs.current[`${key}:${field}`]?.focus?.();
+      });
+    });
+  };
 
   const machineryById = new Map((machinery ?? []).map((m) => [m.id, m]));
   const entries = header?.machinery_entries ?? [];
@@ -1019,15 +1204,60 @@ function MachineryTab({
     setDrafts((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
   const removeDraft = (key: string) => setDrafts((prev) => prev.filter((d) => d.key !== key));
 
-  const saveDraft = async (draft: MachDraftRow) => {
-    if (!draft.machinery_id || draft.qty == null) { message.warning('Machine and quantity are required'); return; }
+  const addBlankDraft = () => {
+    const key = nextMachKey();
+    setDrafts((p) => [...p, { key, machinery_id: null, qty: null, hire_rate: null, hire_unit: null }]);
+    return key;
+  };
+
+  const addBlankDraftAndFocus = () => {
+    const key = addBlankDraft();
+    focusField(key, 'machine');
+    return key;
+  };
+
+  const saveDraft = async (draft: MachDraftRow): Promise<boolean> => {
+    if (!draft.machinery_id || draft.qty == null) { message.warning('Machine and quantity are required'); return false; }
     setSavingKeys((p) => new Set(p).add(draft.key));
     try {
       await addMachinery.mutateAsync({ headerId, data: { machinery_id: draft.machinery_id, quantity_used: String(draft.qty), hire_rate: draft.hire_unit !== 'OWNED' && draft.hire_rate != null ? String(draft.hire_rate) : undefined } });
       removeDraft(draft.key);
-    } catch (err) { message.error(getApiErrorMessage(err, 'Could not add entry')); }
+      return true;
+    } catch (err) { message.error(getApiErrorMessage(err, 'Could not add entry')); return false; }
     finally { setSavingKeys((p) => { const s = new Set(p); s.delete(draft.key); return s; }); }
   };
+
+  const saveDraftAndAdvance = async (draft: MachDraftRow) => {
+    const ok = await saveDraft(draft);
+    if (ok) { addBlankDraftAndFocus(); }
+  };
+
+  const machineryFieldOrder = (draft: MachDraftRow) =>
+    draft.hire_unit === 'OWNED' ? ['machine'] : ['machine', 'qty', 'hire_rate'];
+  const handleDraftKeyDown = (e: React.KeyboardEvent, draft: MachDraftRow, field: string) => {
+    if (e.key !== 'Enter') return;
+    if (dropdownOpenRef.current[`${draft.key}:${field}`]) return; // let Select confirm its highlighted option first
+    e.preventDefault();
+    const order = machineryFieldOrder(draft);
+    const idx = order.indexOf(field);
+    if (idx < 0) return;
+    if (idx < order.length - 1) {
+      fieldRefs.current[`${draft.key}:${order[idx + 1]}`]?.focus?.();
+    } else {
+      saveDraftAndAdvance(draft);
+    }
+  };
+
+  useEffect(() => {
+    if (!isActive) return;
+    if (drafts.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- ready-to-type on tab activation is the point; doesn't loop, addBlankDraft doesn't depend on isActive
+      addBlankDraftAndFocus();
+    } else {
+      focusField(drafts[0].key, 'machine');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive]);
 
   const saveQty = async (entry: DprMachineryRead, raw: string) => {
     const qty = parseFloat(raw);
@@ -1062,16 +1292,20 @@ function MachineryTab({
       render: (_: unknown, _r: MachRow, i: number) => <Typography.Text type="secondary" style={{ fontSize: 12 }}>{i + 1}</Typography.Text>,
     },
     {
-      title: 'Machine', key: 'machine',
+      title: 'Machine', key: 'machine', width: 180,
       render: (_: unknown, row: MachRow) =>
         row._kind === 'existing' ? (
           <Typography.Text>{machineryById.get(row.entry.machinery_id)?.name ?? row.entry.machinery_id}</Typography.Text>
         ) : (
-          <Select size="small" showSearch optionFilterProp="label" style={inp} placeholder="Select machine…" value={row.draft.machinery_id}
+          <Select
+            ref={(el) => { fieldRefs.current[`${row.draft.key}:machine`] = el; }}
+            size="small" showSearch optionFilterProp="label" style={inp} placeholder="Select machine…" value={row.draft.machinery_id}
             onChange={(v) => {
               const m = machineryById.get(v);
               patchDraft(row.draft.key, { machinery_id: v, hire_unit: m?.hire_unit ?? null, qty: m?.hire_unit === 'OWNED' ? 1 : null, hire_rate: m?.hire_unit === 'OWNED' ? null : (m?.hire_rate ? parseFloat(m.hire_rate) : null) });
             }}
+            onDropdownVisibleChange={(open) => { dropdownOpenRef.current[`${row.draft.key}:machine`] = open; }}
+            onKeyDown={(e) => handleDraftKeyDown(e, row.draft, 'machine')}
             options={(machinery ?? []).map((m) => ({ value: m.id, label: m.name }))} />
         ),
     },
@@ -1091,8 +1325,11 @@ function MachineryTab({
             defaultValue={parseFloat(row.entry.quantity_used)} onBlur={(e) => saveQty(row.entry, e.target.value)}
             disabled={isSubmitted || row.entry.hire_unit === 'OWNED'} />
         ) : (
-          <InputNumber size="small" min={0} style={inp} placeholder="0" value={row.draft.qty}
-            disabled={row.draft.hire_unit === 'OWNED'} onChange={(v) => patchDraft(row.draft.key, { qty: v })} />
+          <InputNumber
+            ref={(el) => { fieldRefs.current[`${row.draft.key}:qty`] = el; }}
+            size="small" min={0} style={inp} placeholder="0" value={row.draft.qty}
+            disabled={row.draft.hire_unit === 'OWNED'} onChange={(v) => patchDraft(row.draft.key, { qty: v })}
+            onKeyDown={(e) => handleDraftKeyDown(e, row.draft, 'qty')} />
         ),
     },
     {
@@ -1105,7 +1342,10 @@ function MachineryTab({
             onBlur={(e) => saveRate(row.entry, e.target.value)} disabled={isSubmitted} />;
         }
         if (row.draft.hire_unit === 'OWNED') return <Typography.Text type="secondary" style={{ fontSize: 12 }}>Owned — no cost</Typography.Text>;
-        return <InputNumber size="small" min={0} precision={2} style={inp} placeholder="Rate (auto)" value={row.draft.hire_rate} onChange={(v) => patchDraft(row.draft.key, { hire_rate: v })} />;
+        return <InputNumber
+          ref={(el) => { fieldRefs.current[`${row.draft.key}:hire_rate`] = el; }}
+          size="small" min={0} precision={2} style={inp} placeholder="Rate (auto)" value={row.draft.hire_rate} onChange={(v) => patchDraft(row.draft.key, { hire_rate: v })}
+          onKeyDown={(e) => handleDraftKeyDown(e, row.draft, 'hire_rate')} />;
       },
     },
     {
@@ -1149,7 +1389,7 @@ function MachineryTab({
         </span>
         {!isSubmitted && (
           <Button size="small" icon={<PlusOutlined />}
-            onClick={() => setDrafts((p) => [...p, { key: nextMachKey(), machinery_id: null, qty: null, hire_rate: null, hire_unit: null }])}>
+            onClick={() => addBlankDraftAndFocus()}>
             Add Machine
           </Button>
         )}
@@ -1157,7 +1397,8 @@ function MachineryTab({
       {isSubmitted && <Alert type="info" showIcon style={{ margin: 12 }} message="DPR is submitted — machinery entries are locked." />}
       <Table<MachRow>
         rowKey={(row) => row._kind === 'existing' ? row.entry.id : row.draft.key}
-        size="small" dataSource={rows} columns={columns} pagination={false} scroll={{ x: 620 }}
+        size="small" dataSource={rows} columns={columns} pagination={false} scroll={{ x: true }}
+        components={MACHINERY_TABLE_COMPONENTS}
         locale={{ emptyText: isSubmitted ? 'No machinery entries' : 'No entries yet — click "Add Machine" above' }}
         summary={totalCost > 0 ? () => (
           <Table.Summary>
@@ -1185,9 +1426,11 @@ const SEVERITY_COLOR: Record<IssueSeverity, string> = {
 function IssuesTab({
   headerId,
   isSubmitted,
+  isActive,
 }: {
   headerId: string;
   isSubmitted: boolean;
+  isActive: boolean;
 }) {
   const { data: header } = useDprHeader(headerId);
   const addIssue = useAddDprIssue();
@@ -1197,6 +1440,16 @@ function IssuesTab({
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
   const [photoFiles, setPhotoFiles] = useState<Record<string, File>>({});
   const photoInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const fieldRefs = useRef<Record<string, { focus?: () => void } | null>>({});
+  const dropdownOpenRef = useRef<Record<string, boolean>>({});
+
+  const focusField = (key: string, field: string) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        fieldRefs.current[`${key}:${field}`]?.focus?.();
+      });
+    });
+  };
 
   const entries = header?.issues ?? [];
 
@@ -1204,10 +1457,22 @@ function IssuesTab({
     setDrafts((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
   const removeDraft = (key: string) => setDrafts((prev) => prev.filter((d) => d.key !== key));
 
-  const saveDraft = async (draft: IssueDraftRow) => {
+  const addBlankDraft = () => {
+    const key = nextIssueKey();
+    setDrafts((p) => [...p, { key, description: '', severity: null }]);
+    return key;
+  };
+
+  const addBlankDraftAndFocus = () => {
+    const key = addBlankDraft();
+    focusField(key, 'description');
+    return key;
+  };
+
+  const saveDraft = async (draft: IssueDraftRow): Promise<boolean> => {
     if (!draft.description.trim() || !draft.severity) {
       message.warning('Description and severity are required');
-      return;
+      return false;
     }
     setSavingKeys((p) => new Set(p).add(draft.key));
     try {
@@ -1220,12 +1485,43 @@ function IssuesTab({
       });
       removeDraft(draft.key);
       setPhotoFiles((prev) => { const next = { ...prev }; delete next[draft.key]; return next; });
+      return true;
     } catch (err) {
       message.error(getApiErrorMessage(err, 'Could not log issue'));
+      return false;
     } finally {
       setSavingKeys((p) => { const s = new Set(p); s.delete(draft.key); return s; });
     }
   };
+
+  const saveDraftAndAdvance = async (draft: IssueDraftRow) => {
+    const ok = await saveDraft(draft);
+    if (ok) { addBlankDraftAndFocus(); }
+  };
+
+  const ISSUE_FIELD_ORDER = ['description', 'severity'];
+  const handleDraftKeyDown = (e: React.KeyboardEvent, draft: IssueDraftRow, field: string) => {
+    if (e.key !== 'Enter') return;
+    if (dropdownOpenRef.current[`${draft.key}:${field}`]) return; // let Select confirm its highlighted option first
+    e.preventDefault();
+    const idx = ISSUE_FIELD_ORDER.indexOf(field);
+    if (idx < ISSUE_FIELD_ORDER.length - 1) {
+      fieldRefs.current[`${draft.key}:${ISSUE_FIELD_ORDER[idx + 1]}`]?.focus?.();
+    } else {
+      saveDraftAndAdvance(draft);
+    }
+  };
+
+  useEffect(() => {
+    if (!isActive) return;
+    if (drafts.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- ready-to-type on tab activation is the point; doesn't loop, addBlankDraft doesn't depend on isActive
+      addBlankDraftAndFocus();
+    } else {
+      focusField(drafts[0].key, 'description');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive]);
 
   const rows: IssueRow[] = [
     ...entries.map((e): IssueRow => ({ _kind: 'existing', entry: e })),
@@ -1240,16 +1536,18 @@ function IssuesTab({
       render: (_: unknown, _r: IssueRow, i: number) => <Typography.Text type="secondary" style={{ fontSize: 12 }}>{i + 1}</Typography.Text>,
     },
     {
-      title: 'Description', key: 'description',
+      title: 'Description', key: 'description', width: 240,
       render: (_: unknown, row: IssueRow) =>
         row._kind === 'existing' ? (
           <Typography.Text>{row.entry.description}</Typography.Text>
         ) : (
           <Input.TextArea
+            ref={(el) => { fieldRefs.current[`${row.draft.key}:description`] = el; }}
             size="small" rows={1} autoSize={{ minRows: 1, maxRows: 3 }} style={inp}
             placeholder="Describe the issue or blocker…"
             value={row.draft.description}
             onChange={(e) => patchDraft(row.draft.key, { description: e.target.value })}
+            onKeyDown={(e) => handleDraftKeyDown(e, row.draft, 'description')}
           />
         ),
     },
@@ -1260,9 +1558,12 @@ function IssuesTab({
           <Tag color={SEVERITY_COLOR[row.entry.severity]} style={{ margin: 0 }}>{row.entry.severity}</Tag>
         ) : (
           <Select
+            ref={(el) => { fieldRefs.current[`${row.draft.key}:severity`] = el; }}
             size="small" style={inp} placeholder="Severity"
             value={row.draft.severity ?? undefined}
             onChange={(v) => patchDraft(row.draft.key, { severity: v })}
+            onDropdownVisibleChange={(open) => { dropdownOpenRef.current[`${row.draft.key}:severity`] = open; }}
+            onKeyDown={(e) => handleDraftKeyDown(e, row.draft, 'severity')}
             options={[
               { value: 'LOW', label: 'Low' },
               { value: 'MEDIUM', label: 'Medium' },
@@ -1335,7 +1636,7 @@ function IssuesTab({
         </span>
         {!isSubmitted && (
           <Button size="small" icon={<PlusOutlined />}
-            onClick={() => setDrafts((p) => [...p, { key: nextIssueKey(), description: '', severity: null }])}>
+            onClick={() => addBlankDraftAndFocus()}>
             Add Issue
           </Button>
         )}
@@ -1343,7 +1644,8 @@ function IssuesTab({
       {isSubmitted && <Alert type="info" showIcon style={{ margin: 12 }} message="DPR is submitted — issues are locked." />}
       <Table<IssueRow>
         rowKey={(row) => row._kind === 'existing' ? row.entry.id : row.draft.key}
-        size="small" dataSource={rows} columns={columns} pagination={false} scroll={{ x: 620 }}
+        size="small" dataSource={rows} columns={columns} pagination={false} scroll={{ x: true }}
+        components={ISSUES_TABLE_COMPONENTS}
         locale={{ emptyText: isSubmitted ? 'No issues logged' : 'No entries yet — click "Add Issue" above' }}
       />
     </div>
@@ -1367,7 +1669,7 @@ type ExpRow =
   | { _kind: 'existing'; entry: ExpenseRead }
   | { _kind: 'draft'; draft: ExpenseDraft };
 
-function ExpensesTab({ projectId, headerId, entryDate }: { projectId: string; headerId: string; entryDate: string }) {
+function ExpensesTab({ projectId, headerId, entryDate, isActive }: { projectId: string; headerId: string; entryDate: string; isActive: boolean }) {
   const { token } = theme.useToken();
   const { data: expenses, isLoading } = useExpensesByHeader(headerId);
   const { data: categories } = useExpenseCategories();
@@ -1381,6 +1683,16 @@ function ExpensesTab({ projectId, headerId, entryDate }: { projectId: string; he
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const [editExpRow, setEditExpRow] = useState<{ expense_category_id: string | null; amount: number | null; vendor_name: string; remarks: string; }>({ expense_category_id: null, amount: null, vendor_name: '', remarks: '' });
   const [editExpSaving, setEditExpSaving] = useState(false);
+  const fieldRefs = useRef<Record<string, { focus?: () => void } | null>>({});
+  const dropdownOpenRef = useRef<Record<string, boolean>>({});
+
+  const focusField = (key: string, field: string) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        fieldRefs.current[`${key}:${field}`]?.focus?.();
+      });
+    });
+  };
 
   const forDate = expenses ?? [];
   const categoryById = new Map((categories ?? []).map((c) => [c.id, c.name]));
@@ -1390,10 +1702,22 @@ function ExpensesTab({ projectId, headerId, entryDate }: { projectId: string; he
     setDrafts((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
   const removeDraft = (key: string) => setDrafts((prev) => prev.filter((d) => d.key !== key));
 
-  const saveDraft = async (draft: ExpenseDraft) => {
+  const addBlankDraft = () => {
+    const key = nextExpenseKey();
+    setDrafts((p) => [...p, { key, expense_category_id: null, amount: null, vendor_name: '', remarks: '' }]);
+    return key;
+  };
+
+  const addBlankDraftAndFocus = () => {
+    const key = addBlankDraft();
+    focusField(key, 'category');
+    return key;
+  };
+
+  const saveDraft = async (draft: ExpenseDraft): Promise<boolean> => {
     if (!draft.expense_category_id || draft.amount == null) {
       message.warning('Category and amount are required');
-      return;
+      return false;
     }
     setSavingKeys((p) => new Set(p).add(draft.key));
     try {
@@ -1407,12 +1731,43 @@ function ExpensesTab({ projectId, headerId, entryDate }: { projectId: string; he
         remarks: draft.remarks.trim() || undefined,
       });
       removeDraft(draft.key);
+      return true;
     } catch (err) {
       message.error(getApiErrorMessage(err, 'Could not save expense'));
+      return false;
     } finally {
       setSavingKeys((p) => { const s = new Set(p); s.delete(draft.key); return s; });
     }
   };
+
+  const saveDraftAndAdvance = async (draft: ExpenseDraft) => {
+    const ok = await saveDraft(draft);
+    if (ok) { addBlankDraftAndFocus(); }
+  };
+
+  const EXPENSE_FIELD_ORDER = ['category', 'amount', 'vendor', 'remarks'];
+  const handleDraftKeyDown = (e: React.KeyboardEvent, draft: ExpenseDraft, field: string) => {
+    if (e.key !== 'Enter') return;
+    if (dropdownOpenRef.current[`${draft.key}:${field}`]) return; // let Select confirm its highlighted option first
+    e.preventDefault();
+    const idx = EXPENSE_FIELD_ORDER.indexOf(field);
+    if (idx < EXPENSE_FIELD_ORDER.length - 1) {
+      fieldRefs.current[`${draft.key}:${EXPENSE_FIELD_ORDER[idx + 1]}`]?.focus?.();
+    } else {
+      saveDraftAndAdvance(draft);
+    }
+  };
+
+  useEffect(() => {
+    if (!isActive) return;
+    if (drafts.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- ready-to-type on tab activation is the point; doesn't loop, addBlankDraft doesn't depend on isActive
+      addBlankDraftAndFocus();
+    } else {
+      focusField(drafts[0].key, 'category');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive]);
 
   const startEditExpense = (expense: ExpenseRead) => {
     setEditingExpenseId(expense.id);
@@ -1469,6 +1824,7 @@ function ExpensesTab({ projectId, headerId, entryDate }: { projectId: string; he
     {
       title: 'Category',
       key: 'category',
+      width: 180,
       render: (_: unknown, row: ExpRow) => {
         if (row._kind === 'existing') {
           if (editingExpenseId === row.entry.id) {
@@ -1482,9 +1838,13 @@ function ExpensesTab({ projectId, headerId, entryDate }: { projectId: string; he
           return <Typography.Text>{categoryById.get(row.entry.expense_category_id) ?? row.entry.expense_category_id}</Typography.Text>;
         }
         return (
-          <Select size="small" style={inp} showSearch optionFilterProp="label" placeholder="Select category…"
+          <Select
+            ref={(el) => { fieldRefs.current[`${row.draft.key}:category`] = el; }}
+            size="small" style={inp} showSearch optionFilterProp="label" placeholder="Select category…"
             value={row.draft.expense_category_id ?? undefined}
             onChange={(v) => patchDraft(row.draft.key, { expense_category_id: v })}
+            onDropdownVisibleChange={(open) => { dropdownOpenRef.current[`${row.draft.key}:category`] = open; }}
+            onKeyDown={(e) => handleDraftKeyDown(e, row.draft, 'category')}
             options={(categories ?? []).map((c) => ({ value: c.id, label: c.name }))} />
         );
       },
@@ -1504,9 +1864,12 @@ function ExpensesTab({ projectId, headerId, entryDate }: { projectId: string; he
           return <Typography.Text strong style={{ fontSize: 12 }}>{fmtAmt(parseFloat(row.entry.amount))}</Typography.Text>;
         }
         return (
-          <InputNumber size="small" style={inp} min={0} precision={2} placeholder="0.00"
+          <InputNumber
+            ref={(el) => { fieldRefs.current[`${row.draft.key}:amount`] = el; }}
+            size="small" style={inp} min={0} precision={2} placeholder="0.00"
             value={row.draft.amount ?? undefined}
-            onChange={(v) => patchDraft(row.draft.key, { amount: v })} />
+            onChange={(v) => patchDraft(row.draft.key, { amount: v })}
+            onKeyDown={(e) => handleDraftKeyDown(e, row.draft, 'amount')} />
         );
       },
     },
@@ -1524,15 +1887,19 @@ function ExpensesTab({ projectId, headerId, entryDate }: { projectId: string; he
           return <Typography.Text style={{ fontSize: 12 }}>{row.entry.vendor_name || '—'}</Typography.Text>;
         }
         return (
-          <Input size="small" style={inp} placeholder="Vendor (optional)"
+          <Input
+            ref={(el) => { fieldRefs.current[`${row.draft.key}:vendor`] = el; }}
+            size="small" style={inp} placeholder="Vendor (optional)"
             value={row.draft.vendor_name}
-            onChange={(e) => patchDraft(row.draft.key, { vendor_name: e.target.value })} />
+            onChange={(e) => patchDraft(row.draft.key, { vendor_name: e.target.value })}
+            onKeyDown={(e) => handleDraftKeyDown(e, row.draft, 'vendor')} />
         );
       },
     },
     {
       title: 'Remarks',
       key: 'remarks',
+      width: 200,
       render: (_: unknown, row: ExpRow) => {
         if (row._kind === 'existing') {
           if (editingExpenseId === row.entry.id) {
@@ -1543,9 +1910,12 @@ function ExpensesTab({ projectId, headerId, entryDate }: { projectId: string; he
           return <Typography.Text type="secondary" style={{ fontSize: 12 }}>{row.entry.remarks || '—'}</Typography.Text>;
         }
         return (
-          <Input size="small" style={inp} placeholder="Remarks (optional)"
+          <Input
+            ref={(el) => { fieldRefs.current[`${row.draft.key}:remarks`] = el; }}
+            size="small" style={inp} placeholder="Remarks (optional)"
             value={row.draft.remarks}
-            onChange={(e) => patchDraft(row.draft.key, { remarks: e.target.value })} />
+            onChange={(e) => patchDraft(row.draft.key, { remarks: e.target.value })}
+            onKeyDown={(e) => handleDraftKeyDown(e, row.draft, 'remarks')} />
         );
       },
     },
@@ -1597,7 +1967,7 @@ function ExpensesTab({ projectId, headerId, entryDate }: { projectId: string; he
         </span>
         <Button
           size="small" icon={<PlusOutlined />}
-          onClick={() => setDrafts((p) => [...p, { key: nextExpenseKey(), expense_category_id: null, amount: null, vendor_name: '', remarks: '' }])}
+          onClick={() => addBlankDraftAndFocus()}
         >
           Add Expense
         </Button>
@@ -1609,7 +1979,8 @@ function ExpensesTab({ projectId, headerId, entryDate }: { projectId: string; he
         dataSource={rows}
         columns={columns}
         pagination={false}
-        scroll={{ x: 600 }}
+        scroll={{ x: true }}
+        components={EXPENSES_TABLE_COMPONENTS}
         locale={{ emptyText: 'No expenses recorded for this DPR' }}
         summary={totalAmount > 0 ? () => (
           <Table.Summary>
@@ -1633,10 +2004,12 @@ function MeasurementsTab({
   projectId,
   entryDate,
   isSubmitted,
+  isActive,
 }: {
   projectId: string;
   entryDate: string;
   isSubmitted: boolean;
+  isActive: boolean;
 }) {
   const user = useAuthStore((s) => s.user);
   const { data: measurements, isLoading } = useMeasurements(projectId);
@@ -1656,6 +2029,15 @@ function MeasurementsTab({
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
   const [photoFiles, setPhotoFiles] = useState<Record<string, File>>({});
   const photoInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const fieldRefs = useRef<Record<string, { focus?: () => void } | null>>({});
+
+  const focusField = (key: string, field: string) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        fieldRefs.current[`${key}:${field}`]?.focus?.();
+      });
+    });
+  };
 
   const [steelModalDraftKey, setSteelModalDraftKey] = useState<string | null>(null);
 
@@ -1686,6 +2068,29 @@ function MeasurementsTab({
 
   const patchDraft = (key: string, patch: Partial<MeasDraftRow>) =>
     setDrafts((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
+
+  const addBlankDraft = () => {
+    const key = nextMeasKey();
+    setDrafts((p) => [...p, { key, boq_item_id: null, boq_template_id: null, dimensions: {}, steel_lines: [], chainage: '', qty: null, rate: null }]);
+    return key;
+  };
+
+  const addBlankDraftAndFocus = () => {
+    const key = addBlankDraft();
+    focusField(key, 'boq');
+    return key;
+  };
+
+  useEffect(() => {
+    if (!isActive) return;
+    if (drafts.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- ready-to-type on tab activation is the point; doesn't loop, addBlankDraft doesn't depend on isActive
+      addBlankDraftAndFocus();
+    } else {
+      focusField(drafts[0].key, 'boq');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive]);
 
   // Patch a single dimension field AND recalculate qty from the formula
   const patchDimension = (draftKey: string, field: string, value: number | null) => {
@@ -1909,6 +2314,7 @@ function MeasurementsTab({
           (() => { const item = boqById.get(row.entry.boq_item_id); return item ? `${item.item_no} — ${item.description}` : row.entry.boq_item_id; })()
         ) : (
           <Select
+            ref={(el) => { fieldRefs.current[`${row.draft.key}:boq`] = el; }}
             size="small" showSearch optionFilterProp="label" style={inp}
             placeholder="Select BOQ item…"
             value={row.draft.boq_item_id ?? undefined}
@@ -2209,7 +2615,7 @@ function MeasurementsTab({
           {!isSubmitted && (
             <Button
               size="small" icon={<PlusOutlined />}
-              onClick={() => setDrafts((p) => [...p, { key: nextMeasKey(), boq_item_id: null, boq_template_id: null, dimensions: {}, steel_lines: [], chainage: '', qty: null, rate: null }])}
+              onClick={() => addBlankDraftAndFocus()}
             >
               Add Measurement
             </Button>
@@ -2225,11 +2631,7 @@ function MeasurementsTab({
           columns={columns}
           pagination={false}
           scroll={{ x: true }}
-          components={{
-            table: ({ style, ...rest }: React.HTMLAttributes<HTMLTableElement>) => (
-              <table {...rest} style={{ ...style, tableLayout: 'fixed', width: '100%', minWidth: 956 }} />
-            ),
-          }}
+          components={MEASUREMENTS_TABLE_COMPONENTS}
           locale={{ emptyText: `No measurements for ${fmtDate(entryDate)}` }}
           summary={totalQty > 0 ? () => (
             <Table.Summary>
@@ -2506,9 +2908,11 @@ interface ProductionState {
 function ProductionTab({
   headerId,
   isSubmitted,
+  isActive,
 }: {
   headerId: string;
   isSubmitted: boolean;
+  isActive: boolean;
 }) {
   const selectedProjectId = useProjectContextStore((s) => s.selectedProjectId);
   const { data: sections, isLoading: sectionsLoading } = useBoqSections(selectedProjectId);
@@ -2528,6 +2932,7 @@ function ProductionTab({
   const [activitySummary, setActivitySummary] = useState('');
   const [production, setProduction] = useState<Record<string, ProductionState>>({});
   const touchedRef = useRef<Set<string>>(new Set());
+  const qtyFieldRefs = useRef<Record<string, { focus?: () => void } | null>>({});
 
   useEffect(() => {
     if (!existingEntries) return;
@@ -2573,6 +2978,35 @@ function ProductionTab({
     if (isNaN(q) || isNaN(r)) return '—';
     return fmtAmt(q * r);
   };
+
+  // Qty column only — items locked by a Measurement Book entry have no
+  // input here (qty is owned by MB), so they're skipped when navigating.
+  const navigableQtyItemIds = rows
+    .filter((r) => r._type === 'item' && !lockedByMeasurement.has(r.item.id))
+    .map((r) => (r as Extract<ProductionRow, { _type: 'item' }>).item.id);
+
+  const handleQtyKeyDown = (e: React.KeyboardEvent, boqItemId: string) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const idx = navigableQtyItemIds.indexOf(boqItemId);
+    if (idx >= 0 && idx < navigableQtyItemIds.length - 1) {
+      qtyFieldRefs.current[navigableQtyItemIds[idx + 1]]?.focus?.();
+    }
+  };
+
+  useEffect(() => {
+    if (!isActive) return;
+    const firstId = navigableQtyItemIds[0];
+    if (!firstId) return; // BOQ sections still loading, or nothing navigable — nothing to focus yet
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        qtyFieldRefs.current[firstId]?.focus?.();
+      });
+    });
+    // Re-run once `sections` finishes loading (navigableQtyItemIds derives
+    // from it) in addition to on tab activation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, sections]);
 
   const columns: TableColumnsType<ProductionRow> = [
     {
@@ -2660,9 +3094,11 @@ function ProductionTab({
         }
         return (
           <InputNumber
+            ref={(el) => { qtyFieldRefs.current[row.item.id] = el; }}
             size="small"
             value={val === '' ? undefined : parseFloat(val)}
             onChange={(v) => setQty(row.item.id, v === null || v === undefined ? '' : String(v))}
+            onKeyDown={(e) => handleQtyKeyDown(e, row.item.id)}
             disabled={isSubmitted}
             style={{ width: '100%' }}
             placeholder="0"
@@ -2727,7 +3163,8 @@ function ProductionTab({
         pagination={false}
         size="small"
         bordered
-        scroll={{ x: 870 }}
+        scroll={{ x: true }}
+        components={PRODUCTION_TABLE_COMPONENTS}
         onRow={(row) => ({ style: { background: row._type === 'header' ? HDR_BG : undefined } })}
       />
 
@@ -3202,6 +3639,7 @@ export function DprTodayPage() {
   const [noWork, setNoWork] = useState(false);
   const [noWorkReasonKind, setNoWorkReasonKind] = useState<string>('Rain');
   const [noWorkReasonCustom, setNoWorkReasonCustom] = useState('');
+  const [activeTabKey, setActiveTabKey] = useState('production');
 
   const selectedDateHeader = dprList?.find((d) => d.report_date === entryDateStr);
 
@@ -3374,46 +3812,46 @@ export function DprTodayPage() {
     {
       key: 'production',
       label: 'Production',
-      children: currentDprHeaderId ? <ProductionTab headerId={currentDprHeaderId} isSubmitted={isSubmitted} /> : null,
+      children: currentDprHeaderId ? <ProductionTab headerId={currentDprHeaderId} isSubmitted={isSubmitted} isActive={activeTabKey === 'production'} /> : null,
     },
     {
       key: 'attendance',
       label: 'Attendance',
-      children: selectedProjectId ? <AttendanceTab projectId={selectedProjectId} entryDate={entryDateStr} isSubmitted={isSubmitted} /> : null,
+      children: selectedProjectId ? <AttendanceTab projectId={selectedProjectId} entryDate={entryDateStr} isSubmitted={isSubmitted} isActive={activeTabKey === 'attendance'} /> : null,
     },
     {
       key: 'labour',
       label: 'Labour',
       children: currentDprHeaderId && selectedProjectId
-        ? <LabourTab headerId={currentDprHeaderId} projectId={selectedProjectId} isSubmitted={isSubmitted} />
+        ? <LabourTab headerId={currentDprHeaderId} projectId={selectedProjectId} isSubmitted={isSubmitted} isActive={activeTabKey === 'labour'} />
         : null,
     },
     {
       key: 'materials',
       label: 'Materials',
-      children: currentDprHeaderId ? <MaterialsTab headerId={currentDprHeaderId} isSubmitted={isSubmitted} /> : null,
+      children: currentDprHeaderId ? <MaterialsTab headerId={currentDprHeaderId} isSubmitted={isSubmitted} isActive={activeTabKey === 'materials'} /> : null,
     },
     {
       key: 'machinery',
       label: 'Machinery',
-      children: currentDprHeaderId ? <MachineryTab headerId={currentDprHeaderId} isSubmitted={isSubmitted} /> : null,
+      children: currentDprHeaderId ? <MachineryTab headerId={currentDprHeaderId} isSubmitted={isSubmitted} isActive={activeTabKey === 'machinery'} /> : null,
     },
     {
       key: 'measurements',
       label: 'Measurements',
-      children: selectedProjectId ? <MeasurementsTab projectId={selectedProjectId} entryDate={entryDateStr} isSubmitted={isSubmitted} /> : null,
+      children: selectedProjectId ? <MeasurementsTab projectId={selectedProjectId} entryDate={entryDateStr} isSubmitted={isSubmitted} isActive={activeTabKey === 'measurements'} /> : null,
     },
     {
       key: 'expenses',
       label: 'Expenses',
       children: selectedProjectId && currentDprHeaderId
-        ? <ExpensesTab projectId={selectedProjectId} headerId={currentDprHeaderId} entryDate={entryDateStr} />
+        ? <ExpensesTab projectId={selectedProjectId} headerId={currentDprHeaderId} entryDate={entryDateStr} isActive={activeTabKey === 'expenses'} />
         : null,
     },
     {
       key: 'issues',
       label: 'Issues',
-      children: currentDprHeaderId ? <IssuesTab headerId={currentDprHeaderId} isSubmitted={isSubmitted} /> : null,
+      children: currentDprHeaderId ? <IssuesTab headerId={currentDprHeaderId} isSubmitted={isSubmitted} isActive={activeTabKey === 'issues'} /> : null,
     },
   ];
 
@@ -3485,8 +3923,9 @@ export function DprTodayPage() {
         </Card>
       ) : (
         <Tabs
-          defaultActiveKey="production"
+          activeKey={activeTabKey}
           onChange={(key) => {
+            setActiveTabKey(key);
             if (currentDprHeaderId && (key === 'production' || key === 'measurements')) {
               queryClient.invalidateQueries({ queryKey: ['dpr-production', currentDprHeaderId] });
               queryClient.invalidateQueries({ queryKey: ['dpr-measurements', currentDprHeaderId] });
