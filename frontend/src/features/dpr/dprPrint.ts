@@ -421,7 +421,7 @@ export function buildPrintableHTML(
   ${buildExpensesSection(report.expenses, slice, fmtAmt)}
 
   ${buildSummarySection(report.summary, slice, month, fmtAmt, dateFormat)}
-  ${idx === slices.length - 1 ? buildSignatures(report) : ''}
+  ${buildSignatures(report)}
 </div>`;
   });
 
