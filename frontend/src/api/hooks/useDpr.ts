@@ -171,6 +171,7 @@ export interface DailyAmountCell {
 export interface MaterialConsumptionRow {
   material_id: string;
   name: string;
+  category: string | null;
   unit: string;
   daily: DailyProductionCell[];
   total_qty: string;
@@ -216,6 +217,8 @@ export interface DprMonthlyReportRead {
   project_id: string;
   month: string;
   days_in_month: number;
+  prepared_by_name: string | null;
+  verified_by_name: string | null;
   sections: DprReportSectionRead[];
   total_agreed_amount: string;
   total_closing_amount: string;

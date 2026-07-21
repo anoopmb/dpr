@@ -274,7 +274,7 @@ function exportMonthlyReportToExcel(
 
   // ── A. Daily Production ───────────────────────────────────────────────
   rows.push(['A', 'Daily Production']);
-  const prodHeader = ['Item No', 'Description', 'Unit', 'Rate', 'Agreed Qty', 'Opening Qty', 'Opening Amt'];
+  const prodHeader = ['Item No', 'Description', 'Unit', 'Rate', 'Agreed Qty', 'Total Done', 'Balance', 'Opening Qty', 'Opening Amt'];
   for (let d = 1; d <= daysInMonth; d++) prodHeader.push(`Day ${d} Qty`, `Day ${d} Amt`);
   prodHeader.push('Closing Qty', 'Closing Amt');
   rows.push(prodHeader);
@@ -284,14 +284,15 @@ function exportMonthlyReportToExcel(
     rows.push([`${section.section_no ? section.section_no + '. ' : ''}${section.section_name.toUpperCase()}`]);
     pushMerge(sectionRowIdx, 0, prodHeader.length - 1);
     for (const item of section.items) {
-      const row: (string | number)[] = [item.item_no, item.description, item.unit, fmtQtyRaw(item.rate), fmtQtyRaw(item.agreed_qty), fmtQtyRaw(item.opening_qty), fmtAmtRaw(item.opening_amount)];
+      const balance = parseFloat(item.agreed_qty) - parseFloat(item.closing_qty);
+      const row: (string | number)[] = [item.item_no, item.description, item.unit, fmtQtyRaw(item.rate), fmtQtyRaw(item.agreed_qty), fmtQtyRaw(item.closing_qty), fmtQtyRaw(String(balance)), fmtQtyRaw(item.opening_qty), fmtAmtRaw(item.opening_amount)];
       for (const cell of item.daily) row.push(fmtQtyRaw(cell.qty), fmtAmtRaw(cell.amount));
       row.push(fmtQtyRaw(item.closing_qty), fmtAmtRaw(item.closing_amount));
       rows.push(row);
     }
     const subtotal = computeSubtotal(section, daysInMonth);
     const subtotalRowIdx = rows.length;
-    const subtotalRow: (string | number)[] = ['', 'Section Total', '', '', '', fmtQtyRaw(String(subtotal.opening_qty)), fmtAmtRaw(String(subtotal.opening_amount))];
+    const subtotalRow: (string | number)[] = ['', 'Section Total', '', '', '', fmtQtyRaw(String(subtotal.closing_qty)), '', fmtQtyRaw(String(subtotal.opening_qty)), fmtAmtRaw(String(subtotal.opening_amount))];
     for (const cell of subtotal.daily) subtotalRow.push(fmtQtyRaw(String(cell.qty)), fmtAmtRaw(String(cell.amount)));
     subtotalRow.push(fmtQtyRaw(String(subtotal.closing_qty)), fmtAmtRaw(String(subtotal.closing_amount)));
     rows.push(subtotalRow);
@@ -383,6 +384,10 @@ function exportMonthlyReportToExcel(
       isWeekBoundary ? fmtAmtRaw(cell.cumulative_expense) : '',
     ]);
   }
+
+  rows.push([]);
+  rows.push([]);
+  rows.push([`Prepared by (Site Engineer): ${report.prepared_by_name ?? ''}`, '', '', `Verified by (Project Manager): ${report.verified_by_name ?? ''}`]);
 
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -527,6 +532,33 @@ export function DprMonthlyReportPage() {
         align: 'right' as const,
         onCell: blankOnCell,
         render: (_, row) => (row._type === 'item' ? fmtQtyByUnit(row.item.agreed_qty, row.item.unit) : null),
+      },
+      {
+        title: 'Total Done',
+        key: 'total_done',
+        width: 90,
+        align: 'right' as const,
+        onCell: dataOnCell,
+        render: (_, row) => {
+          if (row._type === 'item') return fmtQtyByUnit(row.item.closing_qty, row.item.unit);
+          if (row._type === 'subtotal') return fmtQty(row.subtotal.closing_qty);
+          return null;
+        },
+      },
+      {
+        title: 'Balance',
+        key: 'balance_qty',
+        width: 90,
+        align: 'right' as const,
+        onCell: blankOnCell,
+        // Contract − done, per item. Blank on subtotal rows: summing balance
+        // across mixed-unit items isn't meaningful (same reason Contract Qty
+        // is blank there).
+        render: (_, row) => {
+          if (row._type !== 'item') return null;
+          const bal = parseFloat(row.item.agreed_qty) - parseFloat(row.item.closing_qty);
+          return fmtQtyByUnit(bal, row.item.unit);
+        },
       },
       {
         title: 'Up to Date (Start of Month)',
@@ -709,6 +741,23 @@ export function DprMonthlyReportPage() {
           <ExpensesSection rows={report?.expenses ?? []} daysInMonth={daysInMonth} fmtAmt={fmtAmt} />
 
           <SummarySection summary={report?.summary ?? []} fmtDate={fmtDateForDay} fmtAmt={fmtAmt} />
+
+          {report && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 48, marginTop: 40, marginBottom: 24, padding: '0 24px', flexWrap: 'wrap' }}>
+              <div style={{ textAlign: 'center', minWidth: 200 }}>
+                <div style={{ borderTop: '1px solid #999', paddingTop: 6, fontWeight: 600 }}>
+                  {report.prepared_by_name ?? '—'}
+                </div>
+                <Typography.Text type="secondary">Prepared by (Site Engineer)</Typography.Text>
+              </div>
+              <div style={{ textAlign: 'center', minWidth: 200 }}>
+                <div style={{ borderTop: '1px solid #999', paddingTop: 6, fontWeight: 600 }}>
+                  {report.verified_by_name ?? '—'}
+                </div>
+                <Typography.Text type="secondary">Verified by (Project Manager)</Typography.Text>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

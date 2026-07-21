@@ -69,6 +69,34 @@ function td(style: string, content: string | number = ''): string {
   return `<td style="${CELL}${style}">${content}</td>`;
 }
 
+// ── Unified column grid ──────────────────────────────────────────────────
+// Every stacked section (Production, Materials, Machinery, Labour, Expenses)
+// prints with the SAME colgroup so the day-by-day columns line up vertically
+// down the page. Sections with fewer real leading columns pad with blank
+// spacer cells. Layout = LEAD leading columns + numDays×(Qty,Amt) + 2 trailing.
+const LEAD = 9; // Item No, Description, Unit, Rate, Agreed, Total Done, Balance, Opening Qty, Opening Amt
+// Leading column widths (%). Sum ≈ 40; trailing ≈ 7.5; days share the rest.
+const LEAD_W = [3, 14, 2.5, 3.5, 3.5, 3.5, 3.5, 3, 3.5];
+const TRAIL_Q = 3.5;
+const TRAIL_A = 4;
+
+function unifiedColgroup(numDays: number): string {
+  const dayBlock = (100 - LEAD_W.reduce((s, w) => s + w, 0) - TRAIL_Q - TRAIL_A) / numDays;
+  const qtyW = (dayBlock * 0.467).toFixed(2);
+  const amtW = (dayBlock * 0.533).toFixed(2);
+  return `<colgroup>
+  ${LEAD_W.map((w) => `<col style="width:${w}%">`).join('')}
+  ${Array.from({ length: numDays }, () => `<col style="width:${qtyW}%"><col style="width:${amtW}%">`).join('')}
+  <col style="width:${TRAIL_Q}%"><col style="width:${TRAIL_A}%">
+</colgroup>`;
+}
+
+/** A run of `n` blank spacer <td>s (the unused leading columns) as one
+ * colspanned cell — keeps the day columns on their colgroup positions. */
+function blankSpan(n: number, style = ''): string {
+  return `<td colspan="${n}" style="${CELL}${style}"></td>`;
+}
+
 function shortDateFmt(dateFormat: string): string {
   return dateFormat.replace('YYYY-', '').replace('-YYYY', '').replace('/YYYY', '').replace('YYYY/', '');
 }
@@ -85,22 +113,12 @@ function buildProductionTable(
   const { startDayIdx, endDayIdx, startDay, endDay } = slice;
   const numDays = endDay - startDay + 1;
   const dayIdxs = Array.from({ length: numDays }, (_, i) => startDayIdx + i);
-  const totalCols = 5 + 2 + numDays * 2 + 2;
+  const totalCols = LEAD + numDays * 2 + 2;
 
   const openLabel = startDay === 1 ? 'Opening' : `Up to Day ${startDay - 1}`;
 
-  // Column widths in % summing to ~100 across A3 landscape
-  // Fixed: 3.5+17+2.5+3.5+3.5=30; Opening: 3.7+4.5=8.2; 7days*(3.5+4)=52.5; Closing: 3.7+4.5=8.2 → 98.9%
-  const dayQtyW = `${(24.5 / numDays).toFixed(1)}%`;
-  const dayAmtW = `${(28 / numDays).toFixed(1)}%`;
-
   let t = `<table style="${TABLE}">
-<colgroup>
-  <col style="width:3.5%"><col style="width:17%"><col style="width:2.5%"><col style="width:3.5%"><col style="width:3.5%">
-  <col style="width:3.7%"><col style="width:4.5%">
-  ${dayIdxs.map(() => `<col style="width:${dayQtyW}"><col style="width:${dayAmtW}">`).join('')}
-  <col style="width:3.7%"><col style="width:4.5%">
-</colgroup>
+${unifiedColgroup(numDays)}
 <thead>
 <tr style="${TH1}text-align:center">
   <th style="${CELL}${TH1}" rowspan="2">Item No</th>
@@ -108,6 +126,8 @@ function buildProductionTable(
   <th style="${CELL}${TH1}" rowspan="2">Unit</th>
   <th style="${CELL}${TH1}" rowspan="2">Rate(${esc(symbol)})</th>
   <th style="${CELL}${TH1}" rowspan="2">Agreed</th>
+  <th style="${CELL}${TH1}" rowspan="2">Total<br>Done</th>
+  <th style="${CELL}${TH1}" rowspan="2">Balance</th>
   <th style="${CELL}${TH1}" colspan="2">${esc(openLabel)}</th>
   ${dayIdxs.map(i => `<th style="${CELL}${TH1}" colspan="2">Day ${i + 1}<br><span style="font-size:5.5pt;font-weight:400">${esc(month.date(i + 1).format(shortDateFmt(dateFormat)))}</span></th>`).join('')}
   <th style="${CELL}${TH1}" colspan="2">Up to Day ${endDay}</th>
@@ -123,7 +143,7 @@ function buildProductionTable(
   for (const section of report.sections) {
     t += `<tr style="page-break-after:avoid;break-after:avoid"><td colspan="${totalCols}" style="${CELL}${SECHDR}">${esc((section.section_no ? section.section_no + '. ' : '') + section.section_name.toUpperCase())}</td></tr>`;
 
-    let subOQ = 0, subOA = 0, subCQ = 0, subCA = 0;
+    let subOQ = 0, subOA = 0, subCQ = 0, subCA = 0, subDone = 0;
     const subDQ = dayIdxs.map(() => 0);
     const subDA = dayIdxs.map(() => 0);
 
@@ -131,6 +151,11 @@ function buildProductionTable(
       const op = itemSliceOpening(item, startDayIdx);
       const cl = itemSliceClosing(item, startDayIdx, endDayIdx);
       subOQ += op.qty; subOA += op.amt; subCQ += cl.qty; subCA += cl.amt;
+      // Total Done / Balance are whole-month figures (contract progress),
+      // shown identically on every weekly page — not slice-dependent.
+      const done = parseFloat(item.closing_qty);
+      const balance = parseFloat(item.agreed_qty) - done;
+      subDone += done;
 
       t += `<tr>
         ${td('text-align:center;overflow:hidden', esc(item.item_no))}
@@ -138,6 +163,8 @@ function buildProductionTable(
         ${td('text-align:center', esc(item.unit))}
         ${td('text-align:right', fmtQty(item.rate, 2))}
         ${td('text-align:right', fmtQty(item.agreed_qty))}
+        ${td('text-align:right', fmtQty(done))}
+        ${td('text-align:right', fmtQty(balance))}
         ${td('text-align:right', nonZero(op.qty, q => fmtQty(q)))}
         ${td('text-align:right', nonZero(op.amt, a => fmtAmt(a)))}`;
 
@@ -154,6 +181,8 @@ function buildProductionTable(
 
     t += `<tr style="${SUBTOT}">
       <td colspan="5" style="${CELL}${SUBTOT}">Section Total</td>
+      ${td(SUBTOT + 'text-align:right', nonZero(subDone, q => fmtQty(q)))}
+      ${td(SUBTOT, '')}
       ${td(SUBTOT + 'text-align:right', nonZero(subOQ, q => fmtQty(q)))}
       ${td(SUBTOT + 'text-align:right', nonZero(subOA, a => fmtAmt(a)))}
       ${subDQ.map((q, i) => td(SUBTOT + 'text-align:right', nonZero(q, v => fmtQty(v))) + td(SUBTOT + 'text-align:right', nonZero(subDA[i], v => fmtAmt(v)))).join('')}
@@ -183,25 +212,23 @@ function buildQtyAmtSection(
   const { startDayIdx, startDay, endDay } = slice;
   const numDays = endDay - startDay + 1;
   const dayIdxs = Array.from({ length: numDays }, (_, i) => startDayIdx + i);
-  const dqw = `${(56 / numDays).toFixed(1)}%`;
-  const daw = `${(66 / numDays).toFixed(1)}%`;
-
+  // Unified grid: real leading cols = Description (col2) + Unit (col3);
+  // cols 1 and 4–9 are blank spacers so day data aligns with Production.
   let t = `<div style="font-size:6.5pt;font-weight:700;margin:3px 0 1px;padding:1px 4px;background:#e8f0fe;page-break-after:avoid;break-after:avoid">${esc(label)}</div>
 <table style="${TABLE}">
-<colgroup>
-  <col style="width:20%"><col style="width:6%">
-  ${dayIdxs.map(() => `<col style="width:${dqw}"><col style="width:${daw}">`).join('')}
-  <col style="width:6%"><col style="width:8%">
-</colgroup>
+${unifiedColgroup(numDays)}
 <thead>
 <tr style="${TH1}text-align:center">
+  <th style="${CELL}${TH1}"></th>
   <th style="${CELL}${TH1}text-align:left">Description</th>
   <th style="${CELL}${TH1}">Unit</th>
+  <th style="${CELL}${TH1}" colspan="6"></th>
   ${dayIdxs.map(i => `<th style="${CELL}${TH1}" colspan="2">Day ${i + 1}</th>`).join('')}
   <th style="${CELL}${TH1}" colspan="2">Week Total</th>
 </tr>
 <tr style="${TH2}text-align:center">
-  <th style="${CELL}${TH2}"></th><th style="${CELL}${TH2}"></th>
+  <th style="${CELL}${TH2}"></th><th style="${CELL}${TH2}"></th><th style="${CELL}${TH2}"></th>
+  <th style="${CELL}${TH2}" colspan="6"></th>
   ${dayIdxs.map(() => `<th style="${CELL}${TH2}">Qty</th><th style="${CELL}${TH2}">Amt</th>`).join('')}
   <th style="${CELL}${TH2}">Qty</th><th style="${CELL}${TH2}">Amt</th>
 </tr>
@@ -217,7 +244,7 @@ function buildQtyAmtSection(
     const wa = dayIdxs.reduce((s, di) => s + parseFloat(row.daily[di]?.amount ?? '0'), 0);
     totWQ += wq; totWA += wa;
 
-    t += `<tr>${td('overflow:hidden;text-overflow:ellipsis;white-space:nowrap', esc(row.name))}${td('text-align:center', esc(row.unit))}`;
+    t += `<tr>${blankSpan(1)}${td('overflow:hidden;text-overflow:ellipsis;white-space:nowrap', esc(row.name))}${td('text-align:center', esc(row.unit))}${blankSpan(6)}`;
     dayIdxs.forEach((di, i) => {
       const dq = parseFloat(row.daily[di]?.qty ?? '0');
       const da = parseFloat(row.daily[di]?.amount ?? '0');
@@ -229,7 +256,7 @@ function buildQtyAmtSection(
   }
 
   t += `<tr style="${SUBTOT}">
-    <td colspan="2" style="${CELL}${SUBTOT}">Total</td>
+    <td colspan="${LEAD}" style="${CELL}${SUBTOT}">Total</td>
     ${totDQ.map((q, i) => td(SUBTOT + 'text-align:right', nonZero(q, v => fmtQty(v))) + td(SUBTOT + 'text-align:right', nonZero(totDA[i], v => fmtAmt(v)))).join('')}
     ${td(SUBTOT + 'text-align:right', nonZero(totWQ, v => fmtQty(v)))}
     ${td(SUBTOT + 'text-align:right', nonZero(totWA, v => fmtAmt(v)))}
@@ -248,20 +275,19 @@ function buildExpensesSection(
   const { startDayIdx, startDay, endDay } = slice;
   const numDays = endDay - startDay + 1;
   const dayIdxs = Array.from({ length: numDays }, (_, i) => startDayIdx + i);
-  const daw = `${(80 / numDays).toFixed(1)}%`;
-
+  // Unified grid: expenses have amount only, so each day's Qty sub-column is
+  // blank and the value sits under the Amt sub-column — aligning expense
+  // amounts with the Amt columns of Production/Materials above.
   let t = `<div style="font-size:6.5pt;font-weight:700;margin:3px 0 1px;padding:1px 4px;background:#e8f0fe;page-break-after:avoid;break-after:avoid">4) Expenses</div>
 <table style="${TABLE}">
-<colgroup>
-  <col style="width:22%">
-  ${dayIdxs.map(() => `<col style="width:${daw}">`).join('')}
-  <col style="width:9%">
-</colgroup>
+${unifiedColgroup(numDays)}
 <thead>
 <tr style="${TH1}text-align:center">
+  <th style="${CELL}${TH1}"></th>
   <th style="${CELL}${TH1}text-align:left">Description</th>
-  ${dayIdxs.map(i => `<th style="${CELL}${TH1}">Day ${i + 1}</th>`).join('')}
-  <th style="${CELL}${TH1}">Week Total</th>
+  <th style="${CELL}${TH1}" colspan="7"></th>
+  ${dayIdxs.map(i => `<th style="${CELL}${TH1}" colspan="2">Day ${i + 1}</th>`).join('')}
+  <th style="${CELL}${TH1}" colspan="2">Week Total</th>
 </tr>
 </thead>
 <tbody>`;
@@ -272,19 +298,19 @@ function buildExpensesSection(
   for (const row of expenses) {
     const wa = dayIdxs.reduce((s, di) => s + parseFloat(row.daily[di]?.amount ?? '0'), 0);
     totW += wa;
-    t += `<tr>${td('overflow:hidden;text-overflow:ellipsis;white-space:nowrap', esc(row.name))}`;
+    t += `<tr>${blankSpan(1)}${td('overflow:hidden;text-overflow:ellipsis;white-space:nowrap', esc(row.name))}${blankSpan(7)}`;
     dayIdxs.forEach((di, i) => {
       const da = parseFloat(row.daily[di]?.amount ?? '0');
       totD[i] += da;
-      t += td('text-align:right', nonZero(da, v => fmtAmt(v)));
+      t += `${td('')}${td('text-align:right', nonZero(da, v => fmtAmt(v)))}`;
     });
-    t += `${td('text-align:right', nonZero(wa, v => fmtAmt(v)))}</tr>`;
+    t += `${td('')}${td('text-align:right', nonZero(wa, v => fmtAmt(v)))}</tr>`;
   }
 
   t += `<tr style="${SUBTOT}">
-    ${td(SUBTOT, 'Total')}
-    ${totD.map(a => td(SUBTOT + 'text-align:right', nonZero(a, v => fmtAmt(v)))).join('')}
-    ${td(SUBTOT + 'text-align:right', nonZero(totW, v => fmtAmt(v)))}
+    <td colspan="${LEAD}" style="${CELL}${SUBTOT}">Total</td>
+    ${totD.map(a => `${td(SUBTOT)}${td(SUBTOT + 'text-align:right', nonZero(a, v => fmtAmt(v)))}`).join('')}
+    ${td(SUBTOT)}${td(SUBTOT + 'text-align:right', nonZero(totW, v => fmtAmt(v)))}
   </tr>`;
 
   t += '</tbody></table>';
@@ -335,6 +361,19 @@ function buildSummarySection(
   return t;
 }
 
+function buildSignatures(report: DprMonthlyReportRead): string {
+  const block = (name: string | null, role: string) =>
+    `<div style="text-align:center;min-width:200px">
+      <div style="height:22px"></div>
+      <div style="border-top:1px solid #333;padding-top:3px;font-weight:600">${esc(name ?? '')}</div>
+      <div style="font-size:7pt;color:#333">${esc(role)}</div>
+    </div>`;
+  return `<div style="display:flex;justify-content:space-between;margin-top:28px;padding:0 40px;page-break-inside:avoid">
+    ${block(report.prepared_by_name, 'Prepared by (Site Engineer)')}
+    ${block(report.verified_by_name, 'Verified by (Project Manager)')}
+  </div>`;
+}
+
 export function buildPrintableHTML(
   report: DprMonthlyReportRead,
   projectName: string,
@@ -378,6 +417,7 @@ export function buildPrintableHTML(
   ${buildExpensesSection(report.expenses, slice, fmtAmt)}
 
   ${buildSummarySection(report.summary, slice, month, fmtAmt, dateFormat)}
+  ${idx === slices.length - 1 ? buildSignatures(report) : ''}
 </div>`;
   });
 

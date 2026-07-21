@@ -46,6 +46,7 @@ class DailyAmountCell(BaseModel):
 class MaterialConsumptionRow(BaseModel):
     material_id: uuid.UUID
     name: str
+    category: str | None
     unit: str
     daily: list[DailyProductionCell]
     total_qty: Decimal
@@ -100,6 +101,8 @@ class DprMonthlyReportRead(BaseModel):
     project_id: uuid.UUID
     month: str
     days_in_month: int
+    prepared_by_name: str | None = None
+    verified_by_name: str | None = None
     sections: list[DprReportSectionRead]
     total_agreed_amount: Decimal
     total_closing_amount: Decimal

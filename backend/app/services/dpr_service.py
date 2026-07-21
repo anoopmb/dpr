@@ -1159,6 +1159,7 @@ class DprProductionService:
                 select(
                     DprMaterial.material_id,
                     MaterialMaster.name,
+                    MaterialMaster.category,
                     DprMaterial.uom_id,
                     DprHeader.report_date,
                     func.sum(DprMaterial.qty_consumed).label("qty"),
@@ -1169,7 +1170,7 @@ class DprProductionService:
                 .where(DprHeader.project_id == project_id)
                 .where(DprHeader.report_date >= month_start)
                 .where(DprHeader.report_date <= month_end)
-                .group_by(DprMaterial.material_id, MaterialMaster.name, DprMaterial.uom_id, DprHeader.report_date)
+                .group_by(DprMaterial.material_id, MaterialMaster.name, MaterialMaster.category, DprMaterial.uom_id, DprHeader.report_date)
             )
         ).all()
         for row in material_rows:
@@ -1197,25 +1198,32 @@ class DprProductionService:
             )
         ).all()
 
+        # Labour comes from the DPR Labour tab (DprLabour), not raw attendance:
+        # attendance misses manually-added labour (contractors / workers with no
+        # punch) and can't carry the snapshotted rate/amount + overtime that the
+        # Labour tab records. qty = distinct workers in the category that day;
+        # amount = actual recorded cost incl. overtime.
         labour_rows = (
             await self.session.execute(
                 select(
                     Worker.worker_category_id,
                     WorkerCategoryMaster.name,
                     WorkerCategoryMaster.daily_rate,
-                    AttendanceRecord.attendance_date,
-                    func.count(func.distinct(AttendanceRecord.worker_id)).label("qty"),
+                    DprHeader.report_date,
+                    func.count(func.distinct(DprLabour.worker_id)).label("qty"),
+                    func.sum(DprLabour.amount + func.coalesce(DprLabour.overtime_amount, 0)).label("amount"),
                 )
-                .join(Worker, AttendanceRecord.worker_id == Worker.id)
+                .join(DprHeader, DprLabour.dpr_header_id == DprHeader.id)
+                .join(Worker, DprLabour.worker_id == Worker.id)
                 .join(WorkerCategoryMaster, Worker.worker_category_id == WorkerCategoryMaster.id)
-                .where(AttendanceRecord.project_id == project_id)
-                .where(AttendanceRecord.attendance_date >= month_start)
-                .where(AttendanceRecord.attendance_date <= month_end)
+                .where(DprHeader.project_id == project_id)
+                .where(DprHeader.report_date >= month_start)
+                .where(DprHeader.report_date <= month_end)
                 .group_by(
                     Worker.worker_category_id,
                     WorkerCategoryMaster.name,
                     WorkerCategoryMaster.daily_rate,
-                    AttendanceRecord.attendance_date,
+                    DprHeader.report_date,
                 )
             )
         ).all()
@@ -1269,12 +1277,16 @@ class DprProductionService:
                 MaterialConsumptionRow(
                     material_id=material_id,
                     name=group["name"],
+                    category=group["row"].category,
                     unit=uom_map.get(sample_uom_id, "") if sample_uom_id else "",
                     daily=daily_cells,
                     total_qty=total_qty.quantize(Decimal("0.001")),
                     total_amount=total_amount.quantize(Decimal("0.01")),
                 )
             )
+        # Sort by category (uncategorized last), then name — so same-type
+        # materials sit together in the report.
+        materials.sort(key=lambda m: (m.category is None, (m.category or "").lower(), m.name.lower()))
 
         machinery: list[MachineryUsageRow] = []
         for machinery_id, group in machinery_groups.items():
@@ -1310,7 +1322,7 @@ class DprProductionService:
                 day_date = date(year, month_num, day_num)
                 row = group["by_day"].get(day_date)
                 qty = Decimal(str(row.qty)) if row else Decimal(0)
-                amount = (qty * daily_rate) if (row and daily_rate) else Decimal(0)
+                amount = Decimal(str(row.amount)) if row else Decimal(0)
                 daily_cells.append(DailyProductionCell(day=day_num, qty=qty.quantize(Decimal("0.001")), amount=amount.quantize(Decimal("0.01"))))
                 total_qty += qty
                 total_amount += amount
@@ -1359,11 +1371,9 @@ class DprProductionService:
             .where(DprHeader.project_id == project_id, DprHeader.report_date <= opening_as_of)
         )
         opening_labour = await self.session.scalar(
-            select(func.coalesce(func.sum(func.coalesce(WorkerCategoryMaster.daily_rate, 0)), 0))
-            .select_from(AttendanceRecord)
-            .join(Worker, AttendanceRecord.worker_id == Worker.id)
-            .join(WorkerCategoryMaster, Worker.worker_category_id == WorkerCategoryMaster.id)
-            .where(AttendanceRecord.project_id == project_id, AttendanceRecord.attendance_date <= opening_as_of)
+            select(func.coalesce(func.sum(DprLabour.amount + func.coalesce(DprLabour.overtime_amount, 0)), 0))
+            .join(DprHeader, DprLabour.dpr_header_id == DprHeader.id)
+            .where(DprHeader.project_id == project_id, DprHeader.report_date <= opening_as_of)
         )
         opening_expense_other = await self.session.scalar(
             select(func.coalesce(func.sum(Expense.amount), 0))
@@ -1413,10 +1423,25 @@ class DprProductionService:
                 )
             )
 
+        # Signatories for the report footer: Prepared by = site engineer,
+        # Verified by = project manager (both optional on the project).
+        project = await self.session.get(Project, project_id)
+        prepared_by_name: str | None = None
+        verified_by_name: str | None = None
+        if project is not None:
+            if project.site_engineer_id is not None:
+                eng = await self.session.get(User, project.site_engineer_id)
+                prepared_by_name = eng.full_name if eng else None
+            if project.project_manager_id is not None:
+                mgr = await self.session.get(User, project.project_manager_id)
+                verified_by_name = mgr.full_name if mgr else None
+
         return DprMonthlyReportRead(
             project_id=project_id,
             month=month,
             days_in_month=days_in_month,
+            prepared_by_name=prepared_by_name,
+            verified_by_name=verified_by_name,
             sections=report_sections,
             total_agreed_amount=total_agreed,
             total_closing_amount=total_closing,
