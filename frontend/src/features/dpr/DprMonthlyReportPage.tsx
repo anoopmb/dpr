@@ -7,6 +7,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { buildPrintableHTML, triggerPrint } from './dprPrint';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
+import { useAuthStore } from '@/store/auth-store';
 import { useProjects } from '@/api/hooks/useProjects';
 import {
   useDprMonthlyReport,
@@ -332,6 +333,7 @@ function exportMonthlyReportToExcel(
   monthLabel: string,
   fmtQtyRaw: (v: string) => number,
   fmtAmtRaw: (v: string) => number,
+  preparedByName: string | null,
 ) {
   const rows: (string | number)[][] = [];
   const merges: { s: { r: number; c: number }; e: { r: number; c: number } }[] = [];
@@ -465,7 +467,7 @@ function exportMonthlyReportToExcel(
 
   rows.push([]);
   rows.push([]);
-  rows.push([`Prepared by (Site Engineer): ${report.prepared_by_name ?? ''}`, '', '', `Verified by (Project Manager): ${report.verified_by_name ?? ''}`]);
+  rows.push([`Prepared by: ${preparedByName ?? ''}`, '', '', `Verified by (Project Manager): ${report.verified_by_name ?? ''}`]);
 
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -480,6 +482,8 @@ function exportMonthlyReportToExcel(
 
 export function DprMonthlyReportPage() {
   const selectedProjectId = useProjectContextStore((s) => s.selectedProjectId);
+  // "Prepared by" is the logged-in user who generated the report.
+  const preparedByName = useAuthStore((s) => s.user?.fullName ?? null);
   const { data: projects } = useProjects();
   const [month, setMonth] = useState<Dayjs>(dayjs());
   const monthStr = month.format('YYYY-MM');
@@ -749,7 +753,7 @@ export function DprMonthlyReportPage() {
     // Excel treats every figure as numeric data — sortable, summable, and
     // formattable with its own number format — rather than plain text.
     const toNum = (v: string) => parseFloat(v) || 0;
-    exportMonthlyReportToExcel(report, project?.name ?? 'Project', month.format('MMMM YYYY'), toNum, toNum);
+    exportMonthlyReportToExcel(report, project?.name ?? 'Project', month.format('MMMM YYYY'), toNum, toNum, preparedByName);
   };
 
   const handlePrint = useCallback(() => {
@@ -764,9 +768,10 @@ export function DprMonthlyReportPage() {
       fmtQty,
       symbol,
       dateFormat,
+      preparedByName,
     );
     triggerPrint(html);
-  }, [report, projects, selectedProjectId, month, fmtAmt, fmtQty, symbol, dateFormat]);
+  }, [report, projects, selectedProjectId, month, fmtAmt, fmtQty, symbol, dateFormat, preparedByName]);
 
   return (
     <div>
@@ -827,9 +832,9 @@ export function DprMonthlyReportPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 48, marginTop: 40, marginBottom: 24, padding: '0 24px', flexWrap: 'wrap' }}>
               <div style={{ textAlign: 'center', minWidth: 200 }}>
                 <div style={{ borderTop: '1px solid #999', paddingTop: 6, fontWeight: 600 }}>
-                  {report.prepared_by_name ?? '—'}
+                  {preparedByName ?? '—'}
                 </div>
-                <Typography.Text type="secondary">Prepared by (Site Engineer)</Typography.Text>
+                <Typography.Text type="secondary">Prepared by</Typography.Text>
               </div>
               <div style={{ textAlign: 'center', minWidth: 200 }}>
                 <div style={{ borderTop: '1px solid #999', paddingTop: 6, fontWeight: 600 }}>

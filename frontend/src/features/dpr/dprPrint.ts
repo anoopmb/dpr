@@ -365,7 +365,7 @@ function buildSummarySection(
   return t;
 }
 
-function buildSignatures(report: DprMonthlyReportRead): string {
+function buildSignatures(report: DprMonthlyReportRead, preparedByName: string | null): string {
   const block = (name: string | null, role: string) =>
     `<div style="text-align:center;min-width:200px">
       <div style="height:22px"></div>
@@ -373,7 +373,7 @@ function buildSignatures(report: DprMonthlyReportRead): string {
       <div style="font-size:7pt;color:#333">${esc(role)}</div>
     </div>`;
   return `<div style="display:flex;justify-content:space-between;margin-top:28px;padding:0 40px;page-break-inside:avoid">
-    ${block(report.prepared_by_name, 'Prepared by (Site Engineer)')}
+    ${block(preparedByName, 'Prepared by')}
     ${block(report.verified_by_name, 'Verified by (Project Manager)')}
   </div>`;
 }
@@ -387,6 +387,7 @@ export function buildPrintableHTML(
   fmtQty: FmtQty,
   symbol: string,
   dateFormat: string,
+  preparedByName: string | null,
 ): string {
   const slices = makeSlices(report.days_in_month);
 
@@ -421,7 +422,7 @@ export function buildPrintableHTML(
   ${buildExpensesSection(report.expenses, slice, fmtAmt)}
 
   ${buildSummarySection(report.summary, slice, month, fmtAmt, dateFormat)}
-  ${buildSignatures(report)}
+  ${buildSignatures(report, preparedByName)}
 </div>`;
   });
 
