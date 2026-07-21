@@ -58,7 +58,10 @@ function itemSliceClosing(item: DprReportItemRead, startDayIdx: number, endDayId
   return o;
 }
 
-const CELL = 'border:0.5px solid #777;padding:2px 3px;';
+// nowrap so amounts/totals stay on one line; overflow hidden so a rare
+// oversized value clips at its own border rather than bleeding over the
+// neighbour. Day/amount columns below are widened to fit typical figures.
+const CELL = 'border:0.5px solid #777;padding:2px 3px;white-space:nowrap;overflow:hidden;';
 const TH1 = 'background:#c5d8f0;font-weight:700;';
 const TH2 = 'background:#dce8fb;font-weight:600;';
 const SECHDR = 'background:#dce8fb;font-weight:700;';
@@ -76,14 +79,16 @@ function td(style: string, content: string | number = ''): string {
 // spacer cells. Layout = LEAD leading columns + numDays×(Qty,Amt) + 2 trailing.
 const LEAD = 9; // Item No, Description, Unit, Rate, Agreed, Total Done, Balance, Opening Qty, Opening Amt
 // Leading column widths (%). Sum ≈ 40; trailing ≈ 7.5; days share the rest.
-const LEAD_W = [3, 14, 2.5, 3.5, 3.5, 3.5, 3.5, 3, 3.5];
+// Amount columns get the larger share (leading Amt = 4.5, day Amt = 60% of a
+// day pair, trailing Amt = 5) so figures fit without wrapping.
+const LEAD_W = [3, 12.5, 2.5, 3.5, 3.5, 3.5, 3.5, 3, 4.5];
 const TRAIL_Q = 3.5;
-const TRAIL_A = 4;
+const TRAIL_A = 5;
 
 function unifiedColgroup(numDays: number): string {
   const dayBlock = (100 - LEAD_W.reduce((s, w) => s + w, 0) - TRAIL_Q - TRAIL_A) / numDays;
-  const qtyW = (dayBlock * 0.467).toFixed(2);
-  const amtW = (dayBlock * 0.533).toFixed(2);
+  const qtyW = (dayBlock * 0.40).toFixed(2);
+  const amtW = (dayBlock * 0.60).toFixed(2);
   return `<colgroup>
   ${LEAD_W.map((w) => `<col style="width:${w}%">`).join('')}
   ${Array.from({ length: numDays }, () => `<col style="width:${qtyW}%"><col style="width:${amtW}%">`).join('')}
@@ -396,7 +401,7 @@ export function buildPrintableHTML(
       daily: m.daily.map(d => ({ qty: d.qty, amount: d.amount })),
     }));
     const labRows: PrintRow[] = report.labour.map(l => ({
-      name: l.name, unit: l.category_name ?? 'Nos',
+      name: l.category_name ? `${l.name} (${l.category_name})` : l.name, unit: 'Nos',
       daily: l.daily.map(d => ({ qty: d.qty, amount: d.amount })),
     }));
 

@@ -29,22 +29,28 @@ import { useDateFormat, useNumberFormat } from '@/utils/format';
 // sections pad the leading columns with blank spacers to reach the same
 // day-start offset. (Tables scroll horizontally on their own, so alignment
 // holds at scroll origin.)
+// Amount columns are sized to fit a full "₹ 12,34,567.00" on ONE line (with
+// the numeric cells set to white-space:nowrap) so amounts and totals never
+// wrap — wrapping is what made the stacked sections look misaligned.
 const COL_W = {
   itemNo: 80,
   desc: 220,
-  unit: 60,
-  rate: 90,
-  revRate: 90,
-  contractQty: 90,
-  totalDone: 90,
-  balance: 90,
-  openQty: 80,
-  openAmt: 95,
-  dayQty: 65,
-  dayAmt: 75,
-  closeQty: 80,
-  closeAmt: 95,
+  unit: 72,
+  rate: 96,
+  revRate: 96,
+  contractQty: 100,
+  totalDone: 100,
+  balance: 100,
+  openQty: 90,
+  openAmt: 125,
+  dayQty: 72,
+  dayAmt: 108,
+  closeQty: 90,
+  closeAmt: 130,
 };
+
+// Keeps a numeric cell's amount/qty on a single line (never wrap).
+const nowrapCell = () => ({ style: { whiteSpace: 'nowrap' as const } });
 
 // The 8 single leading columns before the Opening group, rendered blank as
 // spacers in the non-Production sections. `desc`/`unit` are overridden by
@@ -139,13 +145,13 @@ function QtyAmtSection({
       return {
         title: `Day ${day}`,
         children: [
-          { title: 'Qty', key: `d${day}q`, width: COL_W.dayQty, align: 'right' as const, render: (_: unknown, row: typeof rows[number]) => fmtQty(row.daily[i]?.qty) },
-          { title: 'Amt', key: `d${day}a`, width: COL_W.dayAmt, align: 'right' as const, render: (_: unknown, row: typeof rows[number]) => fmtAmt(row.daily[i]?.amount) },
+          { title: 'Qty', key: `d${day}q`, width: COL_W.dayQty, align: 'right' as const, onCell: nowrapCell, render: (_: unknown, row: typeof rows[number]) => fmtQty(row.daily[i]?.qty) },
+          { title: 'Amt', key: `d${day}a`, width: COL_W.dayAmt, align: 'right' as const, onCell: nowrapCell, render: (_: unknown, row: typeof rows[number]) => fmtAmt(row.daily[i]?.amount) },
         ],
       };
     }),
-    { title: 'Total Qty', key: 'total_qty', width: COL_W.closeQty, align: 'right' as const, render: (_, row) => fmtQty(row.total_qty) },
-    { title: 'Total Amt', key: 'total_amount', width: COL_W.closeAmt, align: 'right' as const, render: (_, row) => fmtAmt(row.total_amount) },
+    { title: 'Total Qty', key: 'total_qty', width: COL_W.closeQty, align: 'right' as const, onCell: nowrapCell, render: (_, row) => fmtQty(row.total_qty) },
+    { title: 'Total Amt', key: 'total_amount', width: COL_W.closeAmt, align: 'right' as const, onCell: nowrapCell, render: (_, row) => fmtAmt(row.total_amount) },
   ];
 
   const totalQty = rows.reduce((s, r) => s + parseFloat(r.total_qty), 0);
@@ -211,11 +217,11 @@ function ExpensesSection({
       title: `Day ${i + 1}`,
       children: [
         { title: '', key: `d${i + 1}q`, width: COL_W.dayQty, render: () => null },
-        { title: 'Amt', key: `d${i + 1}a`, width: COL_W.dayAmt, align: 'right' as const, render: (_: unknown, row: ExpenseCategoryRow) => fmtAmt(row.daily[i]?.amount) },
+        { title: 'Amt', key: `d${i + 1}a`, width: COL_W.dayAmt, align: 'right' as const, onCell: nowrapCell, render: (_: unknown, row: ExpenseCategoryRow) => fmtAmt(row.daily[i]?.amount) },
       ],
     })),
     { title: '', key: 'sp_totalqty', width: COL_W.closeQty, render: () => null },
-    { title: 'Total', key: 'total_amount', width: COL_W.closeAmt, align: 'right' as const, render: (_, row) => fmtAmt(row.total_amount) },
+    { title: 'Total', key: 'total_amount', width: COL_W.closeAmt, align: 'right' as const, onCell: nowrapCell, render: (_, row) => fmtAmt(row.total_amount) },
   ];
 
   const totalAmount = rows.reduce((s, r) => s + parseFloat(r.total_amount), 0);
@@ -407,7 +413,7 @@ function exportMonthlyReportToExcel(
   pushQtyAmtSection('2) Machinery', report.machinery);
   pushQtyAmtSection(
     '3) Labour',
-    report.labour.map((l) => ({ name: l.name, unit: l.category_name ?? 'Nos', daily: l.daily, total_qty: l.total_qty, total_amount: l.total_amount })),
+    report.labour.map((l) => ({ name: l.category_name ? `${l.name} (${l.category_name})` : l.name, unit: 'Nos', daily: l.daily, total_qty: l.total_qty, total_amount: l.total_amount })),
   );
 
   // Expenses (amount-only, no qty)
@@ -523,14 +529,17 @@ export function DprMonthlyReportPage() {
   // No's span above, for both header and subtotal rows.
   const descriptionOnCell = (row: ReportRow) =>
     row._type === 'header' || row._type === 'subtotal' ? { colSpan: 0 } : {};
-  // Unit/Rate/Agreed Qty sit just past the fixed columns — never part of the
-  // banner span, so they always render as their own ordinary cell.
+  // Unit sits just past the fixed columns — never part of the banner span, so
+  // it always renders as its own ordinary cell.
   const blankOnCell = () => ({});
-  // Like blankOnCell, but keeps the cell visible (styled) for subtotal rows
-  // instead of hiding it — used for every numeric column past the label span
-  // so section subtotals (daily qty/amt, opening/closing qty) actually render.
+  // Numeric columns: keep every amount/qty on a single line (never wrap).
+  const numOnCell = () => ({ style: { whiteSpace: 'nowrap' as const } });
+  // Like numOnCell, but bolds the cell on subtotal rows — used for every
+  // numeric column past the label span so section subtotals render.
   const dataOnCell = (row: ReportRow) =>
-    row._type === 'subtotal' ? { style: { fontWeight: 700, whiteSpace: 'nowrap' as const } } : {};
+    row._type === 'subtotal'
+      ? { style: { fontWeight: 700, whiteSpace: 'nowrap' as const } }
+      : { style: { whiteSpace: 'nowrap' as const } };
 
   const columns: TableColumnsType<ReportRow> = useMemo(() => {
     const cols: TableColumnsType<ReportRow> = [
@@ -538,7 +547,7 @@ export function DprMonthlyReportPage() {
         title: 'Item No',
         key: 'item_no',
         fixed: 'left',
-        width: 80,
+        width: COL_W.itemNo,
         onCell: headerItemNoOnCell,
         render: (_, row) => {
           if (row._type === 'header') return `${row.section.section_no ? row.section.section_no + '. ' : ''}${row.section.section_name.toUpperCase()}`;
@@ -551,7 +560,7 @@ export function DprMonthlyReportPage() {
         title: 'Description',
         key: 'description',
         fixed: 'left',
-        width: 220,
+        width: COL_W.desc,
         ellipsis: true,
         onCell: descriptionOnCell,
         render: (_, row) => {
@@ -562,24 +571,24 @@ export function DprMonthlyReportPage() {
       {
         title: 'Unit',
         key: 'unit',
-        width: 60,
+        width: COL_W.unit,
         onCell: blankOnCell,
         render: (_, row) => (row._type === 'item' ? row.item.unit : null),
       },
       {
         title: `Contract Rate (${symbol})`,
         key: 'rate',
-        width: 90,
+        width: COL_W.rate,
         align: 'right' as const,
-        onCell: blankOnCell,
+        onCell: numOnCell,
         render: (_, row) => (row._type === 'item' ? fmtQty(row.item.rate, 2) : null),
       },
       {
         title: `Revised Rate (${symbol})`,
         key: 'current_rate',
-        width: 90,
+        width: COL_W.revRate,
         align: 'right' as const,
-        onCell: blankOnCell,
+        onCell: numOnCell,
         render: (_, row) => {
           if (row._type !== 'item') return null;
           const isRevised = row.item.current_rate !== row.item.rate;
@@ -594,15 +603,15 @@ export function DprMonthlyReportPage() {
       {
         title: 'Contract Qty',
         key: 'agreed_qty',
-        width: 90,
+        width: COL_W.contractQty,
         align: 'right' as const,
-        onCell: blankOnCell,
+        onCell: numOnCell,
         render: (_, row) => (row._type === 'item' ? fmtQtyByUnit(row.item.agreed_qty, row.item.unit) : null),
       },
       {
         title: 'Total Done',
         key: 'total_done',
-        width: 90,
+        width: COL_W.totalDone,
         align: 'right' as const,
         onCell: dataOnCell,
         render: (_, row) => {
@@ -613,9 +622,9 @@ export function DprMonthlyReportPage() {
       {
         title: 'Balance',
         key: 'balance_qty',
-        width: 90,
+        width: COL_W.balance,
         align: 'right' as const,
-        onCell: blankOnCell,
+        onCell: numOnCell,
         // Contract − done, per item. Blank on subtotal rows: summing balance
         // across mixed-unit items isn't meaningful (same reason Contract Qty
         // is blank there).
@@ -631,7 +640,7 @@ export function DprMonthlyReportPage() {
           {
             title: 'Qty',
             key: 'opening_qty',
-            width: 80,
+            width: COL_W.openQty,
             align: 'right' as const,
             onCell: dataOnCell,
             render: (_, row) => {
@@ -644,7 +653,7 @@ export function DprMonthlyReportPage() {
           {
             title: 'Amt',
             key: 'opening_amount',
-            width: 95,
+            width: COL_W.openAmt,
             align: 'right' as const,
             onCell: dataOnCell,
             render: (_, row) => {
@@ -663,7 +672,7 @@ export function DprMonthlyReportPage() {
             {
               title: 'Qty',
               key: `day_${day}_qty`,
-              width: 65,
+              width: COL_W.dayQty,
               align: 'right' as const,
               onCell: dataOnCell,
               render: (_: unknown, row: ReportRow) => {
@@ -674,7 +683,7 @@ export function DprMonthlyReportPage() {
             {
               title: 'Amt',
               key: `day_${day}_amt`,
-              width: 75,
+              width: COL_W.dayAmt,
               align: 'right' as const,
               onCell: dataOnCell,
               render: (_: unknown, row: ReportRow) => {
@@ -692,7 +701,7 @@ export function DprMonthlyReportPage() {
           {
             title: 'Qty',
             key: 'closing_qty',
-            width: 80,
+            width: COL_W.closeQty,
             align: 'right' as const,
             onCell: dataOnCell,
             render: (_, row) => {
@@ -703,7 +712,7 @@ export function DprMonthlyReportPage() {
           {
             title: 'Amt',
             key: 'closing_amount',
-            width: 95,
+            width: COL_W.closeAmt,
             align: 'right' as const,
             onCell: dataOnCell,
             render: (_, row) => {
@@ -721,7 +730,9 @@ export function DprMonthlyReportPage() {
 
   const materialRows = (report?.materials ?? []).map((m: MaterialConsumptionRow) => ({ key: m.material_id, ...m }));
   const machineryRows = (report?.machinery ?? []).map((m: MachineryUsageRow) => ({ key: m.machinery_id, ...m }));
-  const labourRows = (report?.labour ?? []).map((l: LabourRow) => ({ key: l.worker_id, name: l.name, unit: l.category_name ?? 'Nos', daily: l.daily, total_qty: l.total_qty, total_amount: l.total_amount }));
+  // Worker name carries the category (Unit column stays a short "Nos" like the
+  // other sections — a long category in Unit read as an extra leading column).
+  const labourRows = (report?.labour ?? []).map((l: LabourRow) => ({ key: l.worker_id, name: l.category_name ? `${l.name} (${l.category_name})` : l.name, unit: 'Nos', daily: l.daily, total_qty: l.total_qty, total_amount: l.total_amount }));
 
   const fmtDateForDay = (day: number) => month.date(day).format(dateFormat);
 
