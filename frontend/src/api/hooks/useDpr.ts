@@ -191,8 +191,9 @@ export interface MachineryUsageRow {
 }
 
 export interface LabourRow {
-  worker_category_id: string;
+  worker_id: string;
   name: string;
+  category_name: string | null;
   daily_rate: string | null;
   daily: DailyProductionCell[];
   total_qty: string;

@@ -63,11 +63,13 @@ class MachineryUsageRow(BaseModel):
 
 
 class LabourRow(BaseModel):
-    """qty = count of distinct workers present that day in this category;
-    amount = qty x WorkerCategoryMaster.daily_rate."""
+    """One row per individual worker. qty = that worker's quantity that day
+    (days/hours/units, or 1 if only marked present); amount = recorded labour
+    cost incl. overtime, or the category daily_rate for an attendance-only day."""
 
-    worker_category_id: uuid.UUID
+    worker_id: uuid.UUID
     name: str
+    category_name: str | None
     daily_rate: Decimal | None
     daily: list[DailyProductionCell]
     total_qty: Decimal

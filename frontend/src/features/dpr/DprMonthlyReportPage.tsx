@@ -407,7 +407,7 @@ function exportMonthlyReportToExcel(
   pushQtyAmtSection('2) Machinery', report.machinery);
   pushQtyAmtSection(
     '3) Labour',
-    report.labour.map((l) => ({ name: l.name, unit: 'Nos', daily: l.daily, total_qty: l.total_qty, total_amount: l.total_amount })),
+    report.labour.map((l) => ({ name: l.name, unit: l.category_name ?? 'Nos', daily: l.daily, total_qty: l.total_qty, total_amount: l.total_amount })),
   );
 
   // Expenses (amount-only, no qty)
@@ -721,7 +721,7 @@ export function DprMonthlyReportPage() {
 
   const materialRows = (report?.materials ?? []).map((m: MaterialConsumptionRow) => ({ key: m.material_id, ...m }));
   const machineryRows = (report?.machinery ?? []).map((m: MachineryUsageRow) => ({ key: m.machinery_id, ...m }));
-  const labourRows = (report?.labour ?? []).map((l: LabourRow) => ({ key: l.worker_category_id, name: l.name, unit: 'Nos', daily: l.daily, total_qty: l.total_qty, total_amount: l.total_amount }));
+  const labourRows = (report?.labour ?? []).map((l: LabourRow) => ({ key: l.worker_id, name: l.name, unit: l.category_name ?? 'Nos', daily: l.daily, total_qty: l.total_qty, total_amount: l.total_amount }));
 
   const fmtDateForDay = (day: number) => month.date(day).format(dateFormat);
 

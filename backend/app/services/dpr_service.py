@@ -1114,22 +1114,22 @@ class DprProductionService:
         self, project_id: uuid.UUID, start: date, end: date
     ) -> dict[uuid.UUID, dict]:
         """Merge attendance and DPR-Labour-tab entries into one labour picture,
-        deduped per worker per day.
+        one row per individual worker (by name), deduped per worker per day.
 
-        Returns: {category_id: {"name", "daily_rate", "by_day": {date: {worker_id: amount}}}}.
-        For a worker on a day: amount = the recorded DprLabour cost (incl.
-        overtime) when a row exists, else the category daily_rate (a worker
-        only marked present in attendance). DprLabour takes precedence so real
-        snapshotted costs / contractors / overtime win over the flat rate.
+        Returns: {worker_id: {"name", "category_name", "daily_rate",
+                              "by_day": {date: (qty, amount)}}}.
+        Per worker/day: (qty, amount) = the recorded DprLabour quantity + cost
+        (incl. overtime) when a row exists, else (1, category daily_rate) for a
+        worker merely marked present in attendance. DprLabour takes precedence.
         """
         att_rows = (
             await self.session.execute(
                 select(
-                    Worker.worker_category_id,
-                    WorkerCategoryMaster.name,
+                    AttendanceRecord.worker_id,
+                    Worker.full_name,
+                    WorkerCategoryMaster.name.label("category_name"),
                     WorkerCategoryMaster.daily_rate,
                     AttendanceRecord.attendance_date,
-                    AttendanceRecord.worker_id,
                 )
                 .join(Worker, AttendanceRecord.worker_id == Worker.id)
                 .join(WorkerCategoryMaster, Worker.worker_category_id == WorkerCategoryMaster.id)
@@ -1141,11 +1141,12 @@ class DprProductionService:
         lab_rows = (
             await self.session.execute(
                 select(
-                    Worker.worker_category_id,
-                    WorkerCategoryMaster.name,
+                    DprLabour.worker_id,
+                    Worker.full_name,
+                    WorkerCategoryMaster.name.label("category_name"),
                     WorkerCategoryMaster.daily_rate,
                     DprHeader.report_date,
-                    DprLabour.worker_id,
+                    DprLabour.quantity,
                     (DprLabour.amount + func.coalesce(DprLabour.overtime_amount, 0)).label("amount"),
                 )
                 .join(DprHeader, DprLabour.dpr_header_id == DprHeader.id)
@@ -1159,19 +1160,22 @@ class DprProductionService:
 
         groups: dict[uuid.UUID, dict] = {}
 
-        def _group(cat_id: uuid.UUID, name: str, rate) -> dict:
-            return groups.setdefault(cat_id, {"name": name, "daily_rate": rate, "by_day": {}})
+        def _group(worker_id: uuid.UUID, name: str, category_name: str, rate) -> dict:
+            return groups.setdefault(
+                worker_id,
+                {"name": name, "category_name": category_name, "daily_rate": rate, "by_day": {}},
+            )
 
-        # Labour-tab rows first (authoritative amount for that worker/day).
+        # Labour-tab rows first (authoritative qty+amount for that worker/day).
         for r in lab_rows:
-            grp = _group(r.worker_category_id, r.name, r.daily_rate)
-            grp["by_day"].setdefault(r.report_date, {})[r.worker_id] = Decimal(str(r.amount))
+            grp = _group(r.worker_id, r.full_name, r.category_name, r.daily_rate)
+            grp["by_day"][r.report_date] = (Decimal(str(r.quantity)), Decimal(str(r.amount)))
         # Attendance fills in workers merely marked present (no labour row yet).
         for r in att_rows:
-            grp = _group(r.worker_category_id, r.name, r.daily_rate)
-            day = grp["by_day"].setdefault(r.attendance_date, {})
-            if r.worker_id not in day:
-                day[r.worker_id] = Decimal(str(r.daily_rate)) if r.daily_rate is not None else Decimal(0)
+            grp = _group(r.worker_id, r.full_name, r.category_name, r.daily_rate)
+            if r.attendance_date not in grp["by_day"]:
+                rate = Decimal(str(r.daily_rate)) if r.daily_rate is not None else Decimal(0)
+                grp["by_day"][r.attendance_date] = (Decimal(1), rate)
         return groups
 
     async def get_monthly_report(self, project_id: uuid.UUID, month: str) -> DprMonthlyReportRead:
@@ -1411,31 +1415,32 @@ class DprProductionService:
             )
 
         labour: list[LabourRow] = []
-        for category_id, group in labour_union.items():
+        for worker_id, group in labour_union.items():
             daily_cells = []
             total_qty = Decimal(0)
             total_amount = Decimal(0)
             daily_rate = group["daily_rate"]
             for day_num in range(1, days_in_month + 1):
                 day_date = date(year, month_num, day_num)
-                # by_day[date] = {worker_id: amount}. qty = distinct workers
-                # present (attendance ∪ labour); amount = sum of their amounts.
-                workers = group["by_day"].get(day_date, {})
-                qty = Decimal(len(workers))
-                amount = sum(workers.values(), Decimal(0))
+                # by_day[date] = (qty, amount) for this individual worker.
+                qty, amount = group["by_day"].get(day_date, (Decimal(0), Decimal(0)))
                 daily_cells.append(DailyProductionCell(day=day_num, qty=qty.quantize(Decimal("0.001")), amount=amount.quantize(Decimal("0.01"))))
                 total_qty += qty
                 total_amount += amount
             labour.append(
                 LabourRow(
-                    worker_category_id=category_id,
+                    worker_id=worker_id,
                     name=group["name"],
+                    category_name=group["category_name"],
                     daily_rate=daily_rate,
                     daily=daily_cells,
                     total_qty=total_qty.quantize(Decimal("0.001")),
                     total_amount=total_amount.quantize(Decimal("0.01")),
                 )
             )
+        # One row per worker, ordered by category then name so same-trade
+        # workers group together and read alphabetically.
+        labour.sort(key=lambda l: ((l.category_name or "").lower(), l.name.lower()))
 
         expenses: list[ExpenseCategoryRow] = []
         for category_id, group in expense_groups.items():
@@ -1474,7 +1479,7 @@ class DprProductionService:
         # union as the visible section, so the summary's opening carry matches.
         opening_union = await self._labour_union(project_id, date(1900, 1, 1), opening_as_of)
         opening_labour = sum(
-            (amt for grp in opening_union.values() for day in grp["by_day"].values() for amt in day.values()),
+            (amount for grp in opening_union.values() for (_qty, amount) in grp["by_day"].values()),
             Decimal(0),
         )
         opening_expense_other = await self.session.scalar(

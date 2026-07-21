@@ -396,7 +396,7 @@ export function buildPrintableHTML(
       daily: m.daily.map(d => ({ qty: d.qty, amount: d.amount })),
     }));
     const labRows: PrintRow[] = report.labour.map(l => ({
-      name: l.name, unit: 'Nos',
+      name: l.name, unit: l.category_name ?? 'Nos',
       daily: l.daily.map(d => ({ qty: d.qty, amount: d.amount })),
     }));
 
