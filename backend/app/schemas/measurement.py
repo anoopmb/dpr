@@ -63,6 +63,10 @@ class MeasurementCreate(BaseModel):
 
 
 class MeasurementUpdate(BaseModel):
+    # Optional — when supplied, re-points the measurement at a different BOQ
+    # item (recomputing against that item's work type). Omit to keep the
+    # existing item.
+    boq_item_id: uuid.UUID | None = None
     dimensions: dict[str, Decimal] = Field(default_factory=dict)
     dimension_expressions: dict[str, str] | None = None
     chainage: str | None = Field(default=None, max_length=100)
@@ -78,6 +82,16 @@ class MeasurementNotesUpdate(BaseModel):
     MeasurementUpdate, which does a full replace of dimensions/steel_lines
     and would reject the request entirely if those were omitted."""
     notes: str | None = Field(default=None, max_length=1000)
+
+
+class MeasurementPhotoRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    photo_url: str
+    latitude: Decimal | None = None
+    longitude: Decimal | None = None
+    captured_at: datetime
 
 
 class MeasurementRead(BaseModel):
@@ -107,3 +121,4 @@ class MeasurementRead(BaseModel):
     edited_at: datetime | None = None
     steel_lines: list[SteelLineRead] = []
     auto_materials: list[AutoMaterialRead] = []
+    photos: list[MeasurementPhotoRead] = []

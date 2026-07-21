@@ -48,6 +48,7 @@ import {
   useUpdateDprHeader,
   useAddDprMaterial,
   useUpdateDprMaterial,
+  useUpdateDprMaterialRates,
   useDeleteDprMaterial,
   useAddDprMachinery,
   useUpdateDprMachinery,
@@ -919,6 +920,12 @@ interface AutoMaterialGroupSummary {
   totalQty: number;
   totalAmount: number;
   hasRate: boolean;
+  // The underlying DprMaterial rows this summary aggregates, plus their shared
+  // cost rate (null when the group's rows disagree) — used to make the cost
+  // editable across the whole group in one shot.
+  entryIds: string[];
+  rate: number | null;
+  mixedRate: boolean;
 }
 type MatRow =
   | { _kind: 'existing'; entry: DprMaterialRead }
@@ -948,6 +955,7 @@ function MaterialsTab({
   const { data: userDirectory } = useUserDirectory();
   const addMaterial = useAddDprMaterial();
   const updateMaterial = useUpdateDprMaterial();
+  const updateMaterialRates = useUpdateDprMaterialRates();
   const deleteMaterial = useDeleteDprMaterial();
   const { fmtAmt, symbol } = useNumberFormat();
   const { fmtDateTime } = useDateFormat();
@@ -1016,6 +1024,8 @@ function MaterialsTab({
       existingSummary.totalQty += qty;
       existingSummary.totalAmount += rate != null ? qty * rate : 0;
       existingSummary.hasRate = existingSummary.hasRate || rate != null;
+      existingSummary.entryIds.push(e.id);
+      if (existingSummary.rate !== rate) existingSummary.mixedRate = true;
     } else {
       group.materials.set(matKey, {
         key: `${groupKey}:${matKey}`,
@@ -1026,6 +1036,9 @@ function MaterialsTab({
         totalQty: qty,
         totalAmount: rate != null ? qty * rate : 0,
         hasRate: rate != null,
+        entryIds: [e.id],
+        rate,
+        mixedRate: false,
       });
     }
   }
@@ -1113,6 +1126,21 @@ function MaterialsTab({
     if (rate === (entry.rate != null ? parseFloat(entry.rate) : null)) return;
     try { await updateMaterial.mutateAsync({ itemId: entry.id, data: { qty_consumed: entry.qty_consumed, uom_id: entry.uom_id, rate: rate != null ? String(rate) : undefined } }); }
     catch (err) { message.error(getApiErrorMessage(err, 'Could not update')); }
+  };
+
+  // Cost edit on an aggregated auto-material row — applies the one rate to
+  // every underlying DprMaterial row in the group (marks them manually edited
+  // so a plain dimensions re-sync keeps it; a template/item change still wipes).
+  const saveAutoRate = async (summary: AutoMaterialGroupSummary, raw: string) => {
+    const rate = raw !== '' ? parseFloat(raw) : null;
+    if (!summary.mixedRate && rate === summary.rate) return;
+    try {
+      await updateMaterialRates.mutateAsync({
+        headerId,
+        ids: summary.entryIds,
+        rate: rate != null ? String(rate) : null,
+      });
+    } catch (err) { message.error(getApiErrorMessage(err, 'Could not update cost')); }
   };
 
   const handleDelete = async (entry: DprMaterialRead) => {
@@ -1213,7 +1241,17 @@ function MaterialsTab({
       onCell: (row) => row._kind === 'group-header' ? { colSpan: 0 } : {},
       render: (_: unknown, row: MatRow) => {
         if (row._kind === 'group-header') return null;
-        if (row._kind === 'auto-summary') return <Typography.Text type="secondary" style={{ fontSize: 12 }}>—</Typography.Text>;
+        if (row._kind === 'auto-summary') {
+          if (isSubmitted) {
+            return <Typography.Text style={{ fontSize: 12 }}>{row.summary.mixedRate ? '—' : (row.summary.rate ?? '—')}</Typography.Text>;
+          }
+          return <InputNumber
+            key={`${row.summary.key}-r-${row.summary.rate}-${row.summary.mixedRate}`}
+            size="small" min={0} precision={2} style={inp}
+            defaultValue={row.summary.mixedRate ? undefined : (row.summary.rate ?? undefined)}
+            placeholder={row.summary.mixedRate ? 'mixed' : '—'}
+            onBlur={(e) => saveAutoRate(row.summary, e.target.value)} />;
+        }
         if (row._kind === 'existing') {
           if (isSubmitted) {
             const rateVal = row.entry.rate != null ? parseFloat(row.entry.rate) : null;
@@ -2496,8 +2534,29 @@ function MeasurementsTab({
     });
   };
 
+  // Re-point the row at a different BOQ item mid-edit. Options are limited to
+  // the same construction type (see boqChangeOptions below), so the steel vs
+  // dimension rendering stays consistent; reset dims/steel/template to match.
+  const handleEditRowBoqChange = (value: string) => {
+    const item = boqById.get(value);
+    const wt = (workTypes ?? []).find((w) => w.id === item?.work_type_id);
+    const hasNos = wt?.dimension_fields.includes('nos') ?? false;
+    const dimensions: Record<string, number> = hasNos ? { nos: 1 } : {};
+    const dimensionText: Record<string, string> = hasNos ? { nos: '1' } : {};
+    setEditRow((prev) => ({
+      ...prev,
+      boq_item_id: value,
+      work_type_id: item?.work_type_id ?? null,
+      boq_template_id: null,
+      dimensions,
+      dimensionText,
+      steel_lines: [],
+    }));
+  };
+
   const saveEditRow = async (entry: MeasurementRead) => {
-    const isSteel = boqById.get(entry.boq_item_id)?.construction_type === 'STEEL';
+    const targetBoqItemId = editRow.boq_item_id ?? entry.boq_item_id;
+    const isSteel = boqById.get(targetBoqItemId)?.construction_type === 'STEEL';
     setEditSaving(true);
     try {
       if (isSteel) {
@@ -2505,6 +2564,7 @@ function MeasurementsTab({
         await updateMeasurement.mutateAsync({
           id: entry.id,
           data: {
+            boq_item_id: targetBoqItemId,
             dimensions: {},
             chainage: editRow.chainage.trim() || null,
             rate: editRow.rate != null ? String(editRow.rate) : null,
@@ -2527,6 +2587,7 @@ function MeasurementsTab({
         await updateMeasurement.mutateAsync({
           id: entry.id,
           data: {
+            boq_item_id: targetBoqItemId,
             dimensions: Object.fromEntries(activeFields.map((f) => [f, String(editRow.dimensions[f] ?? 0)])),
             dimension_expressions: Object.keys(dimensionExpressions).length > 0 ? dimensionExpressions : null,
             chainage: editRow.chainage.trim() || null,
@@ -2595,14 +2656,33 @@ function MeasurementsTab({
       ellipsis: true,
       render: (_: unknown, row: MeasRow) =>
         row._kind === 'existing' ? (
-          <Space size={4}>
-            <span>{(() => { const item = boqById.get(row.entry.boq_item_id); return item ? `${item.item_no} — ${item.description}` : row.entry.boq_item_id; })()}</span>
-            {row.entry.edited_by && (
-              <Tooltip title={`Edited by ${row.entry.edited_by_name ?? 'Unknown'}${row.entry.edited_at ? ` on ${fmtDateTime(row.entry.edited_at)}` : ''}`}>
-                <Tag color="gold" style={{ margin: 0, fontSize: 10, padding: '0 4px', lineHeight: '16px' }}>Edited</Tag>
-              </Tooltip>
-            )}
-          </Space>
+          editingRowId === row.entry.id ? (
+            (() => {
+              // Re-point among items of the same construction type only, so the
+              // steel/dimension editing mode below stays consistent.
+              const cType = boqById.get(row.entry.boq_item_id)?.construction_type;
+              return (
+                <Select
+                  size="small" showSearch optionFilterProp="label" style={inp}
+                  placeholder="BOQ item…"
+                  value={editRow.boq_item_id ?? undefined}
+                  onChange={handleEditRowBoqChange}
+                  options={(boqItems ?? [])
+                    .filter((b) => b.construction_type === cType)
+                    .map((b) => ({ value: b.id, label: `${b.item_no} — ${b.description}` }))}
+                />
+              );
+            })()
+          ) : (
+            <Space size={4}>
+              <span>{(() => { const item = boqById.get(row.entry.boq_item_id); return item ? `${item.item_no} — ${item.description}` : row.entry.boq_item_id; })()}</span>
+              {row.entry.edited_by && (
+                <Tooltip title={`Edited by ${row.entry.edited_by_name ?? 'Unknown'}${row.entry.edited_at ? ` on ${fmtDateTime(row.entry.edited_at)}` : ''}`}>
+                  <Tag color="gold" style={{ margin: 0, fontSize: 10, padding: '0 4px', lineHeight: '16px' }}>Edited</Tag>
+                </Tooltip>
+              )}
+            </Space>
+          )
         ) : (
           <Select
             ref={(el) => { fieldRefs.current[`${row.draft.key}:boq`] = el; }}

@@ -292,9 +292,14 @@ function exportMonthlyReportToExcel(
     }
     const subtotal = computeSubtotal(section, daysInMonth);
     const subtotalRowIdx = rows.length;
-    const subtotalRow: (string | number)[] = ['', 'Section Total', '', '', '', fmtQtyRaw(String(subtotal.closing_qty)), '', fmtQtyRaw(String(subtotal.opening_qty)), fmtAmtRaw(String(subtotal.opening_amount))];
-    for (const cell of subtotal.daily) subtotalRow.push(fmtQtyRaw(String(cell.qty)), fmtAmtRaw(String(cell.amount)));
-    subtotalRow.push(fmtQtyRaw(String(subtotal.closing_qty)), fmtAmtRaw(String(subtotal.closing_amount)));
+    // Section totals sum amounts only — qty cells are left blank (summing qtys
+    // across items of different units is meaningless), matching the on-screen table.
+    // Column layout mirrors the item rows: Item No, Description, Unit, Rate,
+    // Agreed Qty, Total Done, Balance, Opening Qty, Opening Amt, then per-day
+    // Qty/Amt pairs, then Closing Qty/Amt.
+    const subtotalRow: (string | number)[] = ['', 'Section Total', '', '', '', '', '', '', fmtAmtRaw(String(subtotal.opening_amount))];
+    for (const cell of subtotal.daily) subtotalRow.push('', fmtAmtRaw(String(cell.amount)));
+    subtotalRow.push('', fmtAmtRaw(String(subtotal.closing_amount)));
     rows.push(subtotalRow);
     pushMerge(subtotalRowIdx, 0, 1);
   }
@@ -541,8 +546,7 @@ export function DprMonthlyReportPage() {
         onCell: dataOnCell,
         render: (_, row) => {
           if (row._type === 'item') return fmtQtyByUnit(row.item.closing_qty, row.item.unit);
-          if (row._type === 'subtotal') return fmtQty(row.subtotal.closing_qty);
-          return null;
+          return null; // subtotal qty omitted — see opening_qty note
         },
       },
       {
@@ -571,7 +575,8 @@ export function DprMonthlyReportPage() {
             onCell: dataOnCell,
             render: (_, row) => {
               if (row._type === 'item') return fmtQtyByUnit(row.item.opening_qty, row.item.unit);
-              if (row._type === 'subtotal') return fmtQty(row.subtotal.opening_qty);
+              // Section subtotals deliberately omit a quantity sum — adding up
+              // qtys across items of different units (CUM/SQM/MT) is meaningless.
               return null;
             },
           },
@@ -602,8 +607,7 @@ export function DprMonthlyReportPage() {
               onCell: dataOnCell,
               render: (_: unknown, row: ReportRow) => {
                 if (row._type === 'item') return fmtQtyByUnit(row.item.daily[i].qty, row.item.unit);
-                if (row._type === 'subtotal') return fmtQty(row.subtotal.daily[i].qty);
-                return null;
+                return null; // subtotal qty omitted — see opening_qty note
               },
             },
             {
@@ -632,8 +636,7 @@ export function DprMonthlyReportPage() {
             onCell: dataOnCell,
             render: (_, row) => {
               if (row._type === 'item') return fmtQtyByUnit(row.item.closing_qty, row.item.unit);
-              if (row._type === 'subtotal') return fmtQty(row.subtotal.closing_qty);
-              return null;
+              return null; // subtotal qty omitted — see opening_qty note
             },
           },
           {

@@ -17,6 +17,7 @@ from app.schemas.dpr import (
     DprMachineryCreate,
     DprMachineryUpdate,
     DprMaterialCreate,
+    DprMaterialRateBulkUpdate,
     DprMaterialUpdate,
     DprProductionBulkUpsert,
     DprProductionEntryRead,
@@ -26,9 +27,10 @@ from app.schemas.dpr import (
 )
 from app.schemas.dpr_labour import DprLabourCreate, DprLabourRead, DprLabourSuggestion, DprLabourUpdate
 from app.schemas.dpr_report import DprMonthlyReportRead
-from app.schemas.measurement import MeasurementRead
+from app.schemas.measurement import MeasurementPhotoRead, MeasurementRead
 from app.services.dpr_service import DprProductionService, DprService
 from app.services.measurement_service import MeasurementService
+from app.services.project_photo_service import ProjectPhotoService
 
 router = APIRouter(prefix="/dpr", tags=["dpr"])
 
@@ -125,6 +127,20 @@ async def update_material(
 ) -> DprHeaderRead:
     header = await DprService(session).update_material(
         item_id, data, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role
+    )
+    return DprHeaderRead.model_validate(header)
+
+
+@router.patch(
+    "/{header_id}/materials/rate",
+    response_model=DprHeaderRead,
+    dependencies=[Depends(require_role(*_FIELD_ROLES))],
+)
+async def update_material_rates(
+    header_id: uuid.UUID, data: DprMaterialRateBulkUpdate, session: SessionDep, current_user: CurrentUserDep
+) -> DprHeaderRead:
+    header = await DprService(session).update_material_rates(
+        header_id, data.ids, data.rate, actor_id=uuid.UUID(current_user.id), actor_role=current_user.role
     )
     return DprHeaderRead.model_validate(header)
 
@@ -367,6 +383,7 @@ async def list_measurements_for_dpr(
     name_result = await session.execute(select(User.id, User.full_name).where(User.id.in_(user_ids)))
     name_by_id = dict(name_result.all())
     auto_materials_map = await MeasurementService(session).get_auto_materials_map([m.id for m in measurements])
+    photos_map = await ProjectPhotoService(session).map_for_measurements([m.id for m in measurements])
     return [
         MeasurementRead(
             id=m.id,
@@ -392,6 +409,7 @@ async def list_measurements_for_dpr(
             edited_by_name=name_by_id.get(m.edited_by) if m.edited_by else None,
             edited_at=m.edited_at,
             auto_materials=auto_materials_map.get(m.id, []),
+            photos=[MeasurementPhotoRead.model_validate(p) for p in photos_map.get(m.id, [])],
         )
         for m in measurements
     ]

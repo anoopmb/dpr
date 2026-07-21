@@ -9,11 +9,13 @@ from app.models.user import User, UserRole
 from app.schemas.measurement import (
     MeasurementCreate,
     MeasurementNotesUpdate,
+    MeasurementPhotoRead,
     MeasurementRead,
     MeasurementUpdate,
     SteelLineRead,
 )
 from app.services.measurement_service import MeasurementService
+from app.services.project_photo_service import ProjectPhotoService
 
 router = APIRouter(prefix="/measurements", tags=["measurements"])
 
@@ -25,6 +27,7 @@ async def _to_read(session: SessionDep, measurement: Measurement) -> Measurement
     user = await session.get(User, measurement.recorded_by)
     editor = await session.get(User, measurement.edited_by) if measurement.edited_by else None
     auto_materials_map = await MeasurementService(session).get_auto_materials_map([measurement.id])
+    photos_map = await ProjectPhotoService(session).map_for_measurements([measurement.id])
     return MeasurementRead(
         id=measurement.id,
         project_id=measurement.project_id,
@@ -50,6 +53,7 @@ async def _to_read(session: SessionDep, measurement: Measurement) -> Measurement
         edited_at=measurement.edited_at,
         steel_lines=[SteelLineRead.model_validate(l) for l in measurement.steel_lines],
         auto_materials=auto_materials_map.get(measurement.id, []),
+        photos=[MeasurementPhotoRead.model_validate(p) for p in photos_map.get(measurement.id, [])],
     )
 
 
@@ -60,6 +64,7 @@ async def _to_read_many(session: SessionDep, measurements: list[Measurement]) ->
     result = await session.execute(select(User.id, User.full_name).where(User.id.in_(user_ids)))
     name_by_id = dict(result.all())
     auto_materials_map = await MeasurementService(session).get_auto_materials_map([m.id for m in measurements])
+    photos_map = await ProjectPhotoService(session).map_for_measurements([m.id for m in measurements])
     return [
         MeasurementRead(
             id=m.id,
@@ -86,6 +91,7 @@ async def _to_read_many(session: SessionDep, measurements: list[Measurement]) ->
             edited_at=m.edited_at,
             steel_lines=[SteelLineRead.model_validate(l) for l in m.steel_lines],
             auto_materials=auto_materials_map.get(m.id, []),
+            photos=[MeasurementPhotoRead.model_validate(p) for p in photos_map.get(m.id, [])],
         )
         for m in measurements
     ]

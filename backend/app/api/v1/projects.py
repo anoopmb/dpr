@@ -2,12 +2,19 @@ import uuid
 from datetime import date
 
 from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy import select
 
 from app.api.deps import CurrentUserDep, SessionDep, require_role
-from app.models.user import UserRole
+from app.models.user import User, UserRole
 from app.schemas.billing import ProjectSummaryRead
 from app.schemas.profitability import ProfitabilityRead
-from app.schemas.project import ProjectCreate, ProjectRead, ProjectUpdate
+from app.schemas.project import (
+    CompletionExtensionCreate,
+    CompletionExtensionRead,
+    ProjectCreate,
+    ProjectRead,
+    ProjectUpdate,
+)
 from app.schemas.project_assignment import ProjectAssignmentCreate, ProjectAssignmentRead
 from app.services.billing_service import BillingService
 from app.services.profitability_service import ProfitabilityService
@@ -65,6 +72,55 @@ async def delete_project(
     project_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep
 ) -> None:
     await ProjectService(session).delete(project_id, actor_id=uuid.UUID(current_user.id))
+
+
+@router.post(
+    "/{project_id}/extend-completion",
+    response_model=CompletionExtensionRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_role(UserRole.ADMIN, UserRole.PROJECT_MANAGER))],
+)
+async def extend_completion(
+    project_id: uuid.UUID,
+    data: CompletionExtensionCreate,
+    session: SessionDep,
+    current_user: CurrentUserDep,
+) -> CompletionExtensionRead:
+    extension = await ProjectService(session).extend_completion(
+        project_id, data, actor_id=uuid.UUID(current_user.id)
+    )
+    return CompletionExtensionRead(
+        **{k: getattr(extension, k) for k in (
+            "id", "project_id", "previous_completion_date", "new_completion_date",
+            "reason", "extended_by", "extended_at",
+        )},
+        extended_by_name=current_user.full_name,
+    )
+
+
+@router.get("/{project_id}/completion-extensions", response_model=list[CompletionExtensionRead])
+async def list_completion_extensions(
+    project_id: uuid.UUID, session: SessionDep, _: CurrentUserDep
+) -> list[CompletionExtensionRead]:
+    extensions = await ProjectService(session).list_completion_extensions(project_id)
+    user_ids = {e.extended_by for e in extensions}
+    name_by_id: dict[uuid.UUID, str] = {}
+    if user_ids:
+        result = await session.execute(select(User.id, User.full_name).where(User.id.in_(user_ids)))
+        name_by_id = {uid: name for uid, name in result.all()}
+    return [
+        CompletionExtensionRead(
+            id=e.id,
+            project_id=e.project_id,
+            previous_completion_date=e.previous_completion_date,
+            new_completion_date=e.new_completion_date,
+            reason=e.reason,
+            extended_by=e.extended_by,
+            extended_by_name=name_by_id.get(e.extended_by, "Unknown"),
+            extended_at=e.extended_at,
+        )
+        for e in extensions
+    ]
 
 
 @router.get("/{project_id}/summary", response_model=ProjectSummaryRead)

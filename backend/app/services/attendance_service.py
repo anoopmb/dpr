@@ -358,9 +358,13 @@ class AttendanceService:
         return records
 
     async def list_for_project(
-        self, project_id: uuid.UUID, attendance_date: date | None = None
+        self,
+        project_id: uuid.UUID,
+        attendance_date: date | None = None,
+        from_date: date | None = None,
+        to_date: date | None = None,
     ) -> list[AttendanceRecord]:
-        return await self.repo.list_for_project(project_id, attendance_date)
+        return await self.repo.list_for_project(project_id, attendance_date, from_date, to_date)
 
     async def delete(self, record_id: uuid.UUID, actor_id: uuid.UUID, actor_role: UserRole) -> None:
         record = await self.session.get(AttendanceRecord, record_id)

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { getApiErrorMessage } from '@/utils/api-error';
 import {
+  Alert,
   Button,
   Descriptions,
   Form,
@@ -8,9 +9,11 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Select,
   Space,
   Statistic,
   Table,
+  Tag,
   Typography,
   message,
 } from 'antd';
@@ -31,6 +34,7 @@ import { useWorkTypes } from '@/api/hooks/useMasters';
 import { calculateQuantity, evaluateExpression, isArithmeticExpression, ExpressionError } from '@/features/measurements/formulaEngine';
 import { useThemeMode } from '@/theme/theme-context';
 import { useDateFormat, useNumberFormat } from '@/utils/format';
+import { MeasurementPhotos } from '@/features/measurements/MeasurementPhotos';
 
 const FIELD_LABELS: Record<string, string> = {
   nos: 'No.',
@@ -39,7 +43,7 @@ const FIELD_LABELS: Record<string, string> = {
   d: 'D (m)',
 };
 
-const NCOLS = 8;
+const NCOLS = 9;
 
 type MeasurementRow =
   | { _type: 'date-header'; date: string; count: number; key: string }
@@ -101,6 +105,9 @@ function MeasurementDetailPanel({
           {measurement.notes || <Typography.Text type="secondary">—</Typography.Text>}
         </Descriptions.Item>
       </Descriptions>
+      <div style={{ marginTop: 12 }}>
+        <MeasurementPhotos photos={measurement.photos} />
+      </div>
     </div>
   );
 }
@@ -122,6 +129,7 @@ export function MeasurementsPage() {
   const updateMeasurementNotes = useUpdateMeasurementNotes();
 
   const [editingMeasurement, setEditingMeasurement] = useState<MeasurementRead | null>(null);
+  const [editBoqItemId, setEditBoqItemId] = useState<string | null>(null);
   const [editDimensions, setEditDimensions] = useState<Record<string, number>>({});
   const [editDimensionText, setEditDimensionText] = useState<Record<string, string>>({});
   const [editChainage, setEditChainage] = useState('');
@@ -152,6 +160,7 @@ export function MeasurementsPage() {
   };
 
   const openEditModal = (record: MeasurementRead) => {
+    setEditBoqItemId(record.boq_item_id);
     setEditDimensions(
       Object.fromEntries(
         Object.entries(record.dimensions).map(([k, v]) => [k, parseFloat(v) || 0]),
@@ -165,6 +174,17 @@ export function MeasurementsPage() {
     setEditChainage(record.chainage ?? '');
     setEditRate(record.rate != null ? parseFloat(record.rate) : null);
     setEditingMeasurement(record);
+  };
+
+  // Re-point the line at a different BOQ item: reset dimensions to the new
+  // work type's fields (mirrors the create form's handleSelectBoq), since the
+  // old L/B/D values don't necessarily map onto a different formula.
+  const handleEditBoqChange = (value: string) => {
+    const item = (boqItems ?? []).find((b) => b.id === value);
+    const wt = (workTypes ?? []).find((w) => w.id === item?.work_type_id);
+    setEditBoqItemId(value);
+    setEditDimensions(wt?.dimension_fields.includes('nos') ? { nos: 1 } : {});
+    setEditDimensionText(wt?.dimension_fields.includes('nos') ? { nos: '1' } : {});
   };
 
   // l/b/d accept a plain number or an arithmetic expression like "(1+2.5)/2".
@@ -181,9 +201,28 @@ export function MeasurementsPage() {
     setEditDimensions((prev) => ({ ...prev, [field]: parsed }));
   };
 
+  const editBoqItem = useMemo(
+    () => (editBoqItemId ? (boqItems ?? []).find((b) => b.id === editBoqItemId) : undefined),
+    [editBoqItemId, boqItems],
+  );
   const editWorkType = useMemo(
-    () => (editingMeasurement ? (workTypes ?? []).find((w) => w.id === editingMeasurement.work_type_id) : undefined),
-    [editingMeasurement, workTypes],
+    () => (editBoqItem ? (workTypes ?? []).find((w) => w.id === editBoqItem.work_type_id) : undefined),
+    [editBoqItem, workTypes],
+  );
+  // This modal renders dimension fields only — steel bar entry lives on the
+  // field Measurement screen. Steel rows keep their existing no-op edit here.
+  // Re-pointing is restricted to items of the *same* construction type so the
+  // carried-over template (and auto-material behaviour) stays valid.
+  const editingConstructionType = editingMeasurement
+    ? (boqItems ?? []).find((b) => b.id === editingMeasurement.boq_item_id)?.construction_type ?? null
+    : null;
+  const editingIsSteel = editingConstructionType === 'STEEL';
+  const boqChangeOptions = useMemo(
+    () =>
+      (boqItems ?? [])
+        .filter((b) => b.construction_type === editingConstructionType)
+        .map((b) => ({ value: b.id, label: `${b.item_no} — ${b.description}` })),
+    [boqItems, editingConstructionType],
   );
 
   const editComputedQty = useMemo(() => {
@@ -211,7 +250,7 @@ export function MeasurementsPage() {
   const rows = useMemo(() => buildDateGroupedRows(filteredMeasurements), [filteredMeasurements]);
 
   const handleEditSave = async () => {
-    if (!editingMeasurement || !editWorkType) return;
+    if (!editingMeasurement || !editWorkType || !editBoqItemId) return;
     try {
       const dimensionExpressions = Object.fromEntries(
         editWorkType.dimension_fields
@@ -221,6 +260,7 @@ export function MeasurementsPage() {
       await updateMeasurement.mutateAsync({
         id: editingMeasurement.id,
         data: {
+          boq_item_id: editBoqItemId,
           dimensions: Object.fromEntries(
             editWorkType.dimension_fields.map((f) => [f, String(editDimensions[f] ?? 0)]),
           ),
@@ -295,6 +335,19 @@ export function MeasurementsPage() {
       width: 70,
       onCell: (row) => (row._type === 'date-header' ? { colSpan: 0 } : {}),
       render: (_, row) => (row._type === 'item' ? (row.measurement.billed ? 'Yes' : 'No') : null),
+    },
+    {
+      title: 'Photo',
+      key: 'photo',
+      width: 70,
+      align: 'center' as const,
+      onCell: (row) => (row._type === 'date-header' ? { colSpan: 0 } : {}),
+      render: (_, row) =>
+        row._type === 'item'
+          ? (row.measurement.photos.length > 0
+              ? <Tag color="cyan" style={{ margin: 0 }}>📷 {row.measurement.photos.length}</Tag>
+              : <Typography.Text type="secondary">—</Typography.Text>)
+          : null,
     },
     {
       title: 'Recorded By',
@@ -391,10 +444,28 @@ export function MeasurementsPage() {
         onCancel={() => setEditingMeasurement(null)}
         onOk={handleEditSave}
         confirmLoading={updateMeasurement.isPending}
+        okButtonProps={{ disabled: editingIsSteel }}
         destroyOnHidden
       >
-        {editingMeasurement && editWorkType && (
+        {editingMeasurement && editingIsSteel && (
+          <Alert
+            type="info"
+            showIcon
+            message="Steel measurements are edited on the field Measurement screen"
+            description="Re-pointing a steel measurement to a different BOQ item isn't supported here. Delete and re-add it on the Measurements (field) screen instead."
+          />
+        )}
+        {editingMeasurement && !editingIsSteel && editWorkType && (
           <Form layout="vertical">
+            <Form.Item label="BOQ Item">
+              <Select
+                showSearch
+                optionFilterProp="label"
+                value={editBoqItemId ?? undefined}
+                onChange={handleEditBoqChange}
+                options={boqChangeOptions}
+              />
+            </Form.Item>
             <Form.Item label="Chainage / Location (optional)">
               <Input
                 value={editChainage}

@@ -35,32 +35,28 @@ import { useExpensesByHeader, type ExpenseRead } from '@/api/hooks/useExpenses';
 import { useAuthStore } from '@/store/auth-store';
 import { useMaterials, useMachinery, useUoms, useExpenseCategories, MACHINERY_HIRE_UNIT_LABELS } from '@/api/hooks/useMasters';
 import { useBoqItems } from '@/api/hooks/useBoq';
-import { useEffectiveWorkflow, type WorkflowDefinitionRead } from '@/api/hooks/useWorkflowConfig';
+import { useEffectiveWorkflow } from '@/api/hooks/useWorkflowConfig';
+import { statusColor, statusLabel } from '@/features/dpr/dprStatus';
+import { MeasurementPhotos } from '@/features/measurements/MeasurementPhotos';
 import { useThemeMode } from '@/theme/theme-context';
 import { useDateFormat, useNumberFormat } from '@/utils/format';
 import type { AutoMaterialRead, MeasurementRead, MeasurementStatus } from '@/api/hooks/useMeasurements';
 
-// DRAFT/SUBMITTED/REJECTED/LOCKED/APPROVED are fixed bookends with fixed
-// colors; everything else is an admin-configured approval level — colored
-// by cycling a palette keyed on the level's position in its workflow.
-const FIXED_STATUS_COLOR: Record<string, string> = {
-  DRAFT: 'blue',
-  SUBMITTED: 'gold',
-  APPROVED: 'green',
-  REJECTED: 'red',
-  LOCKED: 'green',
-};
-const LEVEL_COLOR_PALETTE = ['gold', 'cyan', 'purple', 'geekblue', 'volcano', 'lime'];
+// Human labels for the dynamic measurement dimension keys, in the order they
+// should read on a measurement line. Any key not listed falls through to its
+// raw name after these.
+const DIM_LABELS: Record<string, string> = { nos: 'No.', l: 'L', b: 'B', d: 'D' };
+const DIM_ORDER = ['nos', 'l', 'b', 'd'];
 
-function statusColor(status: string, workflow: WorkflowDefinitionRead | undefined): string {
-  if (FIXED_STATUS_COLOR[status]) return FIXED_STATUS_COLOR[status];
-  const idx = workflow?.levels.findIndex((l) => l.status_code === status) ?? -1;
-  return idx >= 0 ? LEVEL_COLOR_PALETTE[idx % LEVEL_COLOR_PALETTE.length] : 'default';
-}
-
-function statusLabel(status: string, workflow: WorkflowDefinitionRead | undefined): string {
-  const level = workflow?.levels.find((l) => l.status_code === status);
-  return level ? level.label : status.replace(/_/g, ' ');
+function formatDimensions(dimensions: Record<string, string>): string {
+  const keys = Object.keys(dimensions);
+  const ordered = [
+    ...DIM_ORDER.filter((k) => k in dimensions),
+    ...keys.filter((k) => !DIM_ORDER.includes(k)),
+  ];
+  return ordered
+    .map((k) => `${DIM_LABELS[k] ?? k} ${dimensions[k]}`)
+    .join('  ×  ');
 }
 
 function rowKind(header: DprHeaderRead): 'no-work' | 'pre-work' | 'normal' {
@@ -243,8 +239,19 @@ function MeasurementExpandDetail({ measurement }: { measurement: MeasurementRead
     { title: '', key: 'auto', width: 70, render: (_, r) => !r.manually_edited ? <Tag color="purple" style={{ margin: 0, fontSize: 10 }}>Auto</Tag> : null },
   ];
 
+  const dimensionText = Object.keys(measurement.dimensions).length > 0
+    ? formatDimensions(measurement.dimensions)
+    : null;
+
   return (
     <div style={{ padding: '4px 12px 8px' }}>
+      {dimensionText && (
+        <div style={{ marginBottom: 8 }}>
+          <Typography.Text strong>Dimensions: </Typography.Text>
+          <Typography.Text>{dimensionText}</Typography.Text>
+          <Typography.Text type="secondary"> = {measurement.computed_qty}</Typography.Text>
+        </div>
+      )}
       {measurement.boq_template_name && (
         <div style={{ marginBottom: 8 }}>
           <Typography.Text strong>Template: </Typography.Text>
@@ -257,6 +264,7 @@ function MeasurementExpandDetail({ measurement }: { measurement: MeasurementRead
           <Typography.Text>{measurement.notes}</Typography.Text>
         </div>
       )}
+      <MeasurementPhotos photos={measurement.photos} />
       {measurement.auto_materials.length > 0 && (
         <>
           <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>Materials</Typography.Text>
@@ -369,6 +377,13 @@ function DprDetailPanel({
     { title: 'Date', dataIndex: 'measurement_date', width: 100, render: fmtDate },
     { title: 'Qty', dataIndex: 'computed_qty', width: 90, align: 'right' as const },
     { title: 'Chainage', dataIndex: 'chainage', width: 130, render: (v: string | null) => v ?? '—' },
+    {
+      title: 'Photo',
+      key: 'photo',
+      width: 70,
+      align: 'center' as const,
+      render: (_, m) => (m.photos.length > 0 ? <Tag color="cyan" style={{ margin: 0 }}>📷 {m.photos.length}</Tag> : <Typography.Text type="secondary">—</Typography.Text>),
+    },
     { title: 'Recorded By', dataIndex: 'recorded_by_name', width: 140 },
     {
       title: 'Status',

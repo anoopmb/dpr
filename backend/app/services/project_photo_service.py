@@ -49,3 +49,14 @@ class ProjectPhotoService:
 
     async def list_for_entity(self, entity_type: PhotoEntityType, entity_id: uuid.UUID) -> list[ProjectPhoto]:
         return await self.repo.list_for_entity(entity_type, entity_id)
+
+    async def map_for_measurements(
+        self, measurement_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, list[ProjectPhoto]]:
+        """Batch-load MEASUREMENT photos for many measurements at once, grouped
+        by measurement id — avoids an N+1 when building measurement reads."""
+        photos = await self.repo.list_for_entities(PhotoEntityType.MEASUREMENT, measurement_ids)
+        grouped: dict[uuid.UUID, list[ProjectPhoto]] = {}
+        for photo in photos:
+            grouped.setdefault(photo.entity_id, []).append(photo)
+        return grouped

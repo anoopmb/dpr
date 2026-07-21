@@ -22,9 +22,17 @@ import {
   Typography,
   message,
 } from 'antd';
-import { AimOutlined, DeleteOutlined, EditOutlined, PlusOutlined, SettingOutlined, TeamOutlined } from '@ant-design/icons';
+import { AimOutlined, DeleteOutlined, EditOutlined, FieldTimeOutlined, PlusOutlined, SettingOutlined, TeamOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useCreateProject, useDeleteProject, useProjects, useUpdateProject, type ProjectRead } from '@/api/hooks/useProjects';
+import {
+  useCompletionExtensions,
+  useCreateProject,
+  useDeleteProject,
+  useExtendCompletion,
+  useProjects,
+  useUpdateProject,
+  type ProjectRead,
+} from '@/api/hooks/useProjects';
 import { GeofenceMapPicker } from '@/components/common/GeofenceMapPicker';
 import { describeLocationError, getCurrentPosition } from '@/utils/geolocation';
 import { useDepartments } from '@/api/hooks/useMasters';
@@ -223,6 +231,15 @@ function ProjectSettingsDrawer({ project, onClose }: { project: ProjectRead; onC
     }
   };
 
+  const handleToggleAttendanceGate = async (checked: boolean) => {
+    try {
+      await updateProject.mutateAsync({ id: project.id, data: { attendance_required_for_dpr: checked } });
+      message.success('Setting updated');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not update setting'));
+    }
+  };
+
   const handleUseMyLocation = async () => {
     setLocatingMe(true);
     try {
@@ -268,6 +285,18 @@ function ProjectSettingsDrawer({ project, onClose }: { project: ProjectRead; onC
           </div>
           <Switch checked={project.attendance_gps_required} loading={updateProject.isPending} onChange={handleToggleGps} />
         </div>
+        <Divider style={{ margin: '16px 0' }} />
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 24 }}>
+          <div>
+            <Typography.Text strong>Require attendance before DPR entry</Typography.Text>
+            <br />
+            <Typography.Text type="secondary">
+              When on, users must mark at least one worker present for the day before opening the DPR,
+              Materials, Machinery or Measurements screens. Off (default) lets them enter data directly.
+            </Typography.Text>
+          </div>
+          <Switch checked={project.attendance_required_for_dpr} loading={updateProject.isPending} onChange={handleToggleAttendanceGate} />
+        </div>
       </Card>
 
       <Divider />
@@ -306,6 +335,93 @@ function ProjectSettingsDrawer({ project, onClose }: { project: ProjectRead; onC
   );
 }
 
+function CompletionExtensionModal({ project, onClose }: { project: ProjectRead; onClose: () => void }) {
+  const { fmtDate, dateFormat } = useDateFormat();
+  const extend = useExtendCompletion();
+  const { data: history, isLoading } = useCompletionExtensions(project.id);
+  const [newDate, setNewDate] = useState<Dayjs | null>(null);
+  const [reason, setReason] = useState('');
+
+  const currentCompletion = dayjs(project.completion_date);
+
+  const handleSubmit = async () => {
+    if (!newDate) return;
+    try {
+      await extend.mutateAsync({
+        id: project.id,
+        data: { new_completion_date: newDate.format('YYYY-MM-DD'), reason: reason.trim() || null },
+      });
+      message.success('Completion date extended');
+      setNewDate(null);
+      setReason('');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Could not extend completion date'));
+    }
+  };
+
+  return (
+    <Modal title={`Extend Completion — ${project.name}`} open onCancel={onClose} footer={null} width={560} destroyOnHidden>
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message={<span>Current completion date: <strong>{fmtDate(project.completion_date)}</strong></span>}
+      />
+      <Form layout="vertical">
+        <Form.Item label="New Completion Date" required>
+          <DatePicker
+            style={{ width: '100%' }}
+            format={dateFormat}
+            value={newDate}
+            onChange={setNewDate}
+            disabledDate={(d) => d != null && d.isBefore(currentCompletion.add(1, 'day'), 'day')}
+          />
+        </Form.Item>
+        <Form.Item label="Reason (optional)">
+          <Input.TextArea
+            rows={2}
+            maxLength={500}
+            showCount
+            placeholder="e.g. extension of time granted, scope revision…"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </Form.Item>
+        <Button type="primary" loading={extend.isPending} disabled={!newDate} onClick={handleSubmit}>
+          Extend
+        </Button>
+      </Form>
+
+      <Divider>Extension History</Divider>
+      {isLoading ? (
+        <Skeleton active paragraph={{ rows: 3 }} />
+      ) : (history ?? []).length === 0 ? (
+        <Empty description="No extensions yet" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+      ) : (
+        <List
+          size="small"
+          dataSource={history ?? []}
+          renderItem={(h) => (
+            <List.Item>
+              <List.Item.Meta
+                title={<span>{fmtDate(h.previous_completion_date)} → <strong>{fmtDate(h.new_completion_date)}</strong></span>}
+                description={
+                  <Space direction="vertical" size={0}>
+                    {h.reason && <Typography.Text>{h.reason}</Typography.Text>}
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      {h.extended_by_name} · {fmtDate(h.extended_at)}
+                    </Typography.Text>
+                  </Space>
+                }
+              />
+            </List.Item>
+          )}
+        />
+      )}
+    </Modal>
+  );
+}
+
 export function ProjectsListPage() {
   const isMobile = useIsMobile();
   const { data: projects, isLoading } = useProjects();
@@ -323,6 +439,7 @@ export function ProjectsListPage() {
   const [form] = Form.useForm<ProjectFormValues>();
   const [editForm] = Form.useForm<ProjectEditFormValues>();
   const [assignmentsProject, setAssignmentsProject] = useState<ProjectRead | null>(null);
+  const [extendProject, setExtendProject] = useState<ProjectRead | null>(null);
   const [searchText, setSearchText] = useState('');
 
   const filteredProjects = (projects ?? []).filter((p) => {
@@ -438,6 +555,7 @@ export function ProjectsListPage() {
               <Space>
                 <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(project)} />
                 <Button size="small" icon={<SettingOutlined />} onClick={() => setSettingsProject(project)} />
+                <Button size="small" icon={<FieldTimeOutlined />} title="Extend completion date" onClick={() => setExtendProject(project)} />
                 <Button size="small" icon={<TeamOutlined />} onClick={() => setAssignmentsProject(project)}>
                   Assign
                 </Button>
@@ -540,6 +658,10 @@ export function ProjectsListPage() {
 
       {assignmentsProject && (
         <AssignmentsModal project={assignmentsProject} onClose={() => setAssignmentsProject(null)} />
+      )}
+
+      {extendProject && (
+        <CompletionExtensionModal project={extendProject} onClose={() => setExtendProject(null)} />
       )}
     </div>
   );

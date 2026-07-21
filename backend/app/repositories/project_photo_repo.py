@@ -16,3 +16,16 @@ class ProjectPhotoRepository(BaseRepository[ProjectPhoto]):
             )
         )
         return list(result.scalars().all())
+
+    async def list_for_entities(
+        self, entity_type: PhotoEntityType, entity_ids: list[uuid.UUID]
+    ) -> list[ProjectPhoto]:
+        if not entity_ids:
+            return []
+        result = await self.session.execute(
+            select(ProjectPhoto).where(
+                ProjectPhoto.entity_type == entity_type,
+                ProjectPhoto.entity_id.in_(entity_ids),
+            )
+        )
+        return list(result.scalars().all())

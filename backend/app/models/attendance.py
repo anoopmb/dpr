@@ -33,7 +33,7 @@ class AttendanceRecord(TimestampedBase):
     photo_url: Mapped[str | None] = mapped_column(String(500))
     latitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
     longitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
-    gps_accuracy_meters: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
+    gps_accuracy_meters: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     location_name: Mapped[str | None] = mapped_column(String(500))
     within_geofence: Mapped[bool] = mapped_column(Boolean, nullable=False)
     marked_by: Mapped[uuid.UUID] = mapped_column(

@@ -42,8 +42,11 @@ import {
   CartesianGrid,
   Cell,
   Legend,
+  Line,
+  LineChart,
   Pie,
   PieChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip as RTooltip,
   XAxis,
@@ -54,7 +57,7 @@ import { useQueries } from '@tanstack/react-query';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
 import { useSession } from '@/api/hooks/useSession';
-import { useProjects, useProjectSummary, type ProjectSummaryRead } from '@/api/hooks/useProjects';
+import { useProjects, useProjectSummary, type ProjectRead, type ProjectSummaryRead } from '@/api/hooks/useProjects';
 import { useProfitability } from '@/api/hooks/useProfitability';
 import { useBoqSections } from '@/api/hooks/useBoq';
 import { useMeasurements } from '@/api/hooks/useMeasurements';
@@ -335,6 +338,87 @@ function DailyTrendChart({ projectId, projectStart }: { projectId: string; proje
             <Area type="monotone" dataKey="Cost"        stroke={P.red}   fill="url(#gCost)"   strokeWidth={2} dot={false} />
             <Area type="monotone" dataKey="Net P&L"    stroke={P.green} fill="url(#gProfit)" strokeWidth={2} dot={false} />
           </AreaChart>
+        </ResponsiveContainer>
+      )}
+    </Card>
+  );
+}
+
+// ─── Chart 1b: Project Progress S-Curve (planned vs actual) ──────────────────
+function ProjectProgressChart({ projectId, project }: { projectId: string; project: ProjectRead }) {
+  const ct = useChartTheme();
+  const start = dayjs(project.start_date);
+  const completion = dayjs(project.completion_date);
+  const today = dayjs();
+  const contractValue = parseFloat(project.contract_value) || 0;
+  // Actual only exists up to today; never fetch past the completion date.
+  const rangeEnd = today.isBefore(completion) ? today : completion;
+  const { data, isLoading } = useProfitability(
+    projectId, start.format('YYYY-MM-DD'), rangeEnd.format('YYYY-MM-DD'),
+  );
+
+  const todayLabel = rangeEnd.format('DD MMM YY');
+
+  const chartData = useMemo(() => {
+    const totalDays = Math.max(1, completion.diff(start, 'day'));
+    const daily = [...(data?.daily ?? [])].sort((a, b) => (a.date < b.date ? -1 : 1));
+    // Cumulative executed value at each day that had production.
+    let cum = 0;
+    const cumByDate = new Map<string, number>();
+    for (const d of daily) {
+      cum += parseFloat(d.production_value) || 0;
+      cumByDate.set(d.date, cum);
+    }
+    // X points: project start, every day with data, today, and completion —
+    // enough to draw a straight planned baseline and a carried-forward actual.
+    const dateSet = new Set<string>([start.format('YYYY-MM-DD'), rangeEnd.format('YYYY-MM-DD'), completion.format('YYYY-MM-DD')]);
+    daily.forEach((d) => dateSet.add(d.date));
+    const dates = [...dateSet].filter(Boolean).sort();
+
+    let carried = 0;
+    return dates.map((ds) => {
+      const d = dayjs(ds);
+      if (cumByDate.has(ds)) carried = cumByDate.get(ds)!;
+      const plannedPct = Math.min(100, Math.max(0, (d.diff(start, 'day') / totalDays) * 100));
+      const isFuture = d.isAfter(today, 'day');
+      const actualPct = isFuture || contractValue <= 0 ? null : Math.min(100, (carried / contractValue) * 100);
+      return {
+        date: d.format('DD MMM YY'),
+        Planned: +plannedPct.toFixed(1),
+        Actual: actualPct != null ? +actualPct.toFixed(1) : null,
+      };
+    });
+  }, [data, project.start_date, project.completion_date, project.contract_value]);
+
+  return (
+    <Card
+      title={<span style={{ fontWeight: 600 }}>Project Progress (S-Curve)</span>}
+      extra={<Typography.Text type="secondary" style={{ fontSize: 12 }}>Executed value vs planned · {start.format('DD MMM YY')} → {completion.format('DD MMM YY')}</Typography.Text>}
+      bordered={false}
+      style={CARD_STYLE}
+      styles={{ body: { padding: '8px 16px 16px' } }}
+    >
+      {isLoading ? (
+        <Skeleton active paragraph={{ rows: 6 }} />
+      ) : chartData.length === 0 ? (
+        <Empty description="No timeline data" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ padding: '32px 0' }} />
+      ) : (
+        <ResponsiveContainer width="100%" height={280}>
+          <LineChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} vertical={false} />
+            <XAxis dataKey="date" tick={{ fill: ct.tick, fontSize: 11 }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={40} />
+            <YAxis
+              domain={[0, 100]}
+              tick={{ fill: ct.tick, fontSize: 11 }}
+              axisLine={false} tickLine={false}
+              tickFormatter={(v) => `${v}%`}
+            />
+            <RTooltip content={<ChartTooltip fmt={(v) => `${v}%`} />} />
+            <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+            <ReferenceLine x={todayLabel} stroke={P.amber} strokeDasharray="4 4" label={{ value: 'Today', fill: P.amber, fontSize: 11, position: 'insideTopRight' }} />
+            <Line type="monotone" dataKey="Planned" stroke={ct.tick} strokeWidth={2} strokeDasharray="6 4" dot={false} />
+            <Line type="monotone" dataKey="Actual" stroke={P.blue} strokeWidth={2.5} dot={false} connectNulls />
+          </LineChart>
         </ResponsiveContainer>
       )}
     </Card>
@@ -1332,6 +1416,11 @@ function ProjectDashboard({ projectId, role }: { projectId: string; role: UserRo
           </Row>
 
           <SectionHeading label="Progress & Attendance" />
+          {project && (
+            <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+              <Col xs={24}><ProjectProgressChart projectId={projectId} project={project} /></Col>
+            </Row>
+          )}
           <Row gutter={[16, 16]}>
             <Col xs={24} md={12}><BoqProgressChart    projectId={projectId} /></Col>
             <Col xs={24} md={12}><AttendanceTrendChart projectId={projectId} /></Col>

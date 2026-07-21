@@ -107,6 +107,19 @@ export function useAttendanceRecords(projectId: string | null, date?: string) {
   });
 }
 
+export function useAttendanceRange(projectId: string | null, fromDate?: string, toDate?: string) {
+  return useQuery({
+    queryKey: ['attendance-range', projectId, fromDate, toDate],
+    queryFn: async () =>
+      (
+        await apiClient.get<AttendanceRecordRead[]>(`/attendance/by-project/${projectId}`, {
+          params: { from_date: fromDate, to_date: toDate },
+        })
+      ).data,
+    enabled: !!projectId && !!fromDate && !!toDate,
+  });
+}
+
 export function useCheckIn() {
   const queryClient = useQueryClient();
   return useMutation({

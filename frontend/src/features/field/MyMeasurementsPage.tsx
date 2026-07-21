@@ -108,6 +108,7 @@ export function MyMeasurementsPage() {
 
   // edit modal state
   const [editingMeasurement, setEditingMeasurement] = useState<MeasurementRead | null>(null);
+  const [editBoqItemId, setEditBoqItemId] = useState<string | null>(null);
   const [editDimensions, setEditDimensions] = useState<Record<string, number>>({});
   const [editDimensionText, setEditDimensionText] = useState<Record<string, string>>({});
   const [editChainage, setEditChainage] = useState('');
@@ -128,14 +129,37 @@ export function MyMeasurementsPage() {
   const addNeedsTemplate = !!addConstructionType && addConstructionType !== 'GENERAL';
   const addTemplateOptions = (allTemplates ?? []).filter((t) => t.construction_type === addConstructionType && t.is_active);
 
+  const editBoqItem = editBoqItemId ? boqById.get(editBoqItemId) : undefined;
   const editWorkType = useMemo(
-    () => (editingMeasurement ? (workTypes ?? []).find((w) => w.id === editingMeasurement.work_type_id) : undefined),
-    [editingMeasurement, workTypes],
+    () => (editBoqItem ? (workTypes ?? []).find((w) => w.id === editBoqItem.work_type_id) : undefined),
+    [editBoqItem, workTypes],
   );
   const editComputedQty = useMemo(() => {
     if (!editWorkType) return 0;
     return calculateQuantity(editWorkType.formula, editWorkType.dimension_fields, editDimensions);
   }, [editWorkType, editDimensions]);
+  // This modal renders dimension fields only (no steel bar entry). Steel rows
+  // keep their existing no-op edit; re-pointing is limited to items of the
+  // same construction type so the carried-over template stays valid.
+  const editingConstructionType = editingMeasurement
+    ? boqById.get(editingMeasurement.boq_item_id)?.construction_type ?? null
+    : null;
+  const editingIsSteel = editingConstructionType === 'STEEL';
+  const boqChangeOptions = useMemo(
+    () =>
+      (boqItems ?? [])
+        .filter((b) => b.construction_type === editingConstructionType)
+        .map((b) => ({ value: b.id, label: `${b.item_no} — ${b.description}` })),
+    [boqItems, editingConstructionType],
+  );
+
+  const handleEditBoqChange = (value: string) => {
+    const item = boqById.get(value);
+    const wt = (workTypes ?? []).find((w) => w.id === item?.work_type_id);
+    setEditBoqItemId(value);
+    setEditDimensions(wt?.dimension_fields.includes('nos') ? { nos: 1 } : {});
+    setEditDimensionText(wt?.dimension_fields.includes('nos') ? { nos: '1' } : {});
+  };
 
   const dprForDate = dprList?.find((d) => d.report_date === selectedEntryDate);
   const dprIsLocked = dprForDate && dprForDate.status !== 'DRAFT';
@@ -248,6 +272,7 @@ export function MyMeasurementsPage() {
   };
 
   const handleEditOpen = (record: MeasurementRead) => {
+    setEditBoqItemId(record.boq_item_id);
     setEditDimensions(Object.fromEntries(Object.entries(record.dimensions).map(([k, v]) => [k, parseFloat(v) || 0])));
     setEditDimensionText(
       Object.fromEntries(Object.entries(record.dimensions).map(([k, v]) => [k, record.dimension_expressions?.[k] ?? v])),
@@ -257,7 +282,7 @@ export function MyMeasurementsPage() {
   };
 
   const handleEditSave = async () => {
-    if (!editingMeasurement || !editWorkType) return;
+    if (!editingMeasurement || !editWorkType || !editBoqItemId) return;
     try {
       const editDimensionExpressions = Object.fromEntries(
         editWorkType.dimension_fields
@@ -267,6 +292,7 @@ export function MyMeasurementsPage() {
       await updateMeasurement.mutateAsync({
         id: editingMeasurement.id,
         data: {
+          boq_item_id: editBoqItemId,
           dimensions: Object.fromEntries(editWorkType.dimension_fields.map((f) => [f, String(editDimensions[f] ?? 0)])),
           dimension_expressions: Object.keys(editDimensionExpressions).length > 0 ? editDimensionExpressions : null,
           chainage: editChainage.trim() || null,
@@ -520,10 +546,28 @@ export function MyMeasurementsPage() {
         onCancel={() => setEditingMeasurement(null)}
         onOk={handleEditSave}
         confirmLoading={updateMeasurement.isPending}
+        okButtonProps={{ disabled: editingIsSteel }}
         destroyOnHidden
       >
-        {editingMeasurement && editWorkType && (
+        {editingMeasurement && editingIsSteel && (
+          <Alert
+            type="info"
+            showIcon
+            message="Steel measurements can't be re-pointed here"
+            description="Delete and re-add the steel measurement to change its BOQ item."
+          />
+        )}
+        {editingMeasurement && !editingIsSteel && editWorkType && (
           <Form layout="vertical">
+            <Form.Item label="BOQ Item">
+              <Select
+                showSearch
+                optionFilterProp="label"
+                value={editBoqItemId ?? undefined}
+                onChange={handleEditBoqChange}
+                options={boqChangeOptions}
+              />
+            </Form.Item>
             <Form.Item label="Chainage / Location (optional)">
               <Input
                 value={editChainage}

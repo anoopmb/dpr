@@ -23,6 +23,7 @@ from app.models.push_subscription import PushSubscription
 from app.models.organization_settings import OrganizationSettings
 from app.models.project import Project
 from app.models.project_assignment import ProjectAssignment
+from app.models.project_completion_extension import ProjectCompletionExtension
 from app.models.project_photo import ProjectPhoto
 from app.models.stock_location import StockLocation
 from app.models.user import User
@@ -34,6 +35,7 @@ from app.models.workflow_config import WorkflowDefinition, WorkflowEntityType, W
 __all__ = [
     "Project",
     "ProjectAssignment",
+    "ProjectCompletionExtension",
     "BoqSection",
     "BoqItem",
     "BoqItemRevision",

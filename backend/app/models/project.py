@@ -55,6 +55,12 @@ class Project(TimestampedBase):
     attendance_photo_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     attendance_gps_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
+    # When False (the default), field screens (DPR, Materials, Machinery,
+    # Measurements) no longer require the user to have marked attendance
+    # first — the RequireAttendance gate is bypassed. Flip on per project to
+    # restore the "mark attendance before entering data" workflow.
+    attendance_required_for_dpr: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
     status: Mapped[ProjectStatus] = mapped_column(String(20), nullable=False, default=ProjectStatus.ACTIVE)
 
     boq_items: Mapped[list["BoqItem"]] = relationship(back_populates="project", cascade="all, delete-orphan")

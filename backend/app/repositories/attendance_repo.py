@@ -18,9 +18,19 @@ class AttendanceRepository(BaseRepository[AttendanceRecord]):
         )
         return result.scalar_one_or_none()
 
-    async def list_for_project(self, project_id: uuid.UUID, attendance_date: date | None = None) -> list[AttendanceRecord]:
+    async def list_for_project(
+        self,
+        project_id: uuid.UUID,
+        attendance_date: date | None = None,
+        from_date: date | None = None,
+        to_date: date | None = None,
+    ) -> list[AttendanceRecord]:
         stmt = select(AttendanceRecord).where(AttendanceRecord.project_id == project_id)
         if attendance_date is not None:
             stmt = stmt.where(AttendanceRecord.attendance_date == attendance_date)
+        if from_date is not None:
+            stmt = stmt.where(AttendanceRecord.attendance_date >= from_date)
+        if to_date is not None:
+            stmt = stmt.where(AttendanceRecord.attendance_date <= to_date)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())

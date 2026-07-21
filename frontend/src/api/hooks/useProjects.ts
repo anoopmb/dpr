@@ -17,6 +17,7 @@ export interface ProjectRead {
   geofence_radius_meters: number;
   attendance_photo_required: boolean;
   attendance_gps_required: boolean;
+  attendance_required_for_dpr: boolean;
   status: 'ACTIVE' | 'COMPLETED' | 'SUSPENDED';
 }
 
@@ -42,6 +43,7 @@ export interface ProjectUpdateInput {
   project_manager_id?: string | null;
   attendance_photo_required?: boolean;
   attendance_gps_required?: boolean;
+  attendance_required_for_dpr?: boolean;
   site_latitude?: number | null;
   site_longitude?: number | null;
   geofence_radius_meters?: number;
@@ -79,6 +81,43 @@ export function useDeleteProject() {
       return id;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['projects'] }),
+  });
+}
+
+export interface CompletionExtensionRead {
+  id: string;
+  project_id: string;
+  previous_completion_date: string;
+  new_completion_date: string;
+  reason: string | null;
+  extended_by: string;
+  extended_by_name: string;
+  extended_at: string;
+}
+
+export interface CompletionExtensionInput {
+  new_completion_date: string;
+  reason?: string | null;
+}
+
+export function useCompletionExtensions(projectId: string | null) {
+  return useQuery({
+    queryKey: ['completion-extensions', projectId],
+    queryFn: async () =>
+      (await apiClient.get<CompletionExtensionRead[]>(`/projects/${projectId}/completion-extensions`)).data,
+    enabled: !!projectId,
+  });
+}
+
+export function useExtendCompletion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: CompletionExtensionInput }) =>
+      (await apiClient.post<CompletionExtensionRead>(`/projects/${id}/extend-completion`, data)).data,
+    onSuccess: (_res, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['completion-extensions', id] });
+    },
   });
 }
 

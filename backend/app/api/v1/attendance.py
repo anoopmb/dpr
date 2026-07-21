@@ -81,9 +81,16 @@ async def mark_present(
 
 @router.get("/attendance/by-project/{project_id}", response_model=list[AttendanceRecordRead])
 async def list_attendance_for_project(
-    project_id: uuid.UUID, session: SessionDep, _: CurrentUserDep, attendance_date: date | None = None
+    project_id: uuid.UUID,
+    session: SessionDep,
+    _: CurrentUserDep,
+    attendance_date: date | None = None,
+    from_date: date | None = None,
+    to_date: date | None = None,
 ) -> list[AttendanceRecordRead]:
-    records = await AttendanceService(session).list_for_project(project_id, attendance_date)
+    records = await AttendanceService(session).list_for_project(
+        project_id, attendance_date, from_date, to_date
+    )
     return [AttendanceRecordRead.model_validate(r) for r in records]
 
 

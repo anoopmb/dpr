@@ -69,6 +69,7 @@ const desktopMenuGroups: NavGroup[] = [
       { key: '/boq', label: 'BOQ', icon: <FileTextOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
       { key: '/measurements', label: 'Measurements (MB)', icon: <FileTextOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
       { key: '/dpr-history', label: 'DPR History', icon: <FileTextOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
+      { key: '/dpr-inquiry', label: 'DPR Inquiry', icon: <FileTextOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
       { key: '/dpr-monthly-report', label: 'Monthly DPR Report', icon: <FileTextOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
     ],
   },
@@ -100,6 +101,7 @@ const desktopMenuGroups: NavGroup[] = [
       { key: '/analytics', label: 'Analytics', icon: <BarChartOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
       { key: '/worker-earnings', label: 'Worker Earnings', icon: <TeamOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
       { key: '/daily-labour-log', label: 'Daily Labour Log', icon: <TeamOutlined />, roles: ['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN'] },
+      { key: '/attendance-inquiry', label: 'Attendance Inquiry', icon: <TeamOutlined />, roles: ['PROJECT_MANAGER', 'ADMIN', 'QUANTITY_SURVEYOR', 'SITE_ENGINEER'] },
     ],
   },
   {

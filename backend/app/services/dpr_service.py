@@ -150,7 +150,24 @@ class DprService:
         return await self.get(header_id)
 
     async def list_for_project(self, project_id: uuid.UUID) -> list[DprHeader]:
-        return await self.repo.list_for_project(project_id)
+        headers = await self.repo.list_for_project(project_id)
+        # Annotate each header with how many times it was returned to DRAFT
+        # (an approval transition whose to_status is DRAFT). Lets the UI flag
+        # "returned to draft" vs a fresh draft, and "resubmitted" vs a
+        # first-time submission — neither is a distinct stored status.
+        if headers:
+            counts = await self.session.execute(
+                select(DprHeaderApproval.dpr_header_id, func.count())
+                .where(
+                    DprHeaderApproval.dpr_header_id.in_([h.id for h in headers]),
+                    DprHeaderApproval.to_status == DprStatus.DRAFT.value,
+                )
+                .group_by(DprHeaderApproval.dpr_header_id)
+            )
+            return_count_by_header = {hid: n for hid, n in counts.all()}
+            for header in headers:
+                header.return_count = return_count_by_header.get(header.id, 0)
+        return headers
 
     async def get(self, header_id: uuid.UUID) -> DprHeader:
         header = await self.repo.get_with_children(header_id)
@@ -286,6 +303,44 @@ class DprService:
         )
         await self.session.commit()
         return await self.get(material.dpr_header_id)
+
+    async def update_material_rates(
+        self, header_id: uuid.UUID, ids: list[uuid.UUID], rate: Decimal | None,
+        actor_id: uuid.UUID, actor_role: UserRole
+    ) -> DprHeader:
+        """Apply a single cost rate to several material rows of one DPR at once
+        and mark them manually edited (so a later dimensions re-sync keeps the
+        override). A template/BOQ-item change on the source measurement still
+        wipes them wholesale."""
+        header = await self.session.get(DprHeader, header_id)
+        if header is None:
+            raise NotFoundError(f"DPR header {header_id} not found.")
+        is_bypass_edit = assert_dpr_editable(header.status, actor_role)
+        result = await self.session.execute(
+            select(DprMaterial).where(
+                DprMaterial.id.in_(ids),
+                DprMaterial.dpr_header_id == header_id,
+            )
+        )
+        rows = result.scalars().all()
+        for material in rows:
+            before = serialize_model(material)
+            material.rate = rate
+            material.manually_edited = True
+            if is_bypass_edit:
+                material.edited_by = actor_id
+                material.edited_at = datetime.now(timezone.utc)
+            await self.audit.record(
+                entity_type="DPR_MATERIAL",
+                entity_id=material.id,
+                action=AuditAction.UPDATE,
+                actor_id=actor_id,
+                before=before,
+                after=serialize_model(material),
+            )
+        await self.session.flush()
+        await self.session.commit()
+        return await self.get(header_id)
 
     async def delete_material(self, item_id: uuid.UUID, actor_id: uuid.UUID, actor_role: UserRole) -> None:
         material = await self.session.get(DprMaterial, item_id)

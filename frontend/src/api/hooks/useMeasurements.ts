@@ -30,6 +30,14 @@ export interface AutoMaterialRead {
   manually_edited: boolean;
 }
 
+export interface MeasurementPhotoRead {
+  id: string;
+  photo_url: string;
+  latitude: string | null;
+  longitude: string | null;
+  captured_at: string;
+}
+
 export interface MeasurementRead {
   id: string;
   project_id: string;
@@ -55,6 +63,7 @@ export interface MeasurementRead {
   edited_at: string | null;
   steel_lines: SteelLineRead[];
   auto_materials: AutoMaterialRead[];
+  photos: MeasurementPhotoRead[];
 }
 
 export interface MeasurementCreateInput {
@@ -100,6 +109,7 @@ export function useUpdateMeasurement() {
     }: {
       id: string;
       data: {
+        boq_item_id?: string;
         dimensions?: Record<string, string>;
         dimension_expressions?: Record<string, string> | null;
         chainage?: string | null;

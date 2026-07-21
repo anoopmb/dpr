@@ -283,9 +283,17 @@ class MeasurementService:
         measurement = await self.get(measurement_id)
         is_bypass_edit = await self._authorize_measurement_edit(measurement, actor_id, actor_role)
 
-        boq_item = await self.boq_repo.get(measurement.boq_item_id)
-        if boq_item is None:
-            raise NotFoundError("BOQ item for this measurement no longer exists.")
+        # The line can be re-pointed at a different BOQ item; when it is, the
+        # work type (and thus dimension fields / construction type) comes from
+        # the *target* item, and the old item's production tally must be
+        # re-synced afterwards so its progress drops by this line's quantity.
+        old_boq_item_id = measurement.boq_item_id
+        old_template_id = measurement.boq_template_id
+        target_boq_item_id = data.boq_item_id or measurement.boq_item_id
+        boq_item = await self.boq_repo.get(target_boq_item_id)
+        if boq_item is None or boq_item.project_id != measurement.project_id:
+            raise NotFoundError("BOQ item not found for this project.")
+        boq_item_changed = boq_item.id != old_boq_item_id
 
         construction_type = boq_item.construction_type
         org_settings = await self.settings_service.get()
@@ -313,7 +321,7 @@ class MeasurementService:
             computed_qty = computed_qty.quantize(Decimal("0.001"))
         else:
             coeff_map = {}
-            work_type = await self._get_work_type(measurement.work_type_id)
+            work_type = await self._get_work_type(boq_item.work_type_id)
             if not data.dimensions:
                 raise DomainError("Dimensions are required.")
             resolved_dimensions = self._resolve_dimensions(data.dimensions, data.dimension_expressions)
@@ -331,6 +339,8 @@ class MeasurementService:
         )
 
         before = serialize_model(measurement)
+        measurement.boq_item_id = boq_item.id
+        measurement.work_type_id = boq_item.work_type_id
         measurement.dimensions = {k: str(v) for k, v in resolved_dimensions.items()} if resolved_dimensions else {}
         measurement.dimension_expressions = data.dimension_expressions
         measurement.computed_qty = computed_qty
@@ -376,11 +386,27 @@ class MeasurementService:
         await self.session.commit()
         await self.session.refresh(measurement)
 
-        await self._sync_auto_materials(measurement, construction_type, org_settings.steel_measurement_uom)
+        # A template swap or a move to a different (template-driven) BOQ item
+        # invalidates the previously auto-added materials wholesale — including
+        # any whose cost was manually tweaked, since those edits belonged to the
+        # old template. Force a full wipe-and-regenerate in that case; a plain
+        # dimensions edit still preserves manual cost overrides.
+        template_or_item_changed = boq_item_changed or old_template_id != (template.id if template else None)
+        await self._sync_auto_materials(
+            measurement, construction_type, org_settings.steel_measurement_uom,
+            reset_all=template_or_item_changed,
+        )
 
         await self.production_service.sync_from_measurements(
             measurement.project_id, measurement.boq_item_id, measurement.measurement_date, actor_id
         )
+        # When the line moved to a different BOQ item, the old item's daily
+        # production must be recomputed too so its progress no longer counts
+        # this measurement's quantity.
+        if boq_item_changed:
+            await self.production_service.sync_from_measurements(
+                measurement.project_id, old_boq_item_id, measurement.measurement_date, actor_id
+            )
         return measurement
 
     async def update_notes(
@@ -444,14 +470,16 @@ class MeasurementService:
         )
 
     async def _sync_auto_materials(
-        self, measurement: Measurement, construction_type: str, steel_uom: str
+        self, measurement: Measurement, construction_type: str, steel_uom: str, reset_all: bool = False
     ) -> None:
-        await self.session.execute(
-            delete(DprMaterial).where(
-                DprMaterial.source_measurement_id == measurement.id,
-                DprMaterial.manually_edited.is_(False),
-            )
-        )
+        # Normally only the untouched auto rows are cleared so manual cost/qty
+        # overrides survive a dimensions edit. When the template or BOQ item
+        # itself changed (reset_all), every auto row for this measurement goes,
+        # manual edits included, because they no longer describe the new item.
+        delete_stmt = delete(DprMaterial).where(DprMaterial.source_measurement_id == measurement.id)
+        if not reset_all:
+            delete_stmt = delete_stmt.where(DprMaterial.manually_edited.is_(False))
+        await self.session.execute(delete_stmt)
         if construction_type == "GENERAL" or measurement.boq_template_id is None:
             await self.session.commit()
             return

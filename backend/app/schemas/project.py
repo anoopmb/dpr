@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -22,6 +22,7 @@ class ProjectBase(BaseModel):
     geofence_radius_meters: int = Field(default=500, gt=0)
     attendance_photo_required: bool = True
     attendance_gps_required: bool = True
+    attendance_required_for_dpr: bool = False
 
     @model_validator(mode="after")
     def validate_dates(self) -> "ProjectBase":
@@ -44,6 +45,7 @@ class ProjectUpdate(BaseModel):
     project_manager_id: uuid.UUID | None = None
     attendance_photo_required: bool | None = None
     attendance_gps_required: bool | None = None
+    attendance_required_for_dpr: bool | None = None
     site_latitude: Decimal | None = Field(default=None, ge=-90, le=90)
     site_longitude: Decimal | None = Field(default=None, ge=-180, le=180)
     geofence_radius_meters: int | None = Field(default=None, gt=0)
@@ -54,3 +56,21 @@ class ProjectRead(ProjectBase):
 
     id: uuid.UUID
     status: ProjectStatus
+
+
+class CompletionExtensionCreate(BaseModel):
+    new_completion_date: date
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class CompletionExtensionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    previous_completion_date: date
+    new_completion_date: date
+    reason: str | None
+    extended_by: uuid.UUID
+    extended_by_name: str
+    extended_at: datetime

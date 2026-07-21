@@ -115,6 +115,13 @@ class DprMaterialUpdate(BaseModel):
     rate: Decimal | None = Field(default=None, gt=0)
 
 
+class DprMaterialRateBulkUpdate(BaseModel):
+    """Set one cost rate across a group of (auto-added) material rows at once —
+    used when the user edits the cost on an aggregated auto-material summary."""
+    ids: list[uuid.UUID] = Field(min_length=1)
+    rate: Decimal | None = Field(default=None, gt=0)
+
+
 class DprMachineryCreate(BaseModel):
     machinery_id: uuid.UUID
     quantity_used: Decimal = Field(gt=0)
@@ -157,6 +164,10 @@ class DprHeaderRead(BaseModel):
     issues: list[DprIssueRead]
     materials: list[DprMaterialRead]
     machinery_entries: list[DprMachineryRead]
+    # Number of times this DPR was returned to DRAFT after submission (derived
+    # from approval history; only populated by the project-list endpoint, 0
+    # elsewhere). Lets the UI show "returned to draft" / "resubmitted".
+    return_count: int = 0
 
 
 class DprProductionEntryUpsert(BaseModel):

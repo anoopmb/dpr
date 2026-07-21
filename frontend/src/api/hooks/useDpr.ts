@@ -62,6 +62,9 @@ export interface DprHeaderRead {
   issues: DprIssueRead[];
   materials: DprMaterialRead[];
   machinery_entries: DprMachineryRead[];
+  // Times this DPR was returned to DRAFT after submission (from approval
+  // history). Populated by the project-list endpoint; 0 elsewhere.
+  return_count: number;
 }
 
 export interface DprHeaderApprovalRead {
@@ -415,6 +418,22 @@ export function useDeleteDprMaterial() {
     onSuccess: (headerId) => {
       queryClient.invalidateQueries({ queryKey: ['dpr-header', headerId] });
     },
+  });
+}
+
+export function useUpdateDprMaterialRates() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      headerId,
+      ids,
+      rate,
+    }: {
+      headerId: string;
+      ids: string[];
+      rate?: string | null;
+    }) => (await apiClient.patch<DprHeaderRead>(`/dpr/${headerId}/materials/rate`, { ids, rate })).data,
+    onSuccess: (header) => invalidateHeader(queryClient, header),
   });
 }
 

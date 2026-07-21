@@ -1,14 +1,18 @@
-import uuid
+from __future__ import annotations
 
-from sqlalchemy import text
+import uuid
+from datetime import datetime, timezone
+
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import DomainError, InUseError, NotFoundError
 from app.models.audit import AuditAction
 from app.models.project import Project
+from app.models.project_completion_extension import ProjectCompletionExtension
 from app.models.user import UserRole
 from app.repositories.project_repo import ProjectRepository
-from app.schemas.project import ProjectCreate, ProjectUpdate
+from app.schemas.project import CompletionExtensionCreate, ProjectCreate, ProjectUpdate
 from app.services.audit_service import AuditService, serialize_model
 from app.services.project_assignment_service import ProjectAssignmentService
 
@@ -76,6 +80,54 @@ class ProjectService:
         await self.session.commit()
         await self.session.refresh(project)
         return project
+
+    async def extend_completion(
+        self, project_id: uuid.UUID, data: CompletionExtensionCreate, actor_id: uuid.UUID
+    ) -> ProjectCompletionExtension:
+        """Push the project's completion date forward and log the change.
+        Only ever moves the date later — an extension earlier than (or equal
+        to) the current completion is rejected."""
+        project = await self.get(project_id)
+        if data.new_completion_date <= project.completion_date:
+            raise DomainError(
+                "New completion date must be later than the current completion date "
+                f"({project.completion_date.isoformat()})."
+            )
+        if data.new_completion_date <= project.start_date:
+            raise DomainError("New completion date must be after the project start date.")
+
+        before = serialize_model(project)
+        extension = ProjectCompletionExtension(
+            project_id=project.id,
+            previous_completion_date=project.completion_date,
+            new_completion_date=data.new_completion_date,
+            reason=data.reason,
+            extended_by=actor_id,
+            extended_at=datetime.now(timezone.utc),
+        )
+        self.session.add(extension)
+        project.completion_date = data.new_completion_date
+        await self.session.flush()
+        await self.audit.record(
+            entity_type="PROJECT",
+            entity_id=project.id,
+            action=AuditAction.UPDATE,
+            actor_id=actor_id,
+            before=before,
+            after=serialize_model(project),
+        )
+        await self.session.commit()
+        await self.session.refresh(extension)
+        return extension
+
+    async def list_completion_extensions(self, project_id: uuid.UUID) -> list[ProjectCompletionExtension]:
+        await self.get(project_id)  # 404 if the project doesn't exist
+        result = await self.session.execute(
+            select(ProjectCompletionExtension)
+            .where(ProjectCompletionExtension.project_id == project_id)
+            .order_by(ProjectCompletionExtension.extended_at.desc())
+        )
+        return list(result.scalars().all())
 
     async def delete(self, project_id: uuid.UUID, actor_id: uuid.UUID) -> None:
         project = await self.get(project_id)

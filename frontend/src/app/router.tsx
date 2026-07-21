@@ -34,6 +34,8 @@ const MyMaterialIndentsPage = lazy(() => import('@/features/field/MyMaterialInde
 const ProductionProgressPage= lazy(() => import('@/features/dpr/ProductionProgressPage').then(m => ({ default: m.ProductionProgressPage })));
 const ProfitabilityPage     = lazy(() => import('@/features/dpr/ProfitabilityPage').then(m => ({ default: m.ProfitabilityPage })));
 const DprHistoryPage        = lazy(() => import('@/features/dpr/DprHistoryPage').then(m => ({ default: m.DprHistoryPage })));
+const DprInquiryPage        = lazy(() => import('@/features/dpr/DprInquiryPage').then(m => ({ default: m.DprInquiryPage })));
+const AttendanceInquiryPage = lazy(() => import('@/features/attendance/AttendanceInquiryPage').then(m => ({ default: m.AttendanceInquiryPage })));
 const DprMonthlyReportPage  = lazy(() => import('@/features/dpr/DprMonthlyReportPage').then(m => ({ default: m.DprMonthlyReportPage })));
 const WorkerEarningsPage    = lazy(() => import('@/features/reports/WorkerEarningsPage').then(m => ({ default: m.WorkerEarningsPage })));
 const DailyLabourLogPage    = lazy(() => import('@/features/reports/DailyLabourLogPage').then(m => ({ default: m.DailyLabourLogPage })));
@@ -359,6 +361,22 @@ export function AppRouter() {
                     element={
                       <RequireRole roles={['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN']}>
                         <DprHistoryPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route
+                    path="/dpr-inquiry"
+                    element={
+                      <RequireRole roles={['PROJECT_MANAGER', 'QUANTITY_SURVEYOR', 'ADMIN']}>
+                        <DprInquiryPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route
+                    path="/attendance-inquiry"
+                    element={
+                      <RequireRole roles={['PROJECT_MANAGER', 'ADMIN', 'QUANTITY_SURVEYOR', 'SITE_ENGINEER']}>
+                        <AttendanceInquiryPage />
                       </RequireRole>
                     }
                   />
