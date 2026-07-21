@@ -67,8 +67,13 @@ const LEADING_SPACER_KEYS: { key: string; width: number }[] = [
   { key: 'sp_openqty', width: COL_W.openQty },
   { key: 'sp_openamt', width: COL_W.openAmt },
 ];
-// Total leading columns (8 singles + Opening Qty/Amt) that day columns start after.
-const LEADING_COUNT = LEADING_SPACER_KEYS.length;
+// Expenditure sections (Materials/Machinery/Labour/Expenses) don't have an
+// "Item No" — so instead of an empty leading spacer where Production shows it,
+// Description absorbs that width (starts at the far left). One fewer column,
+// same day-column start offset → still aligned with Production.
+const EXP_LEADING = LEADING_SPACER_KEYS.filter((c) => c.key !== 'sp_itemno');
+const EXP_LEADING_COUNT = EXP_LEADING.length;
+const EXP_DESC_WIDTH = COL_W.itemNo + COL_W.desc;
 
 interface SectionSubtotal {
   agreed_amount: string;
@@ -128,12 +133,13 @@ function QtyAmtSection({
 }) {
   if (rows.length === 0) return null;
 
-  // Leading columns: col 2 = Description (name), col 3 = Unit; the rest are
-  // blank spacers so day columns align with the Production table above.
+  // Leading columns: Description (spans the Item No + Description width so
+  // there's no empty column at the far left), then Unit; the rest are blank
+  // spacers so day columns still align with the Production table above.
   const columns: TableColumnsType<typeof rows[number]> = [
-    ...LEADING_SPACER_KEYS.map((c) => {
+    ...EXP_LEADING.map((c) => {
       if (c.key === 'sp_desc') {
-        return { title: 'Description', key: 'name', width: c.width, ellipsis: true, render: (_: unknown, row: typeof rows[number]) => row.name };
+        return { title: 'Description', key: 'name', width: EXP_DESC_WIDTH, ellipsis: true, render: (_: unknown, row: typeof rows[number]) => row.name };
       }
       if (c.key === 'sp_unit') {
         return { title: 'Unit', key: 'unit', width: c.width, render: (_: unknown, row: typeof rows[number]) => row.unit };
@@ -173,7 +179,7 @@ function QtyAmtSection({
         summary={() => (
           <Table.Summary fixed>
             <Table.Summary.Row style={{ fontWeight: 700 }}>
-              <Table.Summary.Cell index={0} colSpan={LEADING_COUNT}>Total</Table.Summary.Cell>
+              <Table.Summary.Cell index={0} colSpan={EXP_LEADING_COUNT}>Total</Table.Summary.Cell>
               {dailyTotals.map((amt, i) => (
                 <Table.Summary.Cell index={i + 1} colSpan={2} align="right" key={i}>
                   {fmtAmt(amt)}
@@ -207,9 +213,9 @@ function ExpensesSection({
   // columns of the sections above. Leading columns are blank spacers except
   // Description (name).
   const columns: TableColumnsType<ExpenseCategoryRow> = [
-    ...LEADING_SPACER_KEYS.map((c) => {
+    ...EXP_LEADING.map((c) => {
       if (c.key === 'sp_desc') {
-        return { title: 'Description', key: 'name', width: c.width, ellipsis: true, render: (_: unknown, row: ExpenseCategoryRow) => row.name };
+        return { title: 'Description', key: 'name', width: EXP_DESC_WIDTH, ellipsis: true, render: (_: unknown, row: ExpenseCategoryRow) => row.name };
       }
       return { title: '', key: c.key, width: c.width, render: () => null };
     }),
@@ -242,7 +248,7 @@ function ExpensesSection({
         summary={() => (
           <Table.Summary fixed>
             <Table.Summary.Row style={{ fontWeight: 700 }}>
-              <Table.Summary.Cell index={0} colSpan={LEADING_COUNT}>Total</Table.Summary.Cell>
+              <Table.Summary.Cell index={0} colSpan={EXP_LEADING_COUNT}>Total</Table.Summary.Cell>
               {dailyTotals.map((amt, i) => (
                 <Table.Summary.Cell index={i + 1} colSpan={2} align="right" key={i}>
                   {fmtAmt(amt)}

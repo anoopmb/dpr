@@ -217,15 +217,15 @@ function buildQtyAmtSection(
   const { startDayIdx, startDay, endDay } = slice;
   const numDays = endDay - startDay + 1;
   const dayIdxs = Array.from({ length: numDays }, (_, i) => startDayIdx + i);
-  // Unified grid: real leading cols = Description (col2) + Unit (col3);
-  // cols 1 and 4–9 are blank spacers so day data aligns with Production.
+  // Unified grid: Description spans the first two leading cols (no empty
+  // column at the far left) + Unit; cols 4–9 are blank spacers so day data
+  // still aligns with Production.
   let t = `<div style="font-size:6.5pt;font-weight:700;margin:3px 0 1px;padding:1px 4px;background:#e8f0fe;page-break-after:avoid;break-after:avoid">${esc(label)}</div>
 <table style="${TABLE}">
 ${unifiedColgroup(numDays)}
 <thead>
 <tr style="${TH1}text-align:center">
-  <th style="${CELL}${TH1}"></th>
-  <th style="${CELL}${TH1}text-align:left">Description</th>
+  <th style="${CELL}${TH1}text-align:left" colspan="2">Description</th>
   <th style="${CELL}${TH1}">Unit</th>
   <th style="${CELL}${TH1}" colspan="6"></th>
   ${dayIdxs.map(i => `<th style="${CELL}${TH1}" colspan="2">Day ${i + 1}</th>`).join('')}
@@ -249,7 +249,7 @@ ${unifiedColgroup(numDays)}
     const wa = dayIdxs.reduce((s, di) => s + parseFloat(row.daily[di]?.amount ?? '0'), 0);
     totWQ += wq; totWA += wa;
 
-    t += `<tr>${blankSpan(1)}${td('overflow:hidden;text-overflow:ellipsis;white-space:nowrap', esc(row.name))}${td('text-align:center', esc(row.unit))}${blankSpan(6)}`;
+    t += `<tr><td colspan="2" style="${CELL}overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(row.name)}</td>${td('text-align:center', esc(row.unit))}${blankSpan(6)}`;
     dayIdxs.forEach((di, i) => {
       const dq = parseFloat(row.daily[di]?.qty ?? '0');
       const da = parseFloat(row.daily[di]?.amount ?? '0');
@@ -288,8 +288,7 @@ function buildExpensesSection(
 ${unifiedColgroup(numDays)}
 <thead>
 <tr style="${TH1}text-align:center">
-  <th style="${CELL}${TH1}"></th>
-  <th style="${CELL}${TH1}text-align:left">Description</th>
+  <th style="${CELL}${TH1}text-align:left" colspan="2">Description</th>
   <th style="${CELL}${TH1}" colspan="7"></th>
   ${dayIdxs.map(i => `<th style="${CELL}${TH1}" colspan="2">Day ${i + 1}</th>`).join('')}
   <th style="${CELL}${TH1}" colspan="2">Week Total</th>
@@ -303,7 +302,7 @@ ${unifiedColgroup(numDays)}
   for (const row of expenses) {
     const wa = dayIdxs.reduce((s, di) => s + parseFloat(row.daily[di]?.amount ?? '0'), 0);
     totW += wa;
-    t += `<tr>${blankSpan(1)}${td('overflow:hidden;text-overflow:ellipsis;white-space:nowrap', esc(row.name))}${blankSpan(7)}`;
+    t += `<tr><td colspan="2" style="${CELL}overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(row.name)}</td>${blankSpan(7)}`;
     dayIdxs.forEach((di, i) => {
       const da = parseFloat(row.daily[di]?.amount ?? '0');
       totD[i] += da;
