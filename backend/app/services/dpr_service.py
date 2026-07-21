@@ -1110,6 +1110,70 @@ class DprProductionService:
             total_executed_amount=total_executed,
         )
 
+    async def _labour_union(
+        self, project_id: uuid.UUID, start: date, end: date
+    ) -> dict[uuid.UUID, dict]:
+        """Merge attendance and DPR-Labour-tab entries into one labour picture,
+        deduped per worker per day.
+
+        Returns: {category_id: {"name", "daily_rate", "by_day": {date: {worker_id: amount}}}}.
+        For a worker on a day: amount = the recorded DprLabour cost (incl.
+        overtime) when a row exists, else the category daily_rate (a worker
+        only marked present in attendance). DprLabour takes precedence so real
+        snapshotted costs / contractors / overtime win over the flat rate.
+        """
+        att_rows = (
+            await self.session.execute(
+                select(
+                    Worker.worker_category_id,
+                    WorkerCategoryMaster.name,
+                    WorkerCategoryMaster.daily_rate,
+                    AttendanceRecord.attendance_date,
+                    AttendanceRecord.worker_id,
+                )
+                .join(Worker, AttendanceRecord.worker_id == Worker.id)
+                .join(WorkerCategoryMaster, Worker.worker_category_id == WorkerCategoryMaster.id)
+                .where(AttendanceRecord.project_id == project_id)
+                .where(AttendanceRecord.attendance_date >= start)
+                .where(AttendanceRecord.attendance_date <= end)
+            )
+        ).all()
+        lab_rows = (
+            await self.session.execute(
+                select(
+                    Worker.worker_category_id,
+                    WorkerCategoryMaster.name,
+                    WorkerCategoryMaster.daily_rate,
+                    DprHeader.report_date,
+                    DprLabour.worker_id,
+                    (DprLabour.amount + func.coalesce(DprLabour.overtime_amount, 0)).label("amount"),
+                )
+                .join(DprHeader, DprLabour.dpr_header_id == DprHeader.id)
+                .join(Worker, DprLabour.worker_id == Worker.id)
+                .join(WorkerCategoryMaster, Worker.worker_category_id == WorkerCategoryMaster.id)
+                .where(DprHeader.project_id == project_id)
+                .where(DprHeader.report_date >= start)
+                .where(DprHeader.report_date <= end)
+            )
+        ).all()
+
+        groups: dict[uuid.UUID, dict] = {}
+
+        def _group(cat_id: uuid.UUID, name: str, rate) -> dict:
+            return groups.setdefault(cat_id, {"name": name, "daily_rate": rate, "by_day": {}})
+
+        # Labour-tab rows first (authoritative amount for that worker/day).
+        for r in lab_rows:
+            grp = _group(r.worker_category_id, r.name, r.daily_rate)
+            grp["by_day"].setdefault(r.report_date, {})[r.worker_id] = Decimal(str(r.amount))
+        # Attendance fills in workers merely marked present (no labour row yet).
+        for r in att_rows:
+            grp = _group(r.worker_category_id, r.name, r.daily_rate)
+            day = grp["by_day"].setdefault(r.attendance_date, {})
+            if r.worker_id not in day:
+                day[r.worker_id] = Decimal(str(r.daily_rate)) if r.daily_rate is not None else Decimal(0)
+        return groups
+
     async def get_monthly_report(self, project_id: uuid.UUID, month: str) -> DprMonthlyReportRead:
         year_str, month_str = month.split("-")
         year, month_num = int(year_str), int(month_str)
@@ -1253,35 +1317,15 @@ class DprProductionService:
             )
         ).all()
 
-        # Labour comes from the DPR Labour tab (DprLabour), not raw attendance:
-        # attendance misses manually-added labour (contractors / workers with no
-        # punch) and can't carry the snapshotted rate/amount + overtime that the
-        # Labour tab records. qty = distinct workers in the category that day;
-        # amount = actual recorded cost incl. overtime.
-        labour_rows = (
-            await self.session.execute(
-                select(
-                    Worker.worker_category_id,
-                    WorkerCategoryMaster.name,
-                    WorkerCategoryMaster.daily_rate,
-                    DprHeader.report_date,
-                    func.count(func.distinct(DprLabour.worker_id)).label("qty"),
-                    func.sum(DprLabour.amount + func.coalesce(DprLabour.overtime_amount, 0)).label("amount"),
-                )
-                .join(DprHeader, DprLabour.dpr_header_id == DprHeader.id)
-                .join(Worker, DprLabour.worker_id == Worker.id)
-                .join(WorkerCategoryMaster, Worker.worker_category_id == WorkerCategoryMaster.id)
-                .where(DprHeader.project_id == project_id)
-                .where(DprHeader.report_date >= month_start)
-                .where(DprHeader.report_date <= month_end)
-                .group_by(
-                    Worker.worker_category_id,
-                    WorkerCategoryMaster.name,
-                    WorkerCategoryMaster.daily_rate,
-                    DprHeader.report_date,
-                )
-            )
-        ).all()
+        # Labour = union of attendance AND the DPR Labour tab (DprLabour),
+        # deduped per worker/day. Neither source alone is complete: attendance
+        # misses manually-added contractors/labour and rows only exist in
+        # DprLabour once the Labour tab has been synced — many days have
+        # attendance but no DprLabour row (tab never opened, or no DPR yet).
+        # Per worker/day: use the recorded DprLabour amount (real snapshotted
+        # cost incl. overtime) when present, else fall back to the category's
+        # daily_rate for a worker who was merely marked present.
+        labour_union = await self._labour_union(project_id, month_start, month_end)
 
         expense_rows = (
             await self.session.execute(
@@ -1309,7 +1353,6 @@ class DprProductionService:
 
         material_groups = build_grouped_rows(material_rows, "material_id")
         machinery_groups = build_grouped_rows(machinery_rows, "machinery_id")
-        labour_groups = build_grouped_rows(labour_rows, "worker_category_id")
         expense_groups = build_grouped_rows(expense_rows, "expense_category_id")
 
         materials: list[MaterialConsumptionRow] = []
@@ -1368,16 +1411,18 @@ class DprProductionService:
             )
 
         labour: list[LabourRow] = []
-        for category_id, group in labour_groups.items():
+        for category_id, group in labour_union.items():
             daily_cells = []
             total_qty = Decimal(0)
             total_amount = Decimal(0)
-            daily_rate = group["row"].daily_rate
+            daily_rate = group["daily_rate"]
             for day_num in range(1, days_in_month + 1):
                 day_date = date(year, month_num, day_num)
-                row = group["by_day"].get(day_date)
-                qty = Decimal(str(row.qty)) if row else Decimal(0)
-                amount = Decimal(str(row.amount)) if row else Decimal(0)
+                # by_day[date] = {worker_id: amount}. qty = distinct workers
+                # present (attendance ∪ labour); amount = sum of their amounts.
+                workers = group["by_day"].get(day_date, {})
+                qty = Decimal(len(workers))
+                amount = sum(workers.values(), Decimal(0))
                 daily_cells.append(DailyProductionCell(day=day_num, qty=qty.quantize(Decimal("0.001")), amount=amount.quantize(Decimal("0.01"))))
                 total_qty += qty
                 total_amount += amount
@@ -1425,10 +1470,12 @@ class DprProductionService:
             .join(DprHeader, DprMachinery.dpr_header_id == DprHeader.id)
             .where(DprHeader.project_id == project_id, DprHeader.report_date <= opening_as_of)
         )
-        opening_labour = await self.session.scalar(
-            select(func.coalesce(func.sum(DprLabour.amount + func.coalesce(DprLabour.overtime_amount, 0)), 0))
-            .join(DprHeader, DprLabour.dpr_header_id == DprHeader.id)
-            .where(DprHeader.project_id == project_id, DprHeader.report_date <= opening_as_of)
+        # Cumulative labour baseline before the month — same attendance∪labour
+        # union as the visible section, so the summary's opening carry matches.
+        opening_union = await self._labour_union(project_id, date(1900, 1, 1), opening_as_of)
+        opening_labour = sum(
+            (amt for grp in opening_union.values() for day in grp["by_day"].values() for amt in day.values()),
+            Decimal(0),
         )
         opening_expense_other = await self.session.scalar(
             select(func.coalesce(func.sum(Expense.amount), 0))
