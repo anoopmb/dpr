@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Button, Card, DatePicker, Empty, Space, Table, Tag, Typography } from 'antd';
+import { Button, Card, DatePicker, Empty, Space, Table, Tag, Typography, theme } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { DownloadOutlined, FilePdfOutlined, PrinterOutlined } from '@ant-design/icons';
 import * as XLSX from 'xlsx';
@@ -287,9 +287,19 @@ function SummarySection({
   fmtDate: (day: number) => string;
   fmtAmt: (v: string | number | null | undefined) => string;
 }) {
+  const { token } = theme.useToken();
+  const { resolvedMode } = useThemeMode();
+  // Week-total rows: a subtle overlay that reads correctly in both themes
+  // (a fixed light colour left the text unreadable in dark mode until hover).
+  const weekBg = resolvedMode === 'dark' ? 'rgba(255, 255, 255, 0.06)' : '#fafafa';
+
   if (summary.length === 0) return null;
 
-  const fmtPct = (v: number | null) => (v === null ? '—' : `${v.toFixed(2)}%`);
+  // Context colours (theme-aware): income = info (blue), expense = warning
+  // (orange), profit/percentages = success (green) when ≥ 0 else danger (red).
+  const colored = (text: string, color: string) => <span style={{ color }}>{text}</span>;
+  const signColor = (v: number) => (v >= 0 ? token.colorSuccess : token.colorError);
+  const fmtPct = (v: number | null) => (v === null ? '—' : colored(`${v.toFixed(2)}%`, signColor(v)));
 
   // Day rows show that day's figures; after each week (every 7 days, plus the
   // final partial week) a bold "Week total" row sums the week and carries the
@@ -328,29 +338,56 @@ function SummarySection({
 
   const columns: TableColumnsType<SummaryUiRow> = [
     { title: 'Date', key: 'date', fixed: 'left' as const, width: 130, render: (_, r) => (r._t === 'day' ? fmtDate(r.cell.day) : r.label) },
-    { title: 'Total Income', key: 'income', fixed: 'left' as const, width: 130, align: 'right' as const, render: (_, r) => (r._t === 'day' ? fmtAmt(r.cell.income) : fmtAmt(r.income)) },
-    { title: 'Total Expense', key: 'expense', width: 130, align: 'right' as const, render: (_, r) => (r._t === 'day' ? fmtAmt(r.cell.expense) : fmtAmt(r.expense)) },
-    { title: 'Net Profit/Loss', key: 'profit_loss', width: 130, align: 'right' as const, render: (_, r) => (r._t === 'day' ? fmtAmt(r.cell.profit_loss) : fmtAmt(r.profit)) },
+    {
+      title: 'Total Income',
+      key: 'income',
+      fixed: 'left' as const,
+      width: 130,
+      align: 'right' as const,
+      render: (_, r) => colored(fmtAmt(r._t === 'day' ? r.cell.income : r.income), token.colorInfo),
+    },
+    {
+      title: 'Total Expense',
+      key: 'expense',
+      width: 130,
+      align: 'right' as const,
+      render: (_, r) => colored(fmtAmt(r._t === 'day' ? r.cell.expense : r.expense), token.colorWarning),
+    },
+    {
+      title: 'Net Profit/Loss',
+      key: 'profit_loss',
+      width: 130,
+      align: 'right' as const,
+      render: (_, r) => {
+        const v = r._t === 'day' ? parseFloat(r.cell.profit_loss) : r.profit;
+        return colored(fmtAmt(v), signColor(v));
+      },
+    },
     {
       title: 'Profit/Loss %',
       key: 'profit_loss_pct',
       width: 110,
       align: 'right' as const,
-      render: (_, r) => (r._t === 'day' ? (r.cell.profit_loss_pct === null ? '—' : `${parseFloat(r.cell.profit_loss_pct).toFixed(2)}%`) : fmtPct(r.pct)),
+      render: (_, r) => {
+        if (r._t === 'week') return fmtPct(r.pct);
+        if (r.cell.profit_loss_pct === null) return '—';
+        const v = parseFloat(r.cell.profit_loss_pct);
+        return colored(`${v.toFixed(2)}%`, signColor(v));
+      },
     },
     {
       title: 'Cumulative Income (since project start)',
       key: 'cumulative_income',
       width: 180,
       align: 'right' as const,
-      render: (_, r) => (r._t === 'week' ? fmtAmt(r.cumIncome) : ''),
+      render: (_, r) => (r._t === 'week' ? colored(fmtAmt(r.cumIncome), token.colorInfo) : ''),
     },
     {
       title: 'Cumulative Expense (since project start)',
       key: 'cumulative_expense',
       width: 180,
       align: 'right' as const,
-      render: (_, r) => (r._t === 'week' ? fmtAmt(r.cumExpense) : ''),
+      render: (_, r) => (r._t === 'week' ? colored(fmtAmt(r.cumExpense), token.colorWarning) : ''),
     },
     {
       title: 'Cumulative P/L %',
@@ -371,7 +408,7 @@ function SummarySection({
         size="small"
         bordered
         scroll={{ x: 'max-content' }}
-        onRow={(r) => ({ style: r._t === 'week' ? { fontWeight: 700, background: '#fafafa' } : undefined })}
+        onRow={(r) => ({ style: r._t === 'week' ? { fontWeight: 700, background: weekBg } : undefined })}
       />
     </Card>
   );
