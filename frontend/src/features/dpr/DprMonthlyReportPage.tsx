@@ -42,6 +42,7 @@ const COL_W = {
   contractQty: 100,
   totalDone: 100,
   balance: 100,
+  percent: 84,
   openQty: 90,
   openAmt: 125,
   dayQty: 72,
@@ -65,6 +66,7 @@ const LEADING_SPACER_KEYS: { key: string; width: number }[] = [
   { key: 'sp_contractqty', width: COL_W.contractQty },
   { key: 'sp_totaldone', width: COL_W.totalDone },
   { key: 'sp_balance', width: COL_W.balance },
+  { key: 'sp_percent', width: COL_W.percent },
   { key: 'sp_openqty', width: COL_W.openQty },
   { key: 'sp_openamt', width: COL_W.openAmt },
 ];
@@ -137,13 +139,15 @@ function QtyAmtSection({
   // Leading columns: Description (spans the Item No + Description width so
   // there's no empty column at the far left), then Unit; the rest are blank
   // spacers so day columns still align with the Production table above.
+  // Description + Unit are frozen (fixed left) like Production's first two
+  // columns, so the row label stays visible when scrolling through the days.
   const columns: TableColumnsType<typeof rows[number]> = [
-    ...EXP_LEADING.map((c) => {
+    ...EXP_LEADING.map((c): TableColumnsType<typeof rows[number]>[number] => {
       if (c.key === 'sp_desc') {
-        return { title: 'Description', key: 'name', width: EXP_DESC_WIDTH, ellipsis: true, render: (_: unknown, row: typeof rows[number]) => row.name };
+        return { title: 'Description', key: 'name', fixed: 'left' as const, width: EXP_DESC_WIDTH, ellipsis: true, render: (_: unknown, row: typeof rows[number]) => row.name };
       }
       if (c.key === 'sp_unit') {
-        return { title: 'Unit', key: 'unit', width: c.width, render: (_: unknown, row: typeof rows[number]) => row.unit };
+        return { title: 'Unit', key: 'unit', fixed: 'left' as const, width: c.width, render: (_: unknown, row: typeof rows[number]) => row.unit };
       }
       return { title: '', key: c.key, width: c.width, render: () => null };
     }),
@@ -180,14 +184,15 @@ function QtyAmtSection({
         summary={() => (
           <Table.Summary fixed>
             <Table.Summary.Row style={{ fontWeight: 700 }}>
-              <Table.Summary.Cell index={0} colSpan={EXP_LEADING_COUNT}>Total</Table.Summary.Cell>
+              <Table.Summary.Cell index={0} colSpan={2}>Total</Table.Summary.Cell>
+              <Table.Summary.Cell index={1} colSpan={EXP_LEADING_COUNT - 2} />
               {dailyTotals.map((amt, i) => (
-                <Table.Summary.Cell index={i + 1} colSpan={2} align="right" key={i}>
+                <Table.Summary.Cell index={i + 2} colSpan={2} align="right" key={i}>
                   {fmtAmt(amt)}
                 </Table.Summary.Cell>
               ))}
-              <Table.Summary.Cell index={daysInMonth + 1} align="right">{fmtQty(totalQty)}</Table.Summary.Cell>
-              <Table.Summary.Cell index={daysInMonth + 2} align="right">
+              <Table.Summary.Cell index={daysInMonth + 2} align="right">{fmtQty(totalQty)}</Table.Summary.Cell>
+              <Table.Summary.Cell index={daysInMonth + 3} align="right">
                 {fmtAmt(totalAmount)}
               </Table.Summary.Cell>
             </Table.Summary.Row>
@@ -214,9 +219,14 @@ function ExpensesSection({
   // columns of the sections above. Leading columns are blank spacers except
   // Description (name).
   const columns: TableColumnsType<ExpenseCategoryRow> = [
-    ...EXP_LEADING.map((c) => {
+    ...EXP_LEADING.map((c): TableColumnsType<ExpenseCategoryRow>[number] => {
       if (c.key === 'sp_desc') {
-        return { title: 'Description', key: 'name', width: EXP_DESC_WIDTH, ellipsis: true, render: (_: unknown, row: ExpenseCategoryRow) => row.name };
+        return { title: 'Description', key: 'name', fixed: 'left' as const, width: EXP_DESC_WIDTH, ellipsis: true, render: (_: unknown, row: ExpenseCategoryRow) => row.name };
+      }
+      // Freeze the first two columns like the other sections (the 2nd is a
+      // blank spacer for Expenses, but keeps the frozen block width consistent).
+      if (c.key === 'sp_unit') {
+        return { title: '', key: c.key, fixed: 'left' as const, width: c.width, render: () => null };
       }
       return { title: '', key: c.key, width: c.width, render: () => null };
     }),
@@ -249,14 +259,15 @@ function ExpensesSection({
         summary={() => (
           <Table.Summary fixed>
             <Table.Summary.Row style={{ fontWeight: 700 }}>
-              <Table.Summary.Cell index={0} colSpan={EXP_LEADING_COUNT}>Total</Table.Summary.Cell>
+              <Table.Summary.Cell index={0} colSpan={2}>Total</Table.Summary.Cell>
+              <Table.Summary.Cell index={1} colSpan={EXP_LEADING_COUNT - 2} />
               {dailyTotals.map((amt, i) => (
-                <Table.Summary.Cell index={i + 1} colSpan={2} align="right" key={i}>
+                <Table.Summary.Cell index={i + 2} colSpan={2} align="right" key={i}>
                   {fmtAmt(amt)}
                 </Table.Summary.Cell>
               ))}
-              <Table.Summary.Cell index={daysInMonth + 1} />
-              <Table.Summary.Cell index={daysInMonth + 2} align="right">
+              <Table.Summary.Cell index={daysInMonth + 2} />
+              <Table.Summary.Cell index={daysInMonth + 3} align="right">
                 {fmtAmt(totalAmount)}
               </Table.Summary.Cell>
             </Table.Summary.Row>
@@ -278,47 +289,89 @@ function SummarySection({
 }) {
   if (summary.length === 0) return null;
 
-  const isWeekBoundary = (cell: DailySummaryCell) => cell.day % 7 === 0 || cell.day === summary.length;
+  const fmtPct = (v: number | null) => (v === null ? '—' : `${v.toFixed(2)}%`);
 
-  const columns: TableColumnsType<DailySummaryCell> = [
-    { title: 'Date', key: 'date', width: 110, render: (_, row) => fmtDate(row.day) },
-    { title: 'Total Income', key: 'income', width: 130, align: 'right' as const, render: (_, row) => fmtAmt(row.income) },
-    { title: 'Total Expense', key: 'expense', width: 130, align: 'right' as const, render: (_, row) => fmtAmt(row.expense) },
-    { title: 'Net Profit/Loss', key: 'profit_loss', width: 130, align: 'right' as const, render: (_, row) => fmtAmt(row.profit_loss) },
+  // Day rows show that day's figures; after each week (every 7 days, plus the
+  // final partial week) a bold "Week total" row sums the week and carries the
+  // running cumulative income/expense and cumulative P/L %. P/L % = profit ÷
+  // expense × 100 (same convention as the daily figure); cumulative P/L % uses
+  // cumulative profit ÷ cumulative expense.
+  type SummaryUiRow =
+    | { _t: 'day'; key: string; cell: DailySummaryCell }
+    | { _t: 'week'; key: string; label: string; income: number; expense: number; profit: number; pct: number | null; cumIncome: number; cumExpense: number; cumPct: number | null };
+
+  const data: SummaryUiRow[] = [];
+  let wIncome = 0, wExpense = 0, wProfit = 0;
+  summary.forEach((cell) => {
+    data.push({ _t: 'day', key: `d${cell.day}`, cell });
+    wIncome += parseFloat(cell.income);
+    wExpense += parseFloat(cell.expense);
+    wProfit += parseFloat(cell.profit_loss);
+    if (cell.day % 7 === 0 || cell.day === summary.length) {
+      const cumIncome = parseFloat(cell.cumulative_income);
+      const cumExpense = parseFloat(cell.cumulative_expense);
+      data.push({
+        _t: 'week',
+        key: `w${cell.day}`,
+        label: `Week to ${fmtDate(cell.day)}`,
+        income: wIncome,
+        expense: wExpense,
+        profit: wProfit,
+        pct: wExpense !== 0 ? (wProfit / wExpense) * 100 : null,
+        cumIncome,
+        cumExpense,
+        cumPct: cumExpense !== 0 ? ((cumIncome - cumExpense) / cumExpense) * 100 : null,
+      });
+      wIncome = 0; wExpense = 0; wProfit = 0;
+    }
+  });
+
+  const columns: TableColumnsType<SummaryUiRow> = [
+    { title: 'Date', key: 'date', fixed: 'left' as const, width: 130, render: (_, r) => (r._t === 'day' ? fmtDate(r.cell.day) : r.label) },
+    { title: 'Total Income', key: 'income', fixed: 'left' as const, width: 130, align: 'right' as const, render: (_, r) => (r._t === 'day' ? fmtAmt(r.cell.income) : fmtAmt(r.income)) },
+    { title: 'Total Expense', key: 'expense', width: 130, align: 'right' as const, render: (_, r) => (r._t === 'day' ? fmtAmt(r.cell.expense) : fmtAmt(r.expense)) },
+    { title: 'Net Profit/Loss', key: 'profit_loss', width: 130, align: 'right' as const, render: (_, r) => (r._t === 'day' ? fmtAmt(r.cell.profit_loss) : fmtAmt(r.profit)) },
     {
       title: 'Profit/Loss %',
       key: 'profit_loss_pct',
       width: 110,
       align: 'right' as const,
-      render: (_, row) => (row.profit_loss_pct === null ? '—' : `${parseFloat(row.profit_loss_pct).toFixed(2)}%`),
+      render: (_, r) => (r._t === 'day' ? (r.cell.profit_loss_pct === null ? '—' : `${parseFloat(r.cell.profit_loss_pct).toFixed(2)}%`) : fmtPct(r.pct)),
     },
     {
       title: 'Cumulative Income (since project start)',
       key: 'cumulative_income',
       width: 180,
       align: 'right' as const,
-      render: (_, row) => (isWeekBoundary(row) ? fmtAmt(row.cumulative_income) : ''),
+      render: (_, r) => (r._t === 'week' ? fmtAmt(r.cumIncome) : ''),
     },
     {
       title: 'Cumulative Expense (since project start)',
       key: 'cumulative_expense',
       width: 180,
       align: 'right' as const,
-      render: (_, row) => (isWeekBoundary(row) ? fmtAmt(row.cumulative_expense) : ''),
+      render: (_, r) => (r._t === 'week' ? fmtAmt(r.cumExpense) : ''),
+    },
+    {
+      title: 'Cumulative P/L %',
+      key: 'cumulative_pct',
+      width: 130,
+      align: 'right' as const,
+      render: (_, r) => (r._t === 'week' ? fmtPct(r.cumPct) : ''),
     },
   ];
 
   return (
     <Card title="Summary" style={{ marginBottom: 16, borderRadius: 14 }} styles={{ body: { padding: 0 } }}>
       <Table
-        rowKey="day"
-        dataSource={summary}
+        rowKey="key"
+        dataSource={data}
         columns={columns}
         pagination={false}
         size="small"
         bordered
         scroll={{ x: 'max-content' }}
-        onRow={(row) => ({ style: isWeekBoundary(row) ? { fontWeight: 600 } : undefined })}
+        onRow={(r) => ({ style: r._t === 'week' ? { fontWeight: 700, background: '#fafafa' } : undefined })}
       />
     </Card>
   );
@@ -349,7 +402,7 @@ function exportMonthlyReportToExcel(
 
   // ── A. Daily Production ───────────────────────────────────────────────
   rows.push(['A', 'Daily Production']);
-  const prodHeader = ['Item No', 'Description', 'Unit', 'Rate', 'Agreed Qty', 'Total Done', 'Balance', 'Opening Qty', 'Opening Amt'];
+  const prodHeader = ['Item No', 'Description', 'Unit', 'Rate', 'Agreed Qty', 'Total Done', 'Balance', '% Complete', 'Opening Qty', 'Opening Amt'];
   for (let d = 1; d <= daysInMonth; d++) prodHeader.push(`Day ${d} Qty`, `Day ${d} Amt`);
   prodHeader.push('Closing Qty', 'Closing Amt');
   rows.push(prodHeader);
@@ -360,7 +413,9 @@ function exportMonthlyReportToExcel(
     pushMerge(sectionRowIdx, 0, prodHeader.length - 1);
     for (const item of section.items) {
       const balance = parseFloat(item.agreed_qty) - parseFloat(item.closing_qty);
-      const row: (string | number)[] = [item.item_no, item.description, item.unit, fmtQtyRaw(item.rate), fmtQtyRaw(item.agreed_qty), fmtQtyRaw(item.closing_qty), fmtQtyRaw(String(balance)), fmtQtyRaw(item.opening_qty), fmtAmtRaw(item.opening_amount)];
+      const denom = parseFloat(item.current_tendered_qty) || parseFloat(item.agreed_qty);
+      const pct = denom ? Number(((parseFloat(item.closing_qty) / denom) * 100).toFixed(2)) : '';
+      const row: (string | number)[] = [item.item_no, item.description, item.unit, fmtQtyRaw(item.rate), fmtQtyRaw(item.agreed_qty), fmtQtyRaw(item.closing_qty), fmtQtyRaw(String(balance)), pct, fmtQtyRaw(item.opening_qty), fmtAmtRaw(item.opening_amount)];
       for (const cell of item.daily) row.push(fmtQtyRaw(cell.qty), fmtAmtRaw(cell.amount));
       row.push(fmtQtyRaw(item.closing_qty), fmtAmtRaw(item.closing_amount));
       rows.push(row);
@@ -372,7 +427,7 @@ function exportMonthlyReportToExcel(
     // Column layout mirrors the item rows: Item No, Description, Unit, Rate,
     // Agreed Qty, Total Done, Balance, Opening Qty, Opening Amt, then per-day
     // Qty/Amt pairs, then Closing Qty/Amt.
-    const subtotalRow: (string | number)[] = ['', 'Section Total', '', '', '', '', '', '', fmtAmtRaw(String(subtotal.opening_amount))];
+    const subtotalRow: (string | number)[] = ['', 'Section Total', '', '', '', '', '', '', '', fmtAmtRaw(String(subtotal.opening_amount))];
     for (const cell of subtotal.daily) subtotalRow.push('', fmtAmtRaw(String(cell.amount)));
     subtotalRow.push('', fmtAmtRaw(String(subtotal.closing_amount)));
     rows.push(subtotalRow);
@@ -451,18 +506,37 @@ function exportMonthlyReportToExcel(
 
   // ── C. Summary ──────────────────────────────────────────────────────────
   rows.push(['C', 'Summary']);
-  rows.push(['Date', 'Total Income', 'Total Expense', 'Net Profit/Loss', 'Profit/Loss %', 'Cumulative Income (since start)', 'Cumulative Expense (since start)']);
+  rows.push(['Date', 'Total Income', 'Total Expense', 'Net Profit/Loss', 'Profit/Loss %', 'Cumulative Income (since start)', 'Cumulative Expense (since start)', 'Cumulative P/L %']);
+  let sumWI = 0, sumWE = 0, sumWP = 0;
   for (const cell of report.summary) {
-    const isWeekBoundary = cell.day % 7 === 0 || cell.day === report.summary.length;
+    sumWI += parseFloat(cell.income);
+    sumWE += parseFloat(cell.expense);
+    sumWP += parseFloat(cell.profit_loss);
     rows.push([
       cell.day,
       fmtAmtRaw(cell.income),
       fmtAmtRaw(cell.expense),
       fmtAmtRaw(cell.profit_loss),
       cell.profit_loss_pct === null ? '' : `${parseFloat(cell.profit_loss_pct).toFixed(2)}%`,
-      isWeekBoundary ? fmtAmtRaw(cell.cumulative_income) : '',
-      isWeekBoundary ? fmtAmtRaw(cell.cumulative_expense) : '',
+      '',
+      '',
+      '',
     ]);
+    if (cell.day % 7 === 0 || cell.day === report.summary.length) {
+      const cumI = parseFloat(cell.cumulative_income);
+      const cumE = parseFloat(cell.cumulative_expense);
+      rows.push([
+        `Week to Day ${cell.day}`,
+        fmtAmtRaw(String(sumWI)),
+        fmtAmtRaw(String(sumWE)),
+        fmtAmtRaw(String(sumWP)),
+        sumWE !== 0 ? `${((sumWP / sumWE) * 100).toFixed(2)}%` : '',
+        fmtAmtRaw(String(cumI)),
+        fmtAmtRaw(String(cumE)),
+        cumE !== 0 ? `${(((cumI - cumE) / cumE) * 100).toFixed(2)}%` : '',
+      ]);
+      sumWI = 0; sumWE = 0; sumWP = 0;
+    }
   }
 
   rows.push([]);
@@ -642,6 +716,21 @@ export function DprMonthlyReportPage() {
           if (row._type !== 'item') return null;
           const bal = parseFloat(row.item.agreed_qty) - parseFloat(row.item.closing_qty);
           return fmtQtyByUnit(bal, row.item.unit);
+        },
+      },
+      {
+        title: '% Complete',
+        key: 'percent_complete',
+        width: COL_W.percent,
+        align: 'right' as const,
+        onCell: numOnCell,
+        // Done ÷ revised tendered qty (current_tendered_qty already holds the
+        // revised value when revised, else equals the tendered qty).
+        render: (_, row) => {
+          if (row._type !== 'item') return null;
+          const denom = parseFloat(row.item.current_tendered_qty) || parseFloat(row.item.agreed_qty);
+          if (!denom) return '—';
+          return `${((parseFloat(row.item.closing_qty) / denom) * 100).toFixed(2)}%`;
         },
       },
       {
@@ -831,16 +920,12 @@ export function DprMonthlyReportPage() {
           {report && (
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 48, marginTop: 40, marginBottom: 24, padding: '0 24px', flexWrap: 'wrap' }}>
               <div style={{ textAlign: 'center', minWidth: 200 }}>
-                <div style={{ borderTop: '1px solid #999', paddingTop: 6, fontWeight: 600 }}>
-                  {preparedByName ?? '—'}
-                </div>
                 <Typography.Text type="secondary">Prepared by</Typography.Text>
+                <div style={{ marginTop: 8, fontWeight: 600 }}>{preparedByName ?? '—'}</div>
               </div>
               <div style={{ textAlign: 'center', minWidth: 200 }}>
-                <div style={{ borderTop: '1px solid #999', paddingTop: 6, fontWeight: 600 }}>
-                  {report.verified_by_name ?? '—'}
-                </div>
                 <Typography.Text type="secondary">Verified by (Project Manager)</Typography.Text>
+                <div style={{ marginTop: 8, fontWeight: 600 }}>{report.verified_by_name ?? '—'}</div>
               </div>
             </div>
           )}

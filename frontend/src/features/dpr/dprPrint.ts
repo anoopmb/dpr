@@ -77,11 +77,11 @@ function td(style: string, content: string | number = ''): string {
 // prints with the SAME colgroup so the day-by-day columns line up vertically
 // down the page. Sections with fewer real leading columns pad with blank
 // spacer cells. Layout = LEAD leading columns + numDays×(Qty,Amt) + 2 trailing.
-const LEAD = 9; // Item No, Description, Unit, Rate, Agreed, Total Done, Balance, Opening Qty, Opening Amt
+const LEAD = 10; // Item No, Description, Unit, Rate, Agreed, Total Done, Balance, % Complete, Opening Qty, Opening Amt
 // Leading column widths (%). Sum ≈ 40; trailing ≈ 7.5; days share the rest.
 // Amount columns get the larger share (leading Amt = 4.5, day Amt = 60% of a
 // day pair, trailing Amt = 5) so figures fit without wrapping.
-const LEAD_W = [3, 12.5, 2.5, 3.5, 3.5, 3.5, 3.5, 3, 4.5];
+const LEAD_W = [3, 10.5, 2.5, 3.5, 3.5, 3.5, 3.5, 3.5, 3, 4.5];
 const TRAIL_Q = 3.5;
 const TRAIL_A = 5;
 
@@ -133,6 +133,7 @@ ${unifiedColgroup(numDays)}
   <th style="${CELL}${TH1}" rowspan="2">Agreed</th>
   <th style="${CELL}${TH1}" rowspan="2">Total<br>Done</th>
   <th style="${CELL}${TH1}" rowspan="2">Balance</th>
+  <th style="${CELL}${TH1}" rowspan="2">%<br>Comp</th>
   <th style="${CELL}${TH1}" colspan="2">${esc(openLabel)}</th>
   ${dayIdxs.map(i => `<th style="${CELL}${TH1}" colspan="2">Day ${i + 1}<br><span style="font-size:5.5pt;font-weight:400">${esc(month.date(i + 1).format(shortDateFmt(dateFormat)))}</span></th>`).join('')}
   <th style="${CELL}${TH1}" colspan="2">Up to Day ${endDay}</th>
@@ -161,6 +162,10 @@ ${unifiedColgroup(numDays)}
       const done = parseFloat(item.closing_qty);
       const balance = parseFloat(item.agreed_qty) - done;
       subDone += done;
+      // Done ÷ revised tendered qty (current_tendered_qty = revised value, or
+      // the tendered qty when not revised).
+      const pctDenom = parseFloat(item.current_tendered_qty) || parseFloat(item.agreed_qty);
+      const pctComplete = pctDenom ? `${((done / pctDenom) * 100).toFixed(1)}%` : '—';
 
       t += `<tr>
         ${td('text-align:center;overflow:hidden', esc(item.item_no))}
@@ -170,6 +175,7 @@ ${unifiedColgroup(numDays)}
         ${td('text-align:right', fmtQty(item.agreed_qty))}
         ${td('text-align:right', fmtQty(done))}
         ${td('text-align:right', fmtQty(balance))}
+        ${td('text-align:right', pctComplete)}
         ${td('text-align:right', nonZero(op.qty, q => fmtQty(q)))}
         ${td('text-align:right', nonZero(op.amt, a => fmtAmt(a)))}`;
 
@@ -187,6 +193,7 @@ ${unifiedColgroup(numDays)}
     t += `<tr style="${SUBTOT}">
       <td colspan="5" style="${CELL}${SUBTOT}">Section Total</td>
       ${td(SUBTOT + 'text-align:right', nonZero(subDone, q => fmtQty(q)))}
+      ${td(SUBTOT, '')}
       ${td(SUBTOT, '')}
       ${td(SUBTOT + 'text-align:right', nonZero(subOQ, q => fmtQty(q)))}
       ${td(SUBTOT + 'text-align:right', nonZero(subOA, a => fmtAmt(a)))}
@@ -227,13 +234,13 @@ ${unifiedColgroup(numDays)}
 <tr style="${TH1}text-align:center">
   <th style="${CELL}${TH1}text-align:left" colspan="2">Description</th>
   <th style="${CELL}${TH1}">Unit</th>
-  <th style="${CELL}${TH1}" colspan="6"></th>
+  <th style="${CELL}${TH1}" colspan="7"></th>
   ${dayIdxs.map(i => `<th style="${CELL}${TH1}" colspan="2">Day ${i + 1}</th>`).join('')}
   <th style="${CELL}${TH1}" colspan="2">Week Total</th>
 </tr>
 <tr style="${TH2}text-align:center">
   <th style="${CELL}${TH2}"></th><th style="${CELL}${TH2}"></th><th style="${CELL}${TH2}"></th>
-  <th style="${CELL}${TH2}" colspan="6"></th>
+  <th style="${CELL}${TH2}" colspan="7"></th>
   ${dayIdxs.map(() => `<th style="${CELL}${TH2}">Qty</th><th style="${CELL}${TH2}">Amt</th>`).join('')}
   <th style="${CELL}${TH2}">Qty</th><th style="${CELL}${TH2}">Amt</th>
 </tr>
@@ -249,7 +256,7 @@ ${unifiedColgroup(numDays)}
     const wa = dayIdxs.reduce((s, di) => s + parseFloat(row.daily[di]?.amount ?? '0'), 0);
     totWQ += wq; totWA += wa;
 
-    t += `<tr><td colspan="2" style="${CELL}overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(row.name)}</td>${td('text-align:center', esc(row.unit))}${blankSpan(6)}`;
+    t += `<tr><td colspan="2" style="${CELL}overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(row.name)}</td>${td('text-align:center', esc(row.unit))}${blankSpan(7)}`;
     dayIdxs.forEach((di, i) => {
       const dq = parseFloat(row.daily[di]?.qty ?? '0');
       const da = parseFloat(row.daily[di]?.amount ?? '0');
@@ -289,7 +296,7 @@ ${unifiedColgroup(numDays)}
 <thead>
 <tr style="${TH1}text-align:center">
   <th style="${CELL}${TH1}text-align:left" colspan="2">Description</th>
-  <th style="${CELL}${TH1}" colspan="7"></th>
+  <th style="${CELL}${TH1}" colspan="8"></th>
   ${dayIdxs.map(i => `<th style="${CELL}${TH1}" colspan="2">Day ${i + 1}</th>`).join('')}
   <th style="${CELL}${TH1}" colspan="2">Week Total</th>
 </tr>
@@ -302,7 +309,7 @@ ${unifiedColgroup(numDays)}
   for (const row of expenses) {
     const wa = dayIdxs.reduce((s, di) => s + parseFloat(row.daily[di]?.amount ?? '0'), 0);
     totW += wa;
-    t += `<tr><td colspan="2" style="${CELL}overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(row.name)}</td>${blankSpan(7)}`;
+    t += `<tr><td colspan="2" style="${CELL}overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(row.name)}</td>${blankSpan(8)}`;
     dayIdxs.forEach((di, i) => {
       const da = parseFloat(row.daily[di]?.amount ?? '0');
       totD[i] += da;
@@ -330,7 +337,6 @@ function buildSummarySection(
 ): string {
   const rows = summary.filter(c => c.day >= slice.startDay && c.day <= slice.endDay);
   if (rows.length === 0) return '';
-  const lastDay = summary.length;
 
   let t = `<div style="font-size:7pt;font-weight:700;margin:4px 0 1px;padding:2px 4px;background:#e0ebff;border-left:3px solid #4472c4;page-break-after:avoid;break-after:avoid">C. Summary</div>
 <table style="${TABLE}">
@@ -343,23 +349,44 @@ function buildSummarySection(
   <th style="${CELL}${TH1};width:7%">P/L %</th>
   <th style="${CELL}${TH1}">Cumul. Income</th>
   <th style="${CELL}${TH1}">Cumul. Expense</th>
+  <th style="${CELL}${TH1};width:7%">Cumul. P/L %</th>
 </tr>
 </thead>
 <tbody>`;
 
+  // Day rows carry only that day's figures; the week-total row below sums the
+  // slice and carries the running cumulative + cumulative P/L %.
+  let wIncome = 0, wExpense = 0, wProfit = 0;
   for (const cell of rows) {
-    const wb = cell.day % 7 === 0 || cell.day === lastDay;
-    const rs = wb ? SUBTOT : '';
-    t += `<tr style="${rs}">
-      ${td(rs, esc(month.date(cell.day).format(dateFormat)))}
-      ${td(rs + 'text-align:right', fmtAmt(cell.income))}
-      ${td(rs + 'text-align:right', fmtAmt(cell.expense))}
-      ${td(rs + 'text-align:right', fmtAmt(cell.profit_loss))}
-      ${td(rs + 'text-align:right', cell.profit_loss_pct !== null ? parseFloat(cell.profit_loss_pct).toFixed(2) + '%' : '—')}
-      ${td(rs + 'text-align:right', wb ? fmtAmt(cell.cumulative_income) : '')}
-      ${td(rs + 'text-align:right', wb ? fmtAmt(cell.cumulative_expense) : '')}
+    wIncome += parseFloat(cell.income);
+    wExpense += parseFloat(cell.expense);
+    wProfit += parseFloat(cell.profit_loss);
+    t += `<tr>
+      ${td('', esc(month.date(cell.day).format(dateFormat)))}
+      ${td('text-align:right', fmtAmt(cell.income))}
+      ${td('text-align:right', fmtAmt(cell.expense))}
+      ${td('text-align:right', fmtAmt(cell.profit_loss))}
+      ${td('text-align:right', cell.profit_loss_pct !== null ? parseFloat(cell.profit_loss_pct).toFixed(2) + '%' : '—')}
+      ${td('text-align:right', '')}
+      ${td('text-align:right', '')}
+      ${td('text-align:right', '')}
     </tr>`;
   }
+  const last = rows[rows.length - 1];
+  const cumI = parseFloat(last.cumulative_income);
+  const cumE = parseFloat(last.cumulative_expense);
+  const wPct = wExpense !== 0 ? (wProfit / wExpense * 100).toFixed(2) + '%' : '—';
+  const cumPct = cumE !== 0 ? ((cumI - cumE) / cumE * 100).toFixed(2) + '%' : '—';
+  t += `<tr style="${SUBTOT}">
+    ${td(SUBTOT, `Week to ${esc(month.date(last.day).format(dateFormat))}`)}
+    ${td(SUBTOT + 'text-align:right', fmtAmt(wIncome))}
+    ${td(SUBTOT + 'text-align:right', fmtAmt(wExpense))}
+    ${td(SUBTOT + 'text-align:right', fmtAmt(wProfit))}
+    ${td(SUBTOT + 'text-align:right', wPct)}
+    ${td(SUBTOT + 'text-align:right', fmtAmt(cumI))}
+    ${td(SUBTOT + 'text-align:right', fmtAmt(cumE))}
+    ${td(SUBTOT + 'text-align:right', cumPct)}
+  </tr>`;
 
   t += '</tbody></table>';
   return t;
@@ -368,9 +395,9 @@ function buildSummarySection(
 function buildSignatures(report: DprMonthlyReportRead, preparedByName: string | null): string {
   const block = (name: string | null, role: string) =>
     `<div style="text-align:center;min-width:200px">
-      <div style="height:22px"></div>
-      <div style="border-top:1px solid #333;padding-top:3px;font-weight:600">${esc(name ?? '')}</div>
       <div style="font-size:7pt;color:#333">${esc(role)}</div>
+      <div style="height:18px"></div>
+      <div style="border-top:1px solid #333;padding-top:3px;font-weight:600">${esc(name ?? '')}</div>
     </div>`;
   return `<div style="display:flex;justify-content:space-between;margin-top:28px;padding:0 40px;page-break-inside:avoid">
     ${block(preparedByName, 'Prepared by')}
