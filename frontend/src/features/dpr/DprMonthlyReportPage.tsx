@@ -22,6 +22,48 @@ import {
 import { useThemeMode } from '@/theme/theme-context';
 import { useDateFormat, useNumberFormat } from '@/utils/format';
 
+// Shared column widths (px). Every stacked report table (Production,
+// Materials, Machinery, Labour, Expenses) uses these so the day-by-day
+// columns line up vertically down the page. The Production table's own
+// columns use these same literal values — keep them in sync. Thinner
+// sections pad the leading columns with blank spacers to reach the same
+// day-start offset. (Tables scroll horizontally on their own, so alignment
+// holds at scroll origin.)
+const COL_W = {
+  itemNo: 80,
+  desc: 220,
+  unit: 60,
+  rate: 90,
+  revRate: 90,
+  contractQty: 90,
+  totalDone: 90,
+  balance: 90,
+  openQty: 80,
+  openAmt: 95,
+  dayQty: 65,
+  dayAmt: 75,
+  closeQty: 80,
+  closeAmt: 95,
+};
+
+// The 8 single leading columns before the Opening group, rendered blank as
+// spacers in the non-Production sections. `desc`/`unit` are overridden by
+// callers that carry real data there.
+const LEADING_SPACER_KEYS: { key: string; width: number }[] = [
+  { key: 'sp_itemno', width: COL_W.itemNo },
+  { key: 'sp_desc', width: COL_W.desc },
+  { key: 'sp_unit', width: COL_W.unit },
+  { key: 'sp_rate', width: COL_W.rate },
+  { key: 'sp_revrate', width: COL_W.revRate },
+  { key: 'sp_contractqty', width: COL_W.contractQty },
+  { key: 'sp_totaldone', width: COL_W.totalDone },
+  { key: 'sp_balance', width: COL_W.balance },
+  { key: 'sp_openqty', width: COL_W.openQty },
+  { key: 'sp_openamt', width: COL_W.openAmt },
+];
+// Total leading columns (8 singles + Opening Qty/Amt) that day columns start after.
+const LEADING_COUNT = LEADING_SPACER_KEYS.length;
+
 interface SectionSubtotal {
   agreed_amount: string;
   opening_qty: number;
@@ -80,21 +122,30 @@ function QtyAmtSection({
 }) {
   if (rows.length === 0) return null;
 
+  // Leading columns: col 2 = Description (name), col 3 = Unit; the rest are
+  // blank spacers so day columns align with the Production table above.
   const columns: TableColumnsType<typeof rows[number]> = [
-    { title: 'Description', key: 'name', fixed: 'left', width: 200, ellipsis: true, render: (_, row) => row.name },
-    { title: 'Unit', key: 'unit', width: 70, render: (_, row) => row.unit },
+    ...LEADING_SPACER_KEYS.map((c) => {
+      if (c.key === 'sp_desc') {
+        return { title: 'Description', key: 'name', width: c.width, ellipsis: true, render: (_: unknown, row: typeof rows[number]) => row.name };
+      }
+      if (c.key === 'sp_unit') {
+        return { title: 'Unit', key: 'unit', width: c.width, render: (_: unknown, row: typeof rows[number]) => row.unit };
+      }
+      return { title: '', key: c.key, width: c.width, render: () => null };
+    }),
     ...Array.from({ length: daysInMonth }, (_, i) => {
       const day = i + 1;
       return {
         title: `Day ${day}`,
         children: [
-          { title: 'Qty', key: `d${day}q`, width: 65, align: 'right' as const, render: (_: unknown, row: typeof rows[number]) => fmtQty(row.daily[i]?.qty) },
-          { title: 'Amt', key: `d${day}a`, width: 75, align: 'right' as const, render: (_: unknown, row: typeof rows[number]) => fmtAmt(row.daily[i]?.amount) },
+          { title: 'Qty', key: `d${day}q`, width: COL_W.dayQty, align: 'right' as const, render: (_: unknown, row: typeof rows[number]) => fmtQty(row.daily[i]?.qty) },
+          { title: 'Amt', key: `d${day}a`, width: COL_W.dayAmt, align: 'right' as const, render: (_: unknown, row: typeof rows[number]) => fmtAmt(row.daily[i]?.amount) },
         ],
       };
     }),
-    { title: 'Total Qty', key: 'total_qty', width: 85, align: 'right' as const, render: (_, row) => fmtQty(row.total_qty) },
-    { title: 'Total Amt', key: 'total_amount', width: 100, align: 'right' as const, render: (_, row) => fmtAmt(row.total_amount) },
+    { title: 'Total Qty', key: 'total_qty', width: COL_W.closeQty, align: 'right' as const, render: (_, row) => fmtQty(row.total_qty) },
+    { title: 'Total Amt', key: 'total_amount', width: COL_W.closeAmt, align: 'right' as const, render: (_, row) => fmtAmt(row.total_amount) },
   ];
 
   const totalQty = rows.reduce((s, r) => s + parseFloat(r.total_qty), 0);
@@ -116,15 +167,14 @@ function QtyAmtSection({
         summary={() => (
           <Table.Summary fixed>
             <Table.Summary.Row style={{ fontWeight: 700 }}>
-              <Table.Summary.Cell index={0}>Total</Table.Summary.Cell>
-              <Table.Summary.Cell index={1} />
+              <Table.Summary.Cell index={0} colSpan={LEADING_COUNT}>Total</Table.Summary.Cell>
               {dailyTotals.map((amt, i) => (
-                <Table.Summary.Cell index={i + 2} colSpan={2} align="right" key={i}>
+                <Table.Summary.Cell index={i + 1} colSpan={2} align="right" key={i}>
                   {fmtAmt(amt)}
                 </Table.Summary.Cell>
               ))}
-              <Table.Summary.Cell index={daysInMonth + 2}>{fmtQty(totalQty)}</Table.Summary.Cell>
-              <Table.Summary.Cell index={daysInMonth + 3} align="right">
+              <Table.Summary.Cell index={daysInMonth + 1} align="right">{fmtQty(totalQty)}</Table.Summary.Cell>
+              <Table.Summary.Cell index={daysInMonth + 2} align="right">
                 {fmtAmt(totalAmount)}
               </Table.Summary.Cell>
             </Table.Summary.Row>
@@ -146,16 +196,26 @@ function ExpensesSection({
 }) {
   if (rows.length === 0) return null;
 
+  // Expenses have amount only, so each day's Qty sub-column is a blank spacer
+  // and the value sits under the Amt sub-column — aligning with the Amt
+  // columns of the sections above. Leading columns are blank spacers except
+  // Description (name).
   const columns: TableColumnsType<ExpenseCategoryRow> = [
-    { title: 'Description', key: 'name', fixed: 'left', width: 220, ellipsis: true, render: (_, row) => row.name },
+    ...LEADING_SPACER_KEYS.map((c) => {
+      if (c.key === 'sp_desc') {
+        return { title: 'Description', key: 'name', width: c.width, ellipsis: true, render: (_: unknown, row: ExpenseCategoryRow) => row.name };
+      }
+      return { title: '', key: c.key, width: c.width, render: () => null };
+    }),
     ...Array.from({ length: daysInMonth }, (_, i) => ({
       title: `Day ${i + 1}`,
-      key: `d${i + 1}`,
-      width: 90,
-      align: 'right' as const,
-      render: (_: unknown, row: ExpenseCategoryRow) => fmtAmt(row.daily[i]?.amount),
+      children: [
+        { title: '', key: `d${i + 1}q`, width: COL_W.dayQty, render: () => null },
+        { title: 'Amt', key: `d${i + 1}a`, width: COL_W.dayAmt, align: 'right' as const, render: (_: unknown, row: ExpenseCategoryRow) => fmtAmt(row.daily[i]?.amount) },
+      ],
     })),
-    { title: 'Total', key: 'total_amount', width: 110, align: 'right' as const, render: (_, row) => fmtAmt(row.total_amount) },
+    { title: '', key: 'sp_totalqty', width: COL_W.closeQty, render: () => null },
+    { title: 'Total', key: 'total_amount', width: COL_W.closeAmt, align: 'right' as const, render: (_, row) => fmtAmt(row.total_amount) },
   ];
 
   const totalAmount = rows.reduce((s, r) => s + parseFloat(r.total_amount), 0);
@@ -176,13 +236,14 @@ function ExpensesSection({
         summary={() => (
           <Table.Summary fixed>
             <Table.Summary.Row style={{ fontWeight: 700 }}>
-              <Table.Summary.Cell index={0}>Total</Table.Summary.Cell>
+              <Table.Summary.Cell index={0} colSpan={LEADING_COUNT}>Total</Table.Summary.Cell>
               {dailyTotals.map((amt, i) => (
-                <Table.Summary.Cell index={i + 1} align="right" key={i}>
+                <Table.Summary.Cell index={i + 1} colSpan={2} align="right" key={i}>
                   {fmtAmt(amt)}
                 </Table.Summary.Cell>
               ))}
-              <Table.Summary.Cell index={daysInMonth + 1} align="right">
+              <Table.Summary.Cell index={daysInMonth + 1} />
+              <Table.Summary.Cell index={daysInMonth + 2} align="right">
                 {fmtAmt(totalAmount)}
               </Table.Summary.Cell>
             </Table.Summary.Row>
