@@ -3,6 +3,7 @@ import { getApiErrorMessage } from '@/utils/api-error';
 import {
   Alert,
   Button,
+  DatePicker,
   Descriptions,
   Form,
   Input,
@@ -18,7 +19,8 @@ import {
   message,
 } from 'antd';
 import type { TableColumnsType } from 'antd';
-import { FileTextOutlined } from '@ant-design/icons';
+import { DownloadOutlined, FilePdfOutlined, FileTextOutlined, PrinterOutlined } from '@ant-design/icons';
+import dayjs, { type Dayjs } from 'dayjs';
 import { ProjectSelector } from '@/components/common/ProjectSelector';
 import { useProjectContextStore } from '@/store/project-context-store';
 import {
@@ -29,12 +31,16 @@ import {
   type MeasurementRead,
 } from '@/api/hooks/useMeasurements';
 import { useAuthStore } from '@/store/auth-store';
+import { useProjects } from '@/api/hooks/useProjects';
 import { useBoqItems } from '@/api/hooks/useBoq';
-import { useWorkTypes } from '@/api/hooks/useMasters';
+import { useUoms, useWorkTypes } from '@/api/hooks/useMasters';
 import { calculateQuantity, evaluateExpression, isArithmeticExpression, ExpressionError } from '@/features/measurements/formulaEngine';
 import { useThemeMode } from '@/theme/theme-context';
 import { useDateFormat, useNumberFormat } from '@/utils/format';
 import { MeasurementPhotos } from '@/features/measurements/MeasurementPhotos';
+import { buildMeasurementExportRows, exportMeasurementsToExcel } from '@/features/measurements/measurementExport';
+import { buildMeasurementPrintableHTML } from '@/features/measurements/measurementPrint';
+import { triggerPrint } from '@/features/dpr/dprPrint';
 
 const FIELD_LABELS: Record<string, string> = {
   nos: 'No.',
@@ -117,9 +123,11 @@ export function MeasurementsPage() {
   const { data: measurements, isLoading } = useMeasurements(selectedProjectId);
   const { data: boqItems } = useBoqItems(selectedProjectId);
   const { data: workTypes } = useWorkTypes();
+  const { data: projects } = useProjects();
+  const { data: uoms } = useUoms();
   const user = useAuthStore((s) => s.user);
   const { resolvedMode } = useThemeMode();
-  const { fmtDate } = useDateFormat();
+  const { fmtDate, dateFormat } = useDateFormat();
   const { fmtQty } = useNumberFormat();
 
   const DATE_HDR_BG = resolvedMode === 'dark' ? 'rgba(22, 119, 255, 0.10)' : '#f0f5ff';
@@ -231,23 +239,61 @@ export function MeasurementsPage() {
   }, [editWorkType, editDimensions]);
 
   const boqById = new Map((boqItems ?? []).map((b) => [b.id, b]));
+  const uomById = useMemo(() => new Map((uoms ?? []).map((u) => [u.id, u])), [uoms]);
 
   const [searchText, setSearchText] = useState('');
+  const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null);
+  const [boqItemFilter, setBoqItemFilter] = useState<string | null>(null);
 
   const filteredMeasurements = useMemo(() => {
     const q = searchText.trim().toLowerCase();
-    if (!q) return measurements ?? [];
     return (measurements ?? []).filter((m) => {
-      const item = boqById.get(m.boq_item_id);
-      return (
-        (item?.item_no ?? '').toLowerCase().includes(q) ||
-        (item?.description ?? '').toLowerCase().includes(q) ||
-        (m.chainage ?? '').toLowerCase().includes(q)
-      );
+      if (boqItemFilter && m.boq_item_id !== boqItemFilter) return false;
+      if (dateRange) {
+        const d = dayjs(m.measurement_date);
+        if (d.isBefore(dateRange[0], 'day') || d.isAfter(dateRange[1], 'day')) return false;
+      }
+      if (q) {
+        const item = boqById.get(m.boq_item_id);
+        const hit =
+          (item?.item_no ?? '').toLowerCase().includes(q) ||
+          (item?.description ?? '').toLowerCase().includes(q) ||
+          (m.chainage ?? '').toLowerCase().includes(q);
+        if (!hit) return false;
+      }
+      return true;
     });
-  }, [measurements, boqById, searchText]);
+  }, [measurements, boqById, searchText, boqItemFilter, dateRange]);
 
   const rows = useMemo(() => buildDateGroupedRows(filteredMeasurements), [filteredMeasurements]);
+
+  // BOQ-item filter options (item no — description), sorted by item no.
+  const boqItemOptions = useMemo(
+    () =>
+      [...(boqItems ?? [])]
+        .sort((a, b) => a.item_no.localeCompare(b.item_no, undefined, { numeric: true }))
+        .map((b) => ({ value: b.id, label: `${b.item_no} — ${b.description}` })),
+    [boqItems],
+  );
+
+  // ── Export / print (Date, Item, Specification, No, L, B, H, Qty, Unit, Remarks) ──
+  const projectName = useMemo(
+    () => (projects ?? []).find((p) => p.id === selectedProjectId)?.name ?? 'Project',
+    [projects, selectedProjectId],
+  );
+  const preparedByName = user?.fullName ?? null;
+  const rangeLabel = dateRange
+    ? `${fmtDate(dateRange[0].format('YYYY-MM-DD'))} – ${fmtDate(dateRange[1].format('YYYY-MM-DD'))}`
+    : 'All dates';
+  const exportRows = useMemo(
+    () => buildMeasurementExportRows(filteredMeasurements, boqById, uomById),
+    [filteredMeasurements, boqById, uomById],
+  );
+
+  const handleExportExcel = () =>
+    exportMeasurementsToExcel(exportRows, { projectName, rangeLabel, fmtDate });
+  const handlePrint = () =>
+    triggerPrint(buildMeasurementPrintableHTML(exportRows, { projectName, rangeLabel, fmtDate, preparedByName }));
 
   const handleEditSave = async () => {
     if (!editingMeasurement || !editWorkType || !editBoqItemId) return;
@@ -401,21 +447,49 @@ export function MeasurementsPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
         <Typography.Title level={3} style={{ margin: 0 }}>
           Measurement Book
         </Typography.Title>
         <Space>
-          <ProjectSelector />
-          <Input.Search
-            placeholder="Search by item no, description, or chainage"
-            allowClear
-            style={{ width: 280 }}
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-          />
+          <Button icon={<DownloadOutlined />} onClick={handleExportExcel} disabled={exportRows.length === 0}>
+            Export
+          </Button>
+          <Button icon={<PrinterOutlined />} onClick={handlePrint} disabled={exportRows.length === 0}>
+            Print
+          </Button>
+          <Button icon={<FilePdfOutlined />} onClick={handlePrint} disabled={exportRows.length === 0}>
+            Export PDF
+          </Button>
         </Space>
       </div>
+
+      <Space style={{ marginBottom: 16 }} wrap>
+        <ProjectSelector />
+        <DatePicker.RangePicker
+          value={dateRange}
+          onChange={(v) => setDateRange(v && v[0] && v[1] ? [v[0], v[1]] : null)}
+          format={dateFormat}
+          allowClear
+        />
+        <Select
+          style={{ width: 320 }}
+          placeholder="All BOQ items"
+          showSearch
+          allowClear
+          optionFilterProp="label"
+          value={boqItemFilter ?? undefined}
+          onChange={(v) => setBoqItemFilter(v ?? null)}
+          options={boqItemOptions}
+        />
+        <Input.Search
+          placeholder="Search by item no, description, or chainage"
+          allowClear
+          style={{ width: 280 }}
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+        />
+      </Space>
 
       <Table
         rowKey="key"
