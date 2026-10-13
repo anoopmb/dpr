@@ -40,6 +40,15 @@ input:-webkit-autofill:active {
   caret-color: #e2e8f0;
 }
 
+/* Light-mode counterpart: keep typed text dark on the white input background */
+[data-theme="light"] .ant-input,
+[data-theme="light"] .ant-input-affix-wrapper .ant-input,
+[data-theme="light"] .ant-input-password .ant-input {
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+  caret-color: #0f172a;
+}
+
 [data-theme="dark"] .ant-input::placeholder,
 [data-theme="dark"] .ant-input-affix-wrapper .ant-input::placeholder {
   color: #64748b !important;

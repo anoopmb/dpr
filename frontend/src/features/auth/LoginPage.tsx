@@ -55,6 +55,7 @@ export function LoginPage() {
   const cardBorder = resolvedMode === 'dark' ? '1px solid rgba(255,255,255,0.07)' : '1px solid #e2e8f0';
   const inputBg    = resolvedMode === 'dark' ? '#111827' : '#ffffff';
   const inputBorder = resolvedMode === 'dark' ? 'rgba(255,255,255,0.12)' : '#d1d5db';
+  const inputText  = resolvedMode === 'dark' ? '#e2e8f0' : '#0f172a';
   const mutedText  = palette.contentMutedText;
   const titleColor = palette.contentText;
 
@@ -146,7 +147,7 @@ export function LoginPage() {
               style={{
                 background: inputBg,
                 borderColor: inputBorder,
-                color: '#e2e8f0',
+                color: inputText,
               }}
             />
           </Form.Item>
@@ -162,7 +163,7 @@ export function LoginPage() {
               style={{
                 background: inputBg,
                 borderColor: inputBorder,
-                color: '#e2e8f0',
+                color: inputText,
               }}
             />
           </Form.Item>
